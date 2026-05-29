@@ -23,7 +23,9 @@ async function kvSet(key, value) {
 export async function GET() {
   try {
     const data = await kvGet(KEY);
-    return NextResponse.json({ data: data || null });
+    const result = data;
+const parsed = typeof result === "string" ? JSON.parse(result) : result;
+return NextResponse.json({ data: parsed || null });
   } catch (err) {
     return NextResponse.json({ data: null }, { status: 200 });
   }
