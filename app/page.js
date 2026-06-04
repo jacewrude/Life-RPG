@@ -413,8 +413,12 @@ export default function App() {
     (async () => {
       try {
         const res = await fetch("/api/storage");
-        const json = await res.json();
-        setData(json.data || INIT);
+const json = await res.json();
+if (json.data && json.data.categories && json.data.tasks) {
+  setData(json.data);
+} else {
+  setData(INIT);
+}
       }
       catch { setData(INIT); }
     })();
@@ -445,39 +449,54 @@ export default function App() {
 
   // Decay
   useEffect(() => {
-    if (!data) return;
-    const run = () => {
-      const now=Date.now();
-      const last=data.lastDecayCheck?new Date(data.lastDecayCheck).getTime():now-3700000;
-      if (now-last<3600000) return;
-      const today=dateKey();
-      let cats=data.categories.map(c=>({...c}));
-      let changed=false;
-      data.tasks.forEach(task=>{
-        const keys=Object.keys(task.completions||{}).sort().reverse();
-        if (!keys.length) return;
-        const lastD=new Date(keys[0]+"T00:00:00");
-        const nowD=new Date(today+"T00:00:00");
-        let missed=0;
-        let cursor=new Date(lastD); cursor.setDate(cursor.getDate()+1);
-        while (cursor<nowD) {
-          const dk=dateKey(cursor);
-          if (isScheduledOn(task,dk)&&!isCompletedOn(task,dk)) missed++;
-          cursor.setDate(cursor.getDate()+1);
-        }
-        if (missed>0) {
-          const ci=cats.findIndex(c=>c.id===task.catId);
-          if (ci!==-1) { cats[ci].value=Math.max(0,cats[ci].value-task.decayRate*missed); changed=true; }
+  if (!data) return;
+  if (!data.categories || !data.tasks) return;
+  const run = () => {
+    try {
+      const now = Date.now();
+      const last = data.lastDecayCheck
+        ? new Date(data.lastDecayCheck).getTime()
+        : now - 3700000;
+      if (now - last < 3600000) return;
+      const today = dateKey();
+      let cats = data.categories.map(c => ({ ...c }));
+      let changed = false;
+      data.tasks.forEach(task => {
+        try {
+          const keys = Object.keys(task.completions || {}).sort().reverse();
+          if (!keys.length) return;
+          const lastD = new Date(keys[0] + "T00:00:00");
+          const nowD = new Date(today + "T00:00:00");
+          let missed = 0;
+          let cursor = new Date(lastD);
+          cursor.setDate(cursor.getDate() + 1);
+          while (cursor < nowD) {
+            const dk = dateKey(cursor);
+            if (isScheduledOn(task, dk) && !isCompletedOn(task, dk)) missed++;
+            cursor.setDate(cursor.getDate() + 1);
+          }
+          if (missed > 0) {
+            const ci = cats.findIndex(c => c.id === task.catId);
+            if (ci !== -1) {
+              cats[ci].value = Math.max(0, cats[ci].value - task.decayRate * missed);
+              changed = true;
+            }
+          }
+        } catch (taskErr) {
+          console.error("Decay error on task", task.id, taskErr);
         }
       });
-      const next={...data,categories:cats,lastDecayCheck:new Date().toISOString()};
+      const next = { ...data, categories: cats, lastDecayCheck: new Date().toISOString() };
       if (changed) { setData(next); persist(next); }
-      else persist({...data,lastDecayCheck:new Date().toISOString()});
-    };
-    run();
-    const it=setInterval(run, 3600000);
-    return ()=>clearInterval(it);
-  }, [data?.lastDecayCheck]);
+      else persist({ ...data, lastDecayCheck: new Date().toISOString() });
+    } catch (err) {
+      console.error("Decay engine error:", err);
+    }
+  };
+  run();
+  const it = setInterval(run, 3600000);
+  return () => clearInterval(it);
+}, [data?.lastDecayCheck]);
 
   const persist = async (d) => {
     try {
