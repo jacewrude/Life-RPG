@@ -34,7 +34,11 @@ return NextResponse.json({ data: parsed || null });
 export async function POST(request) {
   try {
     const body = await request.json();
-    await kvSet(KEY, body);
+if (!body || !body.categories || !body.tasks) {
+  console.error("Refusing to save invalid data:", JSON.stringify(body).slice(0, 100));
+  return NextResponse.json({ ok: false, error: "Invalid data shape" });
+}
+await kvSet(KEY, body);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
