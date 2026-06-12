@@ -27,54 +27,58 @@ function diffLabel(imp) {
   return "EPIC";
 }
 
-// ── THEMES ────────────────────────────────────────────────────────────────────
+
+// ── SKY THEMES (Not Boring style scenes; keys unchanged so saves migrate) ─────
 const THEMES = {
   ember: {
-    name:"Ember", swatch:"#f59e0b",
-    bg:"#07060f", card:"#100f20", card2:"#0b0a18", line:"#201e3c", line2:"#16152c",
-    accent:"#f59e0b", text:"#eef0f6", dim:"#9a9ab8", faint:"#52527a",
-    good:"#34d399", bad:"#f87171",
-    glow:"radial-gradient(ellipse at 20% 30%,#1a0f0033 0%,transparent 55%),radial-gradient(ellipse at 80% 10%,#14082633 0%,transparent 50%)",
+    name:"Dawn", swatch:"#f2723f",
+    sky:["#2a1654","#8a2f63","#f2723f"], sun:"#ffc46b", stars:false,
+    m1:"#6b2a5e", m2:"#471d49", m3:"#2b1238",
+    accent:"#ffb13d",
   },
   midnight: {
-    name:"Midnight", swatch:"#8b5cf6",
-    bg:"#0a0918", card:"#14122a", card2:"#0e0d20", line:"#272348", line2:"#1c1936",
-    accent:"#8b5cf6", text:"#eef0f6", dim:"#a09ec4", faint:"#565288",
-    good:"#34d399", bad:"#f87171",
-    glow:"radial-gradient(ellipse at 20% 25%,#1b103a44 0%,transparent 55%),radial-gradient(ellipse at 85% 12%,#0d1f3a33 0%,transparent 50%)",
+    name:"Night", swatch:"#34418c",
+    sky:["#070822","#1c1f52","#34418c"], sun:"#e8ecff", stars:true,
+    m1:"#232a66", m2:"#161b4a", m3:"#0c0f33",
+    accent:"#9db4ff",
   },
   ocean: {
-    name:"Ocean", swatch:"#38bdf8",
-    bg:"#04101c", card:"#0a1a2c", card2:"#071424", line:"#1a3450", line2:"#11253c",
-    accent:"#38bdf8", text:"#ecf4fa", dim:"#92aec6", faint:"#4a6884",
-    good:"#34d399", bad:"#f87171",
-    glow:"radial-gradient(ellipse at 20% 25%,#04284244 0%,transparent 55%),radial-gradient(ellipse at 85% 12%,#0a324c33 0%,transparent 50%)",
+    name:"Ocean", swatch:"#18a0a8",
+    sky:["#04263f","#0a5070","#18a0a8"], sun:"#aef0e4", stars:false,
+    m1:"#0d5c7c", m2:"#07415c", m3:"#032b40",
+    accent:"#5eead4",
   },
   forest: {
-    name:"Forest", swatch:"#34d399",
-    bg:"#05110b", card:"#0b1c13", card2:"#08160e", line:"#1c3a2a", line2:"#132a1e",
-    accent:"#34d399", text:"#eef6f0", dim:"#94b8a4", faint:"#4a7860",
-    good:"#4ade80", bad:"#f87171",
-    glow:"radial-gradient(ellipse at 20% 25%,#06301c44 0%,transparent 55%),radial-gradient(ellipse at 85% 12%,#0a3a2433 0%,transparent 50%)",
+    name:"Forest", swatch:"#3f8f5f",
+    sky:["#0c2b22","#1d5c40","#a4c25f"], sun:"#ffe9a3", stars:false,
+    m1:"#2e6b4f", m2:"#1c4a37", m3:"#0e2e21",
+    accent:"#a3e635",
   },
   rose: {
-    name:"Rose", swatch:"#f472b6",
-    bg:"#140711", card:"#221021", card2:"#190b18", line:"#42203c", line2:"#2e162a",
-    accent:"#f472b6", text:"#f8eef4", dim:"#c498b4", faint:"#7c5070",
-    good:"#34d399", bad:"#f87171",
-    glow:"radial-gradient(ellipse at 20% 25%,#3a0e2c44 0%,transparent 55%),radial-gradient(ellipse at 85% 12%,#2a0a3a33 0%,transparent 50%)",
+    name:"Rose", swatch:"#ff8e6e",
+    sky:["#3b1042","#91356f","#ff8e6e"], sun:"#ffd9c2", stars:false,
+    m1:"#7c2f63", m2:"#54204c", m3:"#321336",
+    accent:"#ffa9c9",
   },
   crimson: {
-    name:"Crimson", swatch:"#ef4444",
-    bg:"#10070a", card:"#1e0e12", card2:"#160a0d", line:"#3c1e26", line2:"#2a141a",
-    accent:"#ef4444", text:"#f8eeee", dim:"#c49aa0", faint:"#7c5058",
-    good:"#34d399", bad:"#f87171",
-    glow:"radial-gradient(ellipse at 20% 25%,#36080e44 0%,transparent 55%),radial-gradient(ellipse at 85% 12%,#2a0a0a33 0%,transparent 50%)",
+    name:"Blood Moon", swatch:"#c43e2a",
+    sky:["#1c0610","#5c0f1e","#c43e2a"], sun:"#ff6b4a", stars:true,
+    m1:"#571423", m2:"#380c18", m3:"#20060e",
+    accent:"#ff8f5e",
   },
 };
 const THEME_KEYS = Object.keys(THEMES);
+// Shared glass / text tokens (constant across skies for guaranteed contrast)
+const GLASS = "rgba(12,10,34,0.42)";
+const GLASS_SOFT = "rgba(12,10,34,0.30)";
+const GLASS_HEAVY = "rgba(12,10,34,0.72)";
+const LINE = "rgba(255,255,255,0.16)";
+const TXT = "#ffffff";
+const DIM = "rgba(255,255,255,0.75)";
+const FAINT = "rgba(255,255,255,0.45)";
+const GOOD = "#4ade80";
+const BAD = "#ff7b7b";
 
-// ── DEFAULTS ──────────────────────────────────────────────────────────────────
 const DEFAULT_SETTINGS = {
   kanbanEnabled: true,
   pomodoroEnabled: true,
@@ -484,15 +488,15 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   );
 }
 
-// ── HOLD-TO-COMPLETE RING (Streaks style) ─────────────────────────────────────
-function HoldRing({ color, trackColor, reps, target, onComplete, onShortTap, size=48, holdMs=650 }) {
+// ── HOLD-TO-COMPLETE BUTTON (chunky Not Boring style) ─────────────────────────
+function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255,255,0.35)", reps, target, onComplete, onShortTap, size=54, holdMs=650 }) {
   const [prog, setProg] = useState(0);
   const raf = useRef(null);
   const startT = useRef(0);
   const fired = useRef(false);
   const done = reps >= target;
   const isBonus = reps > target;
-  const stroke = 3.5;
+  const stroke = 5;
   const r = (size - stroke*2) / 2;
   const circ = 2 * Math.PI * r;
 
@@ -532,32 +536,33 @@ function HoldRing({ color, trackColor, reps, target, onComplete, onShortTap, siz
       onPointerDown={begin} onPointerUp={end} onPointerLeave={end} onPointerCancel={end}
       onContextMenu={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();e.preventDefault();}}
       style={{ width:size, height:size, position:"relative", flexShrink:0, cursor:"pointer",
-        touchAction:"none", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none" }}
+        touchAction:"none", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none",
+        transform: prog>0 ? "scale(1.08)" : "scale(1)", transition:"transform .15s" }}
     >
       <svg width={size} height={size}>
-        <circle cx={size/2} cy={size/2} r={r} fill={done ? color : "transparent"}
-          stroke={trackColor||"#26263f"} strokeWidth={stroke} opacity={done?0.95:1}/>
+        <circle cx={size/2} cy={size/2} r={r} fill={done ? color : "rgba(0,0,0,0.18)"}
+          stroke={trackColor} strokeWidth={stroke}/>
         <circle cx={size/2} cy={size/2} r={r} fill="none"
           stroke={color} strokeWidth={stroke} strokeLinecap="round"
           strokeDasharray={circ} strokeDashoffset={circ * (1 - ringPct)}
           transform={`rotate(-90 ${size/2} ${size/2})`}
           style={{ transition: prog>0 ? "none" : "stroke-dashoffset .3s ease",
-            filter: prog>0||done ? `drop-shadow(0 0 6px ${color})` : "none" }}/>
+            filter: prog>0||done ? `drop-shadow(0 0 7px ${color})` : "none" }}/>
       </svg>
       <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
         justifyContent:"center", pointerEvents:"none" }}>
         {done
-          ? <span style={{ color:"#0a0a14", fontSize:size*0.42, fontWeight:900 }}>✓</span>
+          ? <span style={{ color:checkColor, fontSize:size*0.44, fontWeight:900 }}>✓</span>
           : target > 1
-            ? <span style={{ color:"#9a9ab8", fontSize:size*0.26, fontWeight:700 }}>{reps}/{target}</span>
+            ? <span style={{ color:"rgba(255,255,255,0.9)", fontSize:size*0.26, fontWeight:800 }}>{reps}/{target}</span>
             : prog > 0
               ? <span style={{ color, fontSize:size*0.3 }}>●</span>
               : null
         }
       </div>
       {isBonus && (
-        <div style={{ position:"absolute", top:-4, right:-4, background:"#f59e0b", color:"#000",
-          fontSize:9, fontWeight:900, padding:"1px 5px", borderRadius:8 }}>
+        <div style={{ position:"absolute", top:-5, right:-5, background:"#ffb13d", color:"#3a2200",
+          fontSize:9.5, fontWeight:900, padding:"1.5px 6px", borderRadius:9 }}>
           +{reps-target}
         </div>
       )}
@@ -565,10 +570,10 @@ function HoldRing({ color, trackColor, reps, target, onComplete, onShortTap, siz
   );
 }
 
-// ── RADAR CHART ───────────────────────────────────────────────────────────────
-function RadarChart({ categories, ghostCategories, T }) {
+// ── RADAR CHART (white-on-glass) ──────────────────────────────────────────────
+function RadarChart({ categories, ghostCategories, accent }) {
   const sz=230, cx=115, cy=115, Rr=82;
-  if (!categories || categories.length<3) return <div style={{color:T.faint,textAlign:"center",padding:"40px 0",fontSize:13}}>Add 3+ categories</div>;
+  if (!categories || categories.length<3) return <div style={{color:FAINT,textAlign:"center",padding:"40px 0",fontSize:13}}>Add 3+ categories</div>;
   const n=categories.length;
   const ang=i=>(Math.PI*2*i/n)-Math.PI/2;
   const pt=(a,r)=>({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)});
@@ -579,34 +584,32 @@ function RadarChart({ categories, ghostCategories, T }) {
   return (
     <svg width={sz} height={sz} viewBox={`0 0 ${sz} ${sz}`} style={{overflow:"visible"}}>
       <defs>
-        <filter id="rglow"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-        <radialGradient id="polyFill"><stop offset="0%" stopColor={T.accent} stopOpacity="0.18"/><stop offset="100%" stopColor={T.accent} stopOpacity="0.03"/></radialGradient>
-        <radialGradient id="ghostFill"><stop offset="0%" stopColor="#34d399" stopOpacity="0.07"/><stop offset="100%" stopColor="#34d399" stopOpacity="0.01"/></radialGradient>
+        <radialGradient id="polyFill"><stop offset="0%" stopColor="#ffffff" stopOpacity="0.22"/><stop offset="100%" stopColor="#ffffff" stopOpacity="0.04"/></radialGradient>
       </defs>
-      {[.2,.4,.6,.8,1].map((lv,li)=>{
+      {[.25,.5,.75,1].map((lv,li)=>{
         const pts=Array.from({length:n},(_,i)=>pt(ang(i),Rr*lv));
         const d=pts.map((p,i)=>`${i===0?"M":"L"}${p.x},${p.y}`).join(" ")+"Z";
-        return <path key={li} d={d} fill="none" stroke={li===4?T.line:T.line2} strokeWidth={li===4?1.2:0.6}/>;
+        return <path key={li} d={d} fill="none" stroke={li===3?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.12)"} strokeWidth={li===3?1.4:0.8}/>;
       })}
-      {Array.from({length:n},(_,i)=>{const o=pt(ang(i),Rr);return <line key={i} x1={cx} y1={cy} x2={o.x} y2={o.y} stroke={T.line2} strokeWidth="1"/>;})}
-      {ghostCategories && ghostCategories.length>=3 && <path d={polyPath(ghostCategories)} fill="url(#ghostFill)" stroke="#34d399" strokeWidth="1.4" strokeDasharray="4,3" opacity="0.65"/>}
-      <path d={polyPath(categories)} fill="url(#polyFill)" stroke={T.accent} strokeWidth="2" filter="url(#rglow)" strokeLinejoin="round"/>
+      {Array.from({length:n},(_,i)=>{const o=pt(ang(i),Rr);return <line key={i} x1={cx} y1={cy} x2={o.x} y2={o.y} stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>;})}
+      {ghostCategories && ghostCategories.length>=3 && <path d={polyPath(ghostCategories)} fill="none" stroke={GOOD} strokeWidth="1.6" strokeDasharray="4,3" opacity="0.8"/>}
+      <path d={polyPath(categories)} fill="url(#polyFill)" stroke="#ffffff" strokeWidth="2.5" strokeLinejoin="round" style={{filter:"drop-shadow(0 0 6px rgba(255,255,255,0.5))"}}/>
       {categories.map((c,i)=>{
         const ratio=Math.max(0,Math.min(1,c.value/c.maxValue));
         const dot=pt(ang(i),Rr*ratio);
         const lab=pt(ang(i),Rr+22);
         return (<g key={c.id}>
-          <circle cx={dot.x} cy={dot.y} r="4.5" fill={c.color}/>
-          <text x={lab.x} y={lab.y-7} textAnchor="middle" fontSize="12" fill={c.color}>{c.icon}</text>
-          <text x={lab.x} y={lab.y+6} textAnchor="middle" fontSize="7.5" fill={T.dim} fontFamily="'Cinzel',serif" letterSpacing="0.5">{(c.name||"").slice(0,7).toUpperCase()}</text>
+          <circle cx={dot.x} cy={dot.y} r="5" fill={c.color} stroke="#fff" strokeWidth="1.5"/>
+          <text x={lab.x} y={lab.y-6} textAnchor="middle" fontSize="13" fill="#fff">{c.icon}</text>
+          <text x={lab.x} y={lab.y+7} textAnchor="middle" fontSize="8" fill={DIM} fontWeight="800">{(c.name||"").slice(0,7).toUpperCase()}</text>
         </g>);
       })}
     </svg>
   );
 }
 
-// ── MONTH CALENDAR (per-task history; tap past days to toggle) ────────────────
-function MonthCalendar({ task, color, viewYear, viewMonth, onPrev, onNext, onToggleDay, T }) {
+// ── MONTH CALENDAR (glass) ────────────────────────────────────────────────────
+function MonthCalendar({ task, color, viewYear, viewMonth, onPrev, onNext, onToggleDay }) {
   const first = new Date(viewYear, viewMonth, 1);
   const startDow = first.getDay();
   const daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
@@ -619,12 +622,12 @@ function MonthCalendar({ task, color, viewYear, viewMonth, onPrev, onNext, onTog
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <button onClick={onPrev} style={{background:T.card2,border:`1px solid ${T.line}`,borderRadius:10,color:T.dim,padding:"5px 14px",cursor:"pointer",fontSize:15}}>‹</button>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:12,letterSpacing:2,color:T.text,fontWeight:700}}>{MONTHS[viewMonth].toUpperCase()} {viewYear}</div>
-        <button onClick={onNext} style={{background:T.card2,border:`1px solid ${T.line}`,borderRadius:10,color:T.dim,padding:"5px 14px",cursor:"pointer",fontSize:15}}>›</button>
+        <button onClick={onPrev} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 16px",cursor:"pointer",fontSize:16,fontWeight:800}}>‹</button>
+        <div style={{fontSize:13,fontWeight:800,color:TXT}}>{MONTHS[viewMonth]} {viewYear}</div>
+        <button onClick={onNext} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 16px",cursor:"pointer",fontSize:16,fontWeight:800}}>›</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:4}}>
-        {DAYS.map(d=>(<div key={d} style={{textAlign:"center",fontSize:8,color:T.faint,letterSpacing:1,fontWeight:700}}>{d.toUpperCase().slice(0,2)}</div>))}
+        {DAYS.map(d=>(<div key={d} style={{textAlign:"center",fontSize:8.5,color:FAINT,fontWeight:800}}>{d.toUpperCase().slice(0,2)}</div>))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
         {cells.map((dk,i)=>{
@@ -639,20 +642,20 @@ function MonthCalendar({ task, color, viewYear, viewMonth, onPrev, onNext, onTog
             <button key={dk}
               onClick={()=>{ if (!isFuture) onToggleDay(dk); }}
               style={{
-                aspectRatio:"1", borderRadius:"50%", border: isToday ? `2px solid ${color}` : `1px solid ${T.line2}`,
-                background: done ? color : partial ? `${color}44` : T.card2,
-                color: done ? "#0a0a14" : sched ? T.dim : T.faint,
-                fontSize:10, fontWeight: done?800:500, cursor: isFuture?"default":"pointer",
-                opacity: isFuture ? 0.3 : sched ? 1 : 0.45,
+                aspectRatio:"1", borderRadius:"50%", border: isToday ? `2px solid #fff` : "none",
+                background: done ? color : partial ? `${color}55` : "rgba(255,255,255,0.07)",
+                color: done ? "#fff" : sched ? DIM : FAINT,
+                fontSize:10.5, fontWeight: done?900:600, cursor: isFuture?"default":"pointer",
+                opacity: isFuture ? 0.3 : sched ? 1 : 0.5,
                 display:"flex",alignItems:"center",justifyContent:"center",
-                boxShadow: done ? `0 0 7px ${color}66` : "none", padding:0,
+                boxShadow: done ? `0 0 8px ${color}88` : "none", padding:0,
               }}>
               {dayNum}
             </button>
           );
         })}
       </div>
-      <div style={{display:"flex",gap:14,marginTop:10,justifyContent:"center",fontSize:8,letterSpacing:1,color:T.faint,fontWeight:600}}>
+      <div style={{display:"flex",gap:14,marginTop:10,justifyContent:"center",fontSize:8.5,color:FAINT,fontWeight:700}}>
         <span><span style={{color}}>●</span> DONE</span>
         <span><span style={{color:`${color}88`}}>◐</span> PARTIAL</span>
         <span>○ MISSED</span>
@@ -662,48 +665,71 @@ function MonthCalendar({ task, color, viewYear, viewMonth, onPrev, onNext, onTog
 }
 
 // ── SWITCH ────────────────────────────────────────────────────────────────────
-function Switch({ on, onToggle, color="#f59e0b", track="#26263f" }) {
+function Switch({ on, onToggle, color=GOOD }) {
   return (
     <button onClick={onToggle} style={{
-      width:48, height:28, borderRadius:14, border:"none", cursor:"pointer",
-      background: on ? color : track, position:"relative", transition:"background .2s", flexShrink:0, padding:0,
+      width:50, height:30, borderRadius:15, border:"none", cursor:"pointer",
+      background: on ? color : "rgba(255,255,255,0.18)", position:"relative", transition:"background .2s", flexShrink:0, padding:0,
     }}>
       <div style={{
-        width:22, height:22, borderRadius:"50%", background:"#fff", position:"absolute", top:3,
-        left: on ? 23 : 3, transition:"left .2s", boxShadow:"0 1px 3px #0008",
+        width:24, height:24, borderRadius:"50%", background:"#fff", position:"absolute", top:3,
+        left: on ? 23 : 3, transition:"left .2s", boxShadow:"0 1px 4px #0006",
       }}/>
     </button>
   );
 }
 
-// ── WEEK PILLS (HabitForge-style M T W T F S S) ───────────────────────────────
-function WeekPills({ task, color, T }) {
+// ── WEEK PILLS (white-on-color, for colored quest cards) ──────────────────────
+function WeekPills({ task, cardColor }) {
   const wk = weekDateKeys();
   const labels = ["M","T","W","T","F","S","S"];
   const todayK = dateKey();
   return (
-    <div style={{display:"flex",gap:3.5}}>
+    <div style={{display:"flex",gap:4}}>
       {wk.map((dk,i)=>{
         const sched = isScheduledOn(task, dk);
         const done = isCompletedOn(task, dk);
         const isToday = dk === todayK;
-        const future = dk > todayK;
         return (
           <div key={dk} style={{
-            width:17, height:17, borderRadius:5, fontSize:8.5, fontWeight:800,
+            width:18, height:18, borderRadius:9, fontSize:9, fontWeight:900,
             display:"flex", alignItems:"center", justifyContent:"center",
-            background: done ? color : sched ? `${color}1c` : "transparent",
-            color: done ? "#0a0a14" : sched ? (future ? `${color}88` : color) : T.faint,
-            border: isToday ? `1.5px solid ${color}` : sched ? `1px solid ${color}33` : `1px solid ${T.line2}`,
-            opacity: sched || done ? 1 : 0.4,
+            background: done ? "#ffffff" : sched ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.07)",
+            color: done ? cardColor : sched ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.4)",
+            boxShadow: isToday ? "0 0 0 1.5px rgba(255,255,255,0.9)" : "none",
           }}>
-            {labels[i]}
+            {done ? "✓" : labels[i]}
           </div>
         );
       })}
     </div>
   );
 }
+
+// ── MOUNTAIN SCENE (layered ridges + sun/stars; the Not Boring hero) ──────────
+function Scene({ T, height=150 }) {
+  // deterministic star field
+  const stars = T.stars ? Array.from({length:26},(_,i)=>{
+    const x = ((i*73) % 430); const y = ((i*37) % Math.max(40, height-70));
+    const r = 0.6 + ((i*13)%10)/10;
+    return <circle key={i} cx={x} cy={y} r={r} fill="#fff" opacity={0.3 + ((i*7)%6)/10}/>;
+  }) : null;
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 430 ${height}`} preserveAspectRatio="xMidYMax slice"
+      style={{display:"block",position:"absolute",bottom:0,left:0,right:0,pointerEvents:"none"}}>
+      {stars}
+      <circle cx="330" cy={height*0.28} r="30" fill={T.sun} opacity="0.95"/>
+      <circle cx="330" cy={height*0.28} r="48" fill={T.sun} opacity="0.18"/>
+      {/* far ridge */}
+      <polygon fill={T.m1} opacity="0.85" points={`0,${height} 0,${height*0.62} 55,${height*0.38} 110,${height*0.58} 170,${height*0.30} 235,${height*0.56} 300,${height*0.36} 365,${height*0.60} 430,${height*0.42} 430,${height}`}/>
+      {/* mid ridge */}
+      <polygon fill={T.m2} opacity="0.95" points={`0,${height} 0,${height*0.78} 70,${height*0.52} 140,${height*0.74} 215,${height*0.46} 290,${height*0.72} 360,${height*0.54} 430,${height*0.74} 430,${height}`}/>
+      {/* near ridge */}
+      <polygon fill={T.m3} points={`0,${height} 0,${height*0.88} 90,${height*0.70} 180,${height*0.90} 280,${height*0.66} 370,${height*0.88} 430,${height*0.80} 430,${height}`}/>
+    </svg>
+  );
+}
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
@@ -1051,7 +1077,7 @@ export default function App() {
   };
 
   if (!data) return (
-    <div style={{background:"#07060f",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#f59e0b",fontFamily:"'Cinzel',serif",fontSize:18,letterSpacing:4}}>
+    <div style={{background:"linear-gradient(180deg,#2a1654,#8a2f63,#f2723f)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:20,letterSpacing:3,fontFamily:"ui-rounded,'SF Pro Rounded',Nunito,-apple-system,sans-serif"}}>
       LOADING...
     </div>
   );
@@ -1087,29 +1113,30 @@ export default function App() {
   const pomoToday = (data.pomodoro.sessionsByDay||{})[today]||0;
   const [qText, qAuthor] = quoteOfDay();
   const nowD = new Date();
-  const dateLabel = `${DAYS[nowD.getDay()].toUpperCase()}, ${MONTHS[nowD.getMonth()].slice(0,3).toUpperCase()} ${nowD.getDate()}`;
+  const dateLabel = `${DAYS[nowD.getDay()]}, ${MONTHS[nowD.getMonth()].slice(0,3)} ${nowD.getDate()}`;
 
-  // ── THEMED STYLES ───────────────────────────────────────────────────────────
-  const FONT_BODY = `-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif`;
-  const FONT_DISPLAY = `'Cinzel',Georgia,serif`;
+  // ── STYLES (glass-on-sky system) ────────────────────────────────────────────
+  const FONT = `ui-rounded,'SF Pro Rounded',Nunito,-apple-system,system-ui,sans-serif`;
+  const skyGradient = `linear-gradient(180deg,${T.sky[0]} 0%,${T.sky[1]} 52%,${T.sky[2]} 100%)`;
   const C = {
-    app:{background:T.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT_BODY,color:T.text,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 96px)",position:"relative"},
-    header:{padding:"calc(env(safe-area-inset-top, 0px) + 16px) 18px 12px",borderBottom:`1px solid ${T.line2}`,background:`linear-gradient(180deg,${T.card2} 0%,transparent 100%)`,position:"sticky",top:0,zIndex:5,backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)"},
-    card:{background:`linear-gradient(160deg,${T.card} 0%,${T.card2} 100%)`,border:`1px solid ${T.line}`,borderRadius:18,padding:"16px 17px",marginBottom:12,boxShadow:"0 4px 24px #00000040"},
-    label:{fontSize:9.5,letterSpacing:3,color:T.faint,marginBottom:10,fontFamily:FONT_DISPLAY,fontWeight:700},
-    input:{background:T.card2,border:`1px solid ${T.line}`,borderRadius:12,padding:"12px 14px",color:T.text,fontSize:14,width:"100%",boxSizing:"border-box",fontFamily:FONT_BODY,outline:"none"},
-    select:{background:T.card2,border:`1px solid ${T.line}`,borderRadius:12,padding:"12px 14px",color:T.text,fontSize:14,width:"100%",boxSizing:"border-box",fontFamily:FONT_BODY,outline:"none",WebkitAppearance:"none"},
-    btn:{background:`linear-gradient(135deg,${shade(T.accent,-30)},${T.accent})`,color:"#0a0a14",border:"none",borderRadius:12,padding:"12px 18px",fontSize:12,cursor:"pointer",fontFamily:FONT_DISPLAY,letterSpacing:2,fontWeight:800,boxShadow:`0 4px 18px ${T.accent}44`},
-    btnSm:{background:T.card2,color:T.dim,border:`1px solid ${T.line}`,borderRadius:10,padding:"8px 14px",fontSize:10.5,cursor:"pointer",fontFamily:FONT_DISPLAY,letterSpacing:1,fontWeight:700},
-    nav:{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:`${T.bg}ee`,backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",borderTop:`1px solid ${T.line2}`,display:"flex",justifyContent:"space-around",padding:"10px 0 calc(env(safe-area-inset-bottom, 0px) + 12px)",zIndex:10},
-    navBtn:a=>({background:"none",border:"none",color:a?T.accent:T.faint,fontSize:7.5,letterSpacing:1.5,cursor:"pointer",fontFamily:FONT_DISPLAY,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"2px 6px",transition:"color .2s"}),
-    dayBtn:on=>({width:36,height:36,borderRadius:"50%",border:`2px solid ${on?T.accent:T.line}`,background:on?`${T.accent}1a`:"transparent",color:on?T.accent:T.faint,fontSize:9.5,cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}),
-    modal:{position:"fixed",inset:0,background:"#000c",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
-    sheet:{background:`linear-gradient(180deg,${T.card},${T.card2})`,borderRadius:"24px 24px 0 0",border:`1px solid ${T.line}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"88vh",overflowY:"auto",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 30px)"},
-    chip:(on)=>({flex:1,padding:"10px 0",borderRadius:12,border:`1.5px solid ${on?T.accent:T.line}`,background:on?`${T.accent}1a`:T.card2,color:on?T.accent:T.dim,fontSize:10,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:1.5,cursor:"pointer",textAlign:"center"}),
+    app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative"},
+    header:{padding:"calc(env(safe-area-inset-top, 0px) + 14px) 18px 10px",position:"sticky",top:0,zIndex:5,background:`linear-gradient(180deg,${T.sky[0]}f0,${T.sky[0]}00)`,backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)"},
+    glass:{background:GLASS,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",border:`1px solid ${LINE}`,borderRadius:26,padding:"16px 17px",marginBottom:12,boxShadow:"0 8px 28px rgba(0,0,0,0.35)"},
+    label:{fontSize:11,letterSpacing:1,color:DIM,marginBottom:10,fontWeight:800},
+    input:{background:"rgba(0,0,0,0.28)",border:`1px solid ${LINE}`,borderRadius:16,padding:"13px 15px",color:TXT,fontSize:15,width:"100%",boxSizing:"border-box",fontFamily:FONT,fontWeight:600,outline:"none"},
+    select:{background:"rgba(0,0,0,0.28)",border:`1px solid ${LINE}`,borderRadius:16,padding:"13px 15px",color:TXT,fontSize:15,width:"100%",boxSizing:"border-box",fontFamily:FONT,fontWeight:600,outline:"none",WebkitAppearance:"none"},
+    btn:{background:"#ffffff",color:"#1c1430",border:"none",borderRadius:16,padding:"13px 20px",fontSize:13,cursor:"pointer",fontFamily:FONT,fontWeight:900,boxShadow:"0 6px 20px rgba(0,0,0,0.3)"},
+    btnSm:{background:"rgba(255,255,255,0.14)",color:TXT,border:"none",borderRadius:14,padding:"10px 15px",fontSize:11.5,cursor:"pointer",fontFamily:FONT,fontWeight:800},
+    nav:{position:"fixed",bottom:"calc(env(safe-area-inset-bottom, 0px) + 10px)",left:"50%",transform:"translateX(-50%)",width:"calc(100% - 24px)",maxWidth:406,background:GLASS_HEAVY,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:`1px solid ${LINE}`,borderRadius:26,display:"flex",justifyContent:"space-around",padding:"10px 4px",zIndex:10,boxShadow:"0 10px 36px rgba(0,0,0,0.45)"},
+    navBtn:a=>({background:a?"rgba(255,255,255,0.14)":"none",border:"none",color:a?"#fff":FAINT,fontSize:8,fontWeight:800,cursor:"pointer",fontFamily:FONT,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 9px",borderRadius:14,transition:"all .2s"}),
+    dayBtn:on=>({width:38,height:38,borderRadius:"50%",border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:10.5,cursor:"pointer",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}),
+    modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
+    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"88vh",overflowY:"auto",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 30px)"},
+    chip:(on)=>({flex:1,padding:"12px 0",borderRadius:16,border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:11.5,fontWeight:900,cursor:"pointer",textAlign:"center",fontFamily:FONT}),
+    sectionTitle:{fontSize:15,fontWeight:900,color:TXT,textShadow:"0 1px 8px rgba(0,0,0,0.4)"},
   };
   const navItems = [
-    { v:"dashboard", icon:"⌂", label:"HOME" },
+    { v:"dashboard", icon:"⛰", label:"HOME" },
     { v:"tasks",     icon:"⚔", label:"QUESTS" },
     ...(S.kanbanEnabled   ? [{ v:"board", icon:"▦", label:"BOARD" }] : []),
     ...(S.pomodoroEnabled ? [{ v:"focus", icon:"◔", label:"FOCUS" }] : []),
@@ -1118,7 +1145,7 @@ export default function App() {
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks");
 
-  // ── QUEST CARD (HabitForge-style) ───────────────────────────────────────────
+  // ── QUEST CARD (full-color Not Boring style) ────────────────────────────────
   const QuestCard = ({task, showEdit}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
     const color = cat?.color || T.accent;
@@ -1133,53 +1160,51 @@ export default function App() {
       <div
         onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
         style={{
-          background:`linear-gradient(160deg,${color}14 0%,${color}08 55%,${T.card2} 100%)`,
-          border:`1px solid ${done?`${color}55`:`${color}26`}`,
-          borderRadius:16, padding:"12px 13px", marginBottom:9, cursor:"pointer",
-          opacity: done ? 0.72 : 1, transition:"all .25s",
-          boxShadow: done ? "none" : `0 3px 16px #00000038`,
+          background:`linear-gradient(155deg,${color} 0%,${shade(color,-58)} 100%)`,
+          borderRadius:22, padding:"13px 14px", marginBottom:11, cursor:"pointer",
+          opacity: done ? 0.6 : 1, transition:"all .25s",
+          boxShadow:`0 8px 24px ${color}40, 0 2px 8px rgba(0,0,0,0.3)`,
         }}>
-        <div style={{display:"flex",alignItems:"center",gap:11}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
           {/* Level badge */}
           <div style={{
-            width:38,height:38,borderRadius:10,flexShrink:0,
-            background:`linear-gradient(160deg,${color},${shade(color,-45)})`,
+            width:40,height:40,borderRadius:13,flexShrink:0,
+            background:"rgba(255,255,255,0.22)",
             display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-            boxShadow:`0 2px 10px ${color}44`,
           }}>
-            <div style={{fontSize:6.5,fontWeight:900,color:"#0a0a14",opacity:.7,letterSpacing:.5,lineHeight:1}}>LV</div>
-            <div style={{fontSize:15,fontWeight:900,color:"#0a0a14",lineHeight:1}}>{qlvl}</div>
+            <div style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.85)",lineHeight:1}}>LV</div>
+            <div style={{fontSize:16,fontWeight:900,color:"#fff",lineHeight:1.1}}>{qlvl}</div>
           </div>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{fontSize:14.5,fontWeight:600,color:done?T.dim:T.text,textDecoration:done?"line-through":"none",
-                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{task.name}</div>
+            <div style={{display:"flex",alignItems:"center",gap:7}}>
+              <div style={{fontSize:15.5,fontWeight:800,color:"#fff",textDecoration:done?"line-through":"none",
+                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textShadow:"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
               {streak >= 2 && (
-                <div style={{flexShrink:0,fontSize:9.5,fontWeight:800,color:"#fb923c",background:"#fb923c1a",
-                  border:"1px solid #fb923c33",padding:"1.5px 6px",borderRadius:8}}>🔥{streak}</div>
+                <div style={{flexShrink:0,fontSize:10,fontWeight:900,color:"#fff",background:"rgba(0,0,0,0.25)",
+                  padding:"2px 7px",borderRadius:10}}>🔥{streak}</div>
               )}
             </div>
-            {/* Quest XP progress bar */}
-            <div style={{height:4.5,background:"#00000055",borderRadius:3,overflow:"hidden",marginTop:6,marginBottom:6}}>
-              <div style={{height:"100%",width:`${qpct}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:3,transition:"width .5s ease"}}/>
+            {/* Quest XP bar */}
+            <div style={{height:6,background:"rgba(0,0,0,0.3)",borderRadius:3,overflow:"hidden",marginTop:7,marginBottom:7}}>
+              <div style={{height:"100%",width:`${qpct}%`,background:"rgba(255,255,255,0.92)",borderRadius:3,transition:"width .5s ease"}}/>
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-              <WeekPills task={task} color={color} T={T}/>
-              <div style={{fontSize:8.5,color:T.faint,fontWeight:700,letterSpacing:.5,whiteSpace:"nowrap"}}>
+              <WeekPills task={task} cardColor={color}/>
+              <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap"}}>
                 {cat?.icon} {S.showXP ? `+${task.points.toFixed(3)}` : diffLabel(task.importance??5)}
               </div>
             </div>
           </div>
           {schedToday || done ? (
-            <HoldRing color={color} trackColor={T.line} reps={reps} target={target}
+            <HoldRing color="#ffffff" checkColor={color} trackColor="rgba(255,255,255,0.35)" reps={reps} target={target}
               onComplete={()=>addRep(task.id, today)}
-              onShortTap={()=>toast$("HOLD TO COMPLETE", color)} />
+              onShortTap={()=>toast$("HOLD TO COMPLETE", "#ffffff")} />
           ) : (
-            <div style={{width:48,textAlign:"center",fontSize:8,color:T.faint,fontWeight:700,letterSpacing:1}}>REST<br/>DAY</div>
+            <div style={{width:54,textAlign:"center",fontSize:8.5,color:"rgba(255,255,255,0.7)",fontWeight:900,lineHeight:1.5}}>REST<br/>DAY</div>
           )}
           {showEdit && (
             <button onClick={e=>{e.stopPropagation(); setEditTask({...task}); setView("editTask");}}
-              style={{background:"none",border:"none",color:T.faint,fontSize:14,cursor:"pointer",padding:"4px 2px"}}>✎</button>
+              style={{background:"rgba(0,0,0,0.2)",border:"none",borderRadius:10,color:"#fff",fontSize:13,cursor:"pointer",padding:"6px 8px"}}>✎</button>
           )}
         </div>
       </div>
@@ -1190,19 +1215,19 @@ export default function App() {
   const ImportanceBlock = ({ value, onChange }) => (
     <div>
       <div style={{...C.label,marginBottom:5}}>
-        DIFFICULTY: <span style={{color:T.accent}}>{S.showXP ? `${value}/10` : diffLabel(value)}</span>
+        DIFFICULTY: <span style={{color:"#fff"}}>{S.showXP ? `${value}/10` : diffLabel(value)}</span>
       </div>
       <input type="range" min="1" max="10" step="1" value={value}
         onChange={e=>onChange(parseInt(e.target.value))}
-        style={{width:"100%",accentColor:T.accent}}/>
+        style={{width:"100%",accentColor:"#ffffff"}}/>
       {S.showXP && (
-        <div style={{marginTop:8,padding:"9px 11px",background:T.card2,borderRadius:10,border:`1px solid ${T.line}`,
-          display:"flex",justifyContent:"space-between",fontSize:10.5,fontWeight:700,letterSpacing:.5}}>
-          <span style={{color:T.good}}>+{calcPoints(value).toFixed(3)} done</span>
-          <span style={{color:T.bad}}>−{calcDecay(value).toFixed(3)} missed</span>
+        <div style={{marginTop:8,padding:"10px 12px",background:"rgba(0,0,0,0.25)",borderRadius:14,
+          display:"flex",justifyContent:"space-between",fontSize:11.5,fontWeight:800}}>
+          <span style={{color:GOOD}}>+{calcPoints(value).toFixed(3)} done</span>
+          <span style={{color:BAD}}>−{calcDecay(value).toFixed(3)} missed</span>
         </div>
       )}
-      <div style={{fontSize:9,color:T.faint,marginTop:6,letterSpacing:1,textAlign:"center",fontWeight:600}}>
+      <div style={{fontSize:9.5,color:FAINT,marginTop:6,textAlign:"center",fontWeight:700}}>
         HARDER QUESTS = BIGGER REWARD AND RISK
       </div>
     </div>
@@ -1211,21 +1236,24 @@ export default function App() {
   return (
     <div style={C.app}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
         @keyframes popIn { 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
         @keyframes sparkle { 0%,100%{opacity:.4;transform:scale(.9)} 50%{opacity:1;transform:scale(1.15)} }
         @keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
         @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
         * { -webkit-tap-highlight-color: transparent; }
-        input[type=range]{ height: 28px; }
+        input[type=range]{ height: 30px; }
+        body { background: ${T.sky[0]}; }
       `}</style>
-      <div style={{position:"fixed",inset:0,background:T.glow,pointerEvents:"none",zIndex:0}}/>
+      {/* FULL-BLEED SKY */}
+      <div style={{position:"fixed",inset:0,background:skyGradient,zIndex:0}}/>
 
       {/* TOAST */}
       {toast && (
-        <div style={{position:"fixed",top:"calc(env(safe-area-inset-top, 0px) + 14px)",left:"50%",transform:"translateX(-50%)",background:`${T.bg}f2`,
-          border:`1px solid ${toast.color}77`,color:toast.color,padding:"10px 22px",borderRadius:30,fontSize:12,
-          fontFamily:FONT_DISPLAY,fontWeight:700,zIndex:999,letterSpacing:1.5,boxShadow:`0 4px 24px ${toast.color}33`,
+        <div style={{position:"fixed",top:"calc(env(safe-area-inset-top, 0px) + 14px)",left:"50%",transform:"translateX(-50%)",
+          background:GLASS_HEAVY,backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",
+          border:`1px solid ${LINE}`,color:"#fff",padding:"11px 22px",borderRadius:30,fontSize:13,
+          fontWeight:800,zIndex:999,boxShadow:"0 8px 28px rgba(0,0,0,0.5)",
           whiteSpace:"nowrap",maxWidth:"88vw",overflow:"hidden",textOverflow:"ellipsis",animation:"popIn .25s ease"}}>
           {toast.msg}
         </div>
@@ -1233,44 +1261,44 @@ export default function App() {
 
       {/* LEVEL-UP MODAL */}
       {showLevelUp && (
-        <div style={{position:"fixed",inset:0,background:"#000d",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{background:`linear-gradient(150deg,${T.accent}1f,${T.card2})`,border:`2px solid ${T.accent}`,borderRadius:24,
-            padding:"30px 40px",textAlign:"center",boxShadow:`0 0 60px ${T.accent}88`,maxWidth:320,animation:"popIn .4s ease"}}>
-            <div style={{fontSize:11,letterSpacing:6,color:T.accent,fontFamily:FONT_DISPLAY,fontWeight:800,animation:"sparkle 1.2s infinite"}}>★ LEVEL UP ★</div>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",border:`2px solid ${T.accent}`,borderRadius:30,
+            padding:"32px 42px",textAlign:"center",boxShadow:`0 0 70px ${T.accent}88`,maxWidth:320,animation:"popIn .4s ease"}}>
+            <div style={{fontSize:13,letterSpacing:3,color:T.accent,fontWeight:900,animation:"sparkle 1.2s infinite"}}>★ LEVEL UP ★</div>
             <div style={{margin:"18px 0",display:"flex",justifyContent:"center"}}>
               <PixelCharacter level={showLevelUp.lvl} character={cz} scale={8} idle/>
             </div>
-            <div style={{fontSize:24,fontFamily:FONT_DISPLAY,fontWeight:900,color:T.accent,letterSpacing:3,textShadow:`0 0 20px ${T.accent}88`}}>LV {showLevelUp.lvl}</div>
-            <div style={{fontSize:18,color:T.text,fontFamily:FONT_DISPLAY,fontWeight:700,letterSpacing:2,marginTop:4}}>{showLevelUp.name.toUpperCase()}</div>
-            <div style={{fontSize:11,color:T.good,marginTop:12,fontWeight:800,letterSpacing:1.5}}>UNLOCKED</div>
-            <div style={{fontSize:13,color:T.dim,marginTop:3}}>{showLevelUp.unlock}</div>
+            <div style={{fontSize:34,fontWeight:900,color:"#fff",textShadow:`0 0 24px ${T.accent}`}}>LV {showLevelUp.lvl}</div>
+            <div style={{fontSize:19,color:T.accent,fontWeight:900,marginTop:2}}>{showLevelUp.name}</div>
+            <div style={{fontSize:11,color:GOOD,marginTop:12,fontWeight:900,letterSpacing:1}}>UNLOCKED</div>
+            <div style={{fontSize:14,color:DIM,marginTop:3,fontWeight:700}}>{showLevelUp.unlock}</div>
           </div>
         </div>
       )}
 
       {/* CONFIRM MODAL */}
       {confirmBox && (
-        <div style={{position:"fixed",inset:0,background:"#000c",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setConfirmBox(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:`linear-gradient(150deg,#2a101055,${T.card2})`,border:"2px solid #ef4444",borderRadius:20,padding:"24px 26px",maxWidth:340,width:"100%",boxShadow:"0 0 40px #ef444455",animation:"popIn .25s ease"}}>
-            <div style={{fontSize:10,letterSpacing:4,color:"#ef4444",fontFamily:FONT_DISPLAY,fontWeight:800,textAlign:"center",marginBottom:14}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setConfirmBox(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",border:`2px solid ${BAD}`,borderRadius:26,padding:"24px 26px",maxWidth:340,width:"100%",boxShadow:`0 0 40px ${BAD}55`,animation:"popIn .25s ease"}}>
+            <div style={{fontSize:12,letterSpacing:2,color:BAD,fontWeight:900,textAlign:"center",marginBottom:14}}>
               {confirmBox.type==="reset" ? "⚠ RESET STATS" : "⚠ CONFIRM DELETE"}
             </div>
-            <div style={{fontSize:14,color:T.text,textAlign:"center",marginBottom:10,lineHeight:1.5}}>
+            <div style={{fontSize:14.5,color:"#fff",textAlign:"center",marginBottom:10,lineHeight:1.5,fontWeight:600}}>
               {confirmBox.type==="reset"
-                ? <>Reset your character's stats back to the start? Your quests, names, history, and customization are <span style={{color:T.good}}>kept</span>.</>
-                : <>Are you sure you want to delete <span style={{color:T.accent,fontWeight:"bold"}}>{confirmBox.name}</span>?</>}
+                ? <>Reset your champion's stats back to the start? Your quests, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
+                : <>Are you sure you want to delete <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span>?</>}
             </div>
             {confirmBox.type==="cat" && confirmBox.taskCount > 0 && (
-              <div style={{fontSize:11,color:"#fb923c",textAlign:"center",marginBottom:10,fontWeight:700,letterSpacing:.5,background:"#fb923c14",padding:"8px 10px",borderRadius:10,border:"1px solid #fb923c33"}}>
+              <div style={{fontSize:11.5,color:"#ffc46b",textAlign:"center",marginBottom:10,fontWeight:800,background:"rgba(0,0,0,0.25)",padding:"9px 11px",borderRadius:14}}>
                 {confirmBox.taskCount} quest(s) will need reassignment
               </div>
             )}
             <div style={{display:"flex",gap:10,marginTop:14}}>
-              <button style={{...C.btnSm,flex:1,padding:"12px"}} onClick={()=>setConfirmBox(null)}>CANCEL</button>
-              <button style={{background:"linear-gradient(135deg,#b91c1c,#ef4444)",color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:11,cursor:"pointer",fontFamily:FONT_DISPLAY,letterSpacing:2,fontWeight:800,flex:1}}
+              <button style={{...C.btnSm,flex:1,padding:"13px"}} onClick={()=>setConfirmBox(null)}>CANCEL</button>
+              <button style={{background:BAD,color:"#fff",border:"none",borderRadius:14,padding:"13px",fontSize:12,cursor:"pointer",fontWeight:900,flex:1,fontFamily:FONT}}
                 onClick={()=>{
                   if (confirmBox.type==="cat") { deleteCat(confirmBox.id); setEditingCat(null); }
-                  else if (confirmBox.type==="task") { deleteTask(confirmBox.id); toast$("QUEST DELETED","#ef4444"); }
+                  else if (confirmBox.type==="task") { deleteTask(confirmBox.id); toast$("QUEST DELETED"); }
                   else if (confirmBox.type==="reset") resetStats();
                   setConfirmBox(null);
                 }}>
@@ -1284,8 +1312,9 @@ export default function App() {
       {/* DRAG GHOST */}
       {drag && (
         <div style={{position:"fixed",left:drag.x,top:drag.y,transform:"translate(-50%,-120%)",zIndex:1200,
-          background:T.card,border:`1.5px solid ${T.accent}`,borderRadius:12,padding:"10px 14px",
-          fontSize:13,color:T.text,boxShadow:`0 8px 30px #000a, 0 0 16px ${T.accent}44`,pointerEvents:"none",
+          background:GLASS_HEAVY,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",
+          border:"1.5px solid rgba(255,255,255,0.7)",borderRadius:14,padding:"11px 15px",
+          fontSize:13.5,fontWeight:700,color:"#fff",boxShadow:"0 12px 36px rgba(0,0,0,0.5)",pointerEvents:"none",
           maxWidth:200,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
           {drag.text}
         </div>
@@ -1295,39 +1324,39 @@ export default function App() {
       {detailTask && (
         <div style={C.modal} onClick={()=>setDetailTaskId(null)}>
           <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
-            <div style={{width:42,height:4,background:T.line,borderRadius:2,margin:"0 auto 16px"}}/>
+            <div style={{width:42,height:5,background:"rgba(255,255,255,0.3)",borderRadius:3,margin:"0 auto 16px"}}/>
             <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
-              <HoldRing color={detailCat?.color||T.accent} trackColor={T.line} size={74}
+              <HoldRing color={detailCat?.color||"#fff"} checkColor="#fff" trackColor="rgba(255,255,255,0.25)" size={76}
                 reps={getReps(detailTask,today)} target={detailTask.targetReps||1}
                 onComplete={()=>addRep(detailTask.id, today)}
-                onShortTap={()=>toast$("HOLD TO COMPLETE", detailCat?.color)}/>
+                onShortTap={()=>toast$("HOLD TO COMPLETE")}/>
               <div style={{flex:1}}>
-                <div style={{fontSize:17,color:T.text,fontWeight:700}}>{detailTask.name}</div>
-                <div style={{fontSize:10.5,color:T.dim,marginTop:4,fontWeight:600,letterSpacing:.5}}>
+                <div style={{fontSize:19,color:"#fff",fontWeight:900}}>{detailTask.name}</div>
+                <div style={{fontSize:11.5,color:DIM,marginTop:4,fontWeight:700}}>
                   {detailCat?.icon} {detailCat?.name} · {diffLabel(detailTask.importance??5)}
                   {S.showXP && ` · +${detailTask.points.toFixed(3)} / −${detailTask.decayRate.toFixed(3)}`}
                 </div>
-                <div style={{display:"flex",gap:16,marginTop:10}}>
+                <div style={{display:"flex",gap:18,marginTop:10}}>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:16,color:"#fb923c",fontWeight:800}}>🔥{getStreak(detailTask)}</div>
-                    <div style={{fontSize:7.5,color:T.faint,fontWeight:700,letterSpacing:1}}>STREAK</div>
+                    <div style={{fontSize:17,color:"#ffc46b",fontWeight:900}}>🔥{getStreak(detailTask)}</div>
+                    <div style={{fontSize:8,color:FAINT,fontWeight:800}}>STREAK</div>
                   </div>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:16,color:detailCat?.color||T.accent,fontWeight:800}}>{totalCompletions(detailTask)}</div>
-                    <div style={{fontSize:7.5,color:T.faint,fontWeight:700,letterSpacing:1}}>TOTAL</div>
+                    <div style={{fontSize:17,color:detailCat?.color||"#fff",fontWeight:900}}>{totalCompletions(detailTask)}</div>
+                    <div style={{fontSize:8,color:FAINT,fontWeight:800}}>TOTAL</div>
                   </div>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:16,color:T.text,fontWeight:800}}>LV {questLevel(detailTask)}</div>
-                    <div style={{fontSize:7.5,color:T.faint,fontWeight:700,letterSpacing:1}}>QUEST</div>
+                    <div style={{fontSize:17,color:"#fff",fontWeight:900}}>LV {questLevel(detailTask)}</div>
+                    <div style={{fontSize:8,color:FAINT,fontWeight:800}}>QUEST</div>
                   </div>
                 </div>
               </div>
             </div>
-            <div style={{fontSize:8.5,color:T.faint,fontWeight:700,letterSpacing:1.5,textAlign:"center",marginBottom:14}}>
+            <div style={{fontSize:9,color:FAINT,fontWeight:800,textAlign:"center",marginBottom:14}}>
               HOLD THE RING TO COMPLETE · TAP A PAST DAY BELOW TO LOG IT
             </div>
-            <div style={{...C.card, marginBottom:12}}>
-              <MonthCalendar task={detailTask} color={detailCat?.color||T.accent} T={T}
+            <div style={{background:"rgba(0,0,0,0.22)",borderRadius:20,padding:"14px 15px",marginBottom:12}}>
+              <MonthCalendar task={detailTask} color={detailCat?.color||"#fff"}
                 viewYear={calCursor.y} viewMonth={calCursor.m}
                 onPrev={()=>setCalCursor(c=>c.m===0?{y:c.y-1,m:11}:{y:c.y,m:c.m-1})}
                 onNext={()=>setCalCursor(c=>c.m===11?{y:c.y+1,m:0}:{y:c.y,m:c.m+1})}
@@ -1335,12 +1364,12 @@ export default function App() {
             </div>
             <div style={{display:"flex",gap:8}}>
               {getReps(detailTask,today)>0 && (
-                <button style={{...C.btnSm,flex:1,padding:"12px",color:"#ef4444",borderColor:"#ef444433"}}
-                  onClick={()=>clearDay(detailTask.id, today)}>↺ CLEAR TODAY</button>
+                <button style={{...C.btnSm,flex:1,padding:"13px",color:BAD}}
+                  onClick={()=>clearDay(detailTask.id, today)}>↺ CLEAR</button>
               )}
-              <button style={{...C.btnSm,flex:1,padding:"12px"}}
+              <button style={{...C.btnSm,flex:1,padding:"13px"}}
                 onClick={()=>{ setEditTask({...detailTask}); setDetailTaskId(null); setView("editTask"); }}>✎ EDIT</button>
-              <button style={{...C.btn,flex:1,padding:"12px"}} onClick={()=>setDetailTaskId(null)}>DONE</button>
+              <button style={{...C.btn,flex:1,padding:"13px"}} onClick={()=>setDetailTaskId(null)}>DONE</button>
             </div>
           </div>
         </div>
@@ -1351,25 +1380,19 @@ export default function App() {
         <div style={C.header}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{fontSize:17,fontFamily:FONT_DISPLAY,fontWeight:900,letterSpacing:3,color:T.accent,textShadow:`0 0 20px ${T.accent}55`}}>LIFE RPG</div>
-              <div style={{fontSize:8.5,letterSpacing:2.5,color:T.faint,marginTop:2,fontWeight:700}}>{dateLabel}</div>
+              <div style={{fontSize:18,fontWeight:900,color:"#fff",textShadow:"0 2px 10px rgba(0,0,0,0.4)"}}>Life RPG</div>
+              <div style={{fontSize:10,color:DIM,fontWeight:800}}>{dateLabel}</div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:13,fontWeight:800,color:allDone?T.good:T.text}}>{todayDone}<span style={{color:T.faint,fontWeight:600}}>/{todayTasks.length}</span></div>
-                <div style={{fontSize:7,letterSpacing:1.5,color:T.faint,fontWeight:700}}>TODAY</div>
-              </div>
-              <div style={{position:"relative",width:36,height:36}}>
-                <svg width="36" height="36">
-                  <circle cx="18" cy="18" r="14.5" fill="none" stroke={T.line} strokeWidth="3.5"/>
-                  <circle cx="18" cy="18" r="14.5" fill="none" stroke={allDone?T.good:T.accent} strokeWidth="3.5" strokeLinecap="round"
-                    strokeDasharray={2*Math.PI*14.5}
-                    strokeDashoffset={2*Math.PI*14.5*(1-(todayTasks.length?todayDone/todayTasks.length:0))}
-                    transform="rotate(-90 18 18)" style={{transition:"stroke-dashoffset .4s ease",filter:allDone?`drop-shadow(0 0 5px ${T.good})`:"none"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:10,background:GLASS,backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",borderRadius:20,padding:"6px 12px",border:`1px solid ${LINE}`}}>
+              <div style={{fontSize:13,fontWeight:900,color:allDone?GOOD:"#fff"}}>{todayDone}<span style={{color:FAINT}}>/{todayTasks.length}</span></div>
+              <div style={{position:"relative",width:26,height:26}}>
+                <svg width="26" height="26">
+                  <circle cx="13" cy="13" r="10" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="3.5"/>
+                  <circle cx="13" cy="13" r="10" fill="none" stroke={allDone?GOOD:"#fff"} strokeWidth="3.5" strokeLinecap="round"
+                    strokeDasharray={2*Math.PI*10}
+                    strokeDashoffset={2*Math.PI*10*(1-(todayTasks.length?todayDone/todayTasks.length:0))}
+                    transform="rotate(-90 13 13)" style={{transition:"stroke-dashoffset .4s ease"}}/>
                 </svg>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>
-                  {allDone?"✓":"⚔"}
-                </div>
               </div>
             </div>
           </div>
@@ -1377,110 +1400,111 @@ export default function App() {
 
         {/* ══ DASHBOARD ══ */}
         {view==="dashboard" && (
-          <div style={{padding:"14px 16px"}}>
-            {/* HERO CARD */}
-            <div style={{...C.card, padding:"18px", background:`linear-gradient(160deg,${T.accent}10 0%,${T.card} 35%,${T.card2} 100%)`, border:`1px solid ${T.accent}26`}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{flexShrink:0}}>
-                  <PixelCharacter level={level.lvl} character={cz} scale={7.2} idle/>
+          <div>
+            {/* HERO SCENE — character in the landscape */}
+            <div style={{position:"relative",height:252,overflow:"hidden",marginBottom:4}}>
+              <Scene T={T} height={252}/>
+              <div style={{position:"absolute",top:6,left:0,right:0,textAlign:"center"}}>
+                <div style={{display:"inline-flex",alignItems:"center",gap:7,background:GLASS,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:`1px solid ${LINE}`,borderRadius:20,padding:"5px 14px"}}>
+                  <span style={{fontSize:11,fontWeight:900,color:T.accent}}>LV {level.lvl}</span>
+                  <span style={{fontSize:11,fontWeight:800,color:"#fff"}}>{getTitle(data, level.lvl)}</span>
                 </div>
-                <div style={{flex:1,textAlign:"left",minWidth:0}}>
-                  <div style={{display:"inline-flex",alignItems:"center",gap:6,background:`${T.accent}18`,border:`1px solid ${T.accent}40`,borderRadius:8,padding:"3px 9px"}}>
-                    <span style={{fontSize:9,fontWeight:900,color:T.accent,letterSpacing:1}}>LV {level.lvl}</span>
-                    <span style={{fontSize:9,fontWeight:700,color:T.dim,letterSpacing:1}}>{getTitle(data, level.lvl).toUpperCase()}</span>
-                  </div>
-                  <div style={{fontSize:48,fontWeight:900,fontFamily:FONT_DISPLAY,color:tier.color,lineHeight:1.05,textShadow:`0 0 28px ${tier.color}66`,marginTop:8}}>{rating}</div>
-                  <div style={{fontSize:9,letterSpacing:4,color:tier.color,fontFamily:FONT_DISPLAY,fontWeight:800,marginTop:2}}>{tier.label}</div>
-                </div>
+                <div style={{fontSize:78,fontWeight:900,color:"#fff",lineHeight:1,marginTop:4,textShadow:"0 4px 24px rgba(0,0,0,0.45)"}}>{rating}</div>
+                <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>{tier.label}</div>
               </div>
-              <div style={{marginTop:14}}>
-                <div style={{height:8,background:"#00000055",borderRadius:4,overflow:"hidden",border:`1px solid ${T.line2}`}}>
-                  <div style={{height:"100%",width:`${level.lvl===14?100:lvlProgress}%`,background:`linear-gradient(90deg,${shade(T.accent,-30)},${T.accent})`,borderRadius:4,boxShadow:`0 0 12px ${T.accent}88`,transition:"width .6s ease"}}/>
+              <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)"}}>
+                <PixelCharacter level={level.lvl} character={cz} scale={4.6} idle/>
+              </div>
+            </div>
+
+            <div style={{padding:"0 16px"}}>
+              {/* LEVEL PROGRESS */}
+              <div style={{...C.glass,padding:"13px 16px"}}>
+                <div style={{height:11,background:"rgba(0,0,0,0.3)",borderRadius:6,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${level.lvl===14?100:lvlProgress}%`,background:"linear-gradient(90deg,rgba(255,255,255,0.75),#ffffff)",borderRadius:6,boxShadow:"0 0 12px rgba(255,255,255,0.6)",transition:"width .6s ease"}}/>
                 </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:8.5,letterSpacing:1,color:T.faint,marginTop:5,fontWeight:700}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginTop:6,fontWeight:800}}>
                   <span>LV {level.lvl}</span>
                   {level.lvl<14
-                    ? <span style={{color:T.dim}}>{level.ratingForNext - rating} PTS TO {getTitle(data, level.lvl+1).toUpperCase()}</span>
+                    ? <span style={{color:"#fff"}}>{level.ratingForNext - rating} pts to {getTitle(data, level.lvl+1)}</span>
                     : <span style={{color:T.accent}}>MAX LEVEL</span>}
                   <span>LV {level.lvl===14?"MAX":level.lvl+1}</span>
                 </div>
-              </div>
-              {/* Projection pills */}
-              <div style={{display:"flex",gap:8,marginTop:12}}>
-                <div style={{flex:1,background:"#34d39910",border:"1px solid #34d39930",borderRadius:12,padding:"8px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <span style={{fontSize:8,letterSpacing:1,color:T.good,fontWeight:800}}>ALL DONE</span>
-                  <span style={{fontSize:16,fontWeight:900,color:T.good}}>{ratingIfAllDone}<span style={{fontSize:9,opacity:.7}}> +{ratingIfAllDone-rating}</span></span>
-                </div>
-                <div style={{flex:1,background:"#f8717110",border:"1px solid #f8717130",borderRadius:12,padding:"8px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <span style={{fontSize:8,letterSpacing:1,color:T.bad,fontWeight:800}}>NONE DONE</span>
-                  <span style={{fontSize:16,fontWeight:900,color:T.bad}}>{ratingIfNoneDone}<span style={{fontSize:9,opacity:.7}}> {ratingIfNoneDone<rating?`−${rating-ratingIfNoneDone}`:"—"}</span></span>
-                </div>
-              </div>
-              {/* Quote of the day */}
-              <div style={{marginTop:13,paddingTop:12,borderTop:`1px solid ${T.line2}`,textAlign:"center"}}>
-                <div style={{fontSize:11.5,color:T.dim,fontStyle:"italic",lineHeight:1.5}}>"{qText}"</div>
-                <div style={{fontSize:8.5,color:T.faint,marginTop:4,letterSpacing:1.5,fontWeight:700}}>— {qAuthor.toUpperCase()}</div>
-              </div>
-            </div>
-
-            {/* STAT DISPLAY (radar / bars / none) */}
-            {S.statStyle === "radar" && (
-              <div style={C.card}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <div style={{...C.label,marginBottom:0}}>STAT CHART</div>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:16,height:1.5,background:T.accent}}/><div style={{fontSize:8,color:T.faint,fontWeight:700}}>NOW</div></div>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:16,height:0,borderTop:"1.5px dashed #34d399"}}/><div style={{fontSize:8,color:"#34d399",fontWeight:700}}>POTENTIAL</div></div>
+                <div style={{display:"flex",gap:8,marginTop:10}}>
+                  <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:14,padding:"8px 11px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <span style={{fontSize:9,color:GOOD,fontWeight:900}}>ALL DONE</span>
+                    <span style={{fontSize:16,fontWeight:900,color:GOOD}}>{ratingIfAllDone}</span>
+                  </div>
+                  <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:14,padding:"8px 11px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <span style={{fontSize:9,color:BAD,fontWeight:900}}>NONE DONE</span>
+                    <span style={{fontSize:16,fontWeight:900,color:BAD}}>{ratingIfNoneDone}</span>
                   </div>
                 </div>
-                <div style={{display:"flex",justifyContent:"center"}}>
-                  <RadarChart categories={data.categories} ghostCategories={ghostCategories} T={T}/>
+                <div style={{marginTop:11,paddingTop:10,borderTop:`1px solid ${LINE}`,textAlign:"center"}}>
+                  <div style={{fontSize:12,color:DIM,fontStyle:"italic",lineHeight:1.5,fontWeight:600}}>"{qText}"</div>
+                  <div style={{fontSize:9,color:FAINT,marginTop:3,fontWeight:800,letterSpacing:1}}>— {qAuthor.toUpperCase()}</div>
                 </div>
               </div>
-            )}
-            {S.statStyle === "bars" && (
-              <div style={C.card}>
-                <div style={C.label}>ATTRIBUTES</div>
-                {data.categories.map(c=>{
-                  const pct = (c.value/c.maxValue)*100;
-                  const ghost = ghostCategories.find(g=>g.id===c.id);
-                  const gpct = ghost ? (ghost.value/c.maxValue)*100 : pct;
-                  return (
-                    <div key={c.id} style={{marginBottom:11}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                        <span style={{fontSize:12,fontWeight:700,color:T.text}}>{c.icon} {c.name}</span>
-                        <span style={{fontSize:11,fontWeight:800,color:c.color}}>{S.showXP ? c.value.toFixed(2) : `${Math.round(pct)}%`}</span>
-                      </div>
-                      <div style={{height:9,background:"#00000055",borderRadius:5,overflow:"hidden",border:`1px solid ${T.line2}`,position:"relative"}}>
-                        {gpct > pct && <div style={{position:"absolute",inset:0,width:`${gpct}%`,background:`${c.color}28`,borderRadius:5}}/>}
-                        <div style={{position:"absolute",inset:0,width:`${pct}%`,background:`linear-gradient(90deg,${c.color}99,${c.color})`,borderRadius:5,boxShadow:`0 0 8px ${c.color}55`,transition:"width .6s ease"}}/>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div style={{fontSize:8,color:T.faint,textAlign:"center",fontWeight:700,letterSpacing:1,marginTop:4}}>LIGHTER ZONE = TODAY'S POTENTIAL</div>
-              </div>
-            )}
 
-            {/* TODAY'S QUESTS */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"4px 2px 10px"}}>
-              <div style={{fontSize:13,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:2,color:T.text}}>TODAY'S QUESTS</div>
-              <div style={{fontSize:10,color:T.faint,fontWeight:700}}>{todayDone} OF {todayTasks.length}</div>
-            </div>
-            {allDone && (
-              <div style={{background:`linear-gradient(135deg,#34d39918,${T.card2})`,border:"1px solid #34d39955",borderRadius:16,padding:"16px",textAlign:"center",marginBottom:10,boxShadow:"0 0 24px #34d39922"}}>
-                <div style={{fontSize:13,fontFamily:FONT_DISPLAY,fontWeight:800,color:"#34d399",letterSpacing:2}}>✦ ALL QUESTS COMPLETE ✦</div>
-                <div style={{fontSize:10.5,color:T.dim,marginTop:4}}>The realm rests easy tonight. Well fought.</div>
+              {/* STAT DISPLAY */}
+              {S.statStyle === "radar" && (
+                <div style={C.glass}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{...C.label,marginBottom:0}}>STAT CHART</div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:16,height:2,background:"#fff",borderRadius:1}}/><div style={{fontSize:8.5,color:DIM,fontWeight:800}}>NOW</div></div>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:16,height:0,borderTop:`2px dashed ${GOOD}`}}/><div style={{fontSize:8.5,color:GOOD,fontWeight:800}}>POTENTIAL</div></div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"center"}}>
+                    <RadarChart categories={data.categories} ghostCategories={ghostCategories} accent={T.accent}/>
+                  </div>
+                </div>
+              )}
+              {S.statStyle === "bars" && (
+                <div style={C.glass}>
+                  <div style={C.label}>ATTRIBUTES</div>
+                  {data.categories.map(c=>{
+                    const pct = (c.value/c.maxValue)*100;
+                    const ghost = ghostCategories.find(g=>g.id===c.id);
+                    const gpct = ghost ? (ghost.value/c.maxValue)*100 : pct;
+                    return (
+                      <div key={c.id} style={{marginBottom:12}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                          <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>{c.icon} {c.name}</span>
+                          <span style={{fontSize:12,fontWeight:900,color:"#fff"}}>{S.showXP ? c.value.toFixed(2) : `${Math.round(pct)}%`}</span>
+                        </div>
+                        <div style={{height:11,background:"rgba(0,0,0,0.3)",borderRadius:6,overflow:"hidden",position:"relative"}}>
+                          {gpct > pct && <div style={{position:"absolute",inset:0,width:`${gpct}%`,background:`${c.color}44`,borderRadius:6}}/>}
+                          <div style={{position:"absolute",inset:0,width:`${pct}%`,background:c.color,borderRadius:6,boxShadow:`0 0 10px ${c.color}88`,transition:"width .6s ease"}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{fontSize:8.5,color:FAINT,textAlign:"center",fontWeight:800,marginTop:4}}>LIGHTER ZONE = TODAY'S POTENTIAL</div>
+                </div>
+              )}
+
+              {/* TODAY'S QUESTS */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"6px 2px 11px"}}>
+                <div style={C.sectionTitle}>Today's Quests</div>
+                <div style={{fontSize:11,color:DIM,fontWeight:800}}>{todayDone} of {todayTasks.length}</div>
               </div>
-            )}
-            {todayTasks.length===0 && (
-              <div style={{...C.card,textAlign:"center",color:T.faint,fontSize:13}}>No quests scheduled today.</div>
-            )}
-            {[...todayTasks].sort((a,b)=>{
-              const ad=isCompletedOn(a,today)?1:0, bd=isCompletedOn(b,today)?1:0;
-              if (ad!==bd) return ad-bd;
-              return (b.importance??5)-(a.importance??5);
-            }).map(t=><QuestCard key={t.id} task={t}/>)}
+              {allDone && (
+                <div style={{...C.glass,textAlign:"center",border:`1.5px solid ${GOOD}66`}}>
+                  <div style={{fontSize:15,fontWeight:900,color:GOOD}}>✦ SUMMIT REACHED ✦</div>
+                  <div style={{fontSize:11.5,color:DIM,marginTop:4,fontWeight:600}}>Every quest complete. The realm rests easy tonight.</div>
+                </div>
+              )}
+              {todayTasks.length===0 && (
+                <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>No quests scheduled today.</div>
+              )}
+              {[...todayTasks].sort((a,b)=>{
+                const ad=isCompletedOn(a,today)?1:0, bd=isCompletedOn(b,today)?1:0;
+                if (ad!==bd) return ad-bd;
+                return (b.importance??5)-(a.importance??5);
+              }).map(t=><QuestCard key={t.id} task={t}/>)}
+            </div>
           </div>
         )}
 
@@ -1488,25 +1512,25 @@ export default function App() {
         {view==="tasks" && (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontSize:13,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:2,color:T.text}}>ALL QUESTS</div>
-              <button style={{...C.btn,padding:"9px 16px",fontSize:10}} onClick={()=>setView("addTask")}>+ NEW QUEST</button>
+              <div style={C.sectionTitle}>All Quests</div>
+              <button style={{...C.btn,padding:"10px 16px",fontSize:11.5}} onClick={()=>setView("addTask")}>+ NEW QUEST</button>
             </div>
             {[...data.tasks].filter(t=>t.catId && data.categories.find(c=>c.id===t.catId))
               .sort((a,b)=>(b.importance??5)-(a.importance??5))
               .map(t=><QuestCard key={t.id} task={t} showEdit/>)}
             {orphanTasks.length>0 && (
-              <div style={{...C.card,border:"1px solid #fb923c44",marginTop:12}}>
-                <div style={{...C.label,color:"#fb923c"}}>NEEDS A CATEGORY</div>
+              <div style={{...C.glass,marginTop:12,border:"1.5px solid #ffc46b66"}}>
+                <div style={{...C.label,color:"#ffc46b"}}>NEEDS A CATEGORY</div>
                 {orphanTasks.map(t=>(
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.line2}`}}>
-                    <div style={{flex:1,fontSize:13,color:T.text}}>{t.name}</div>
-                    <select style={{...C.select,width:140,padding:"8px 10px",fontSize:12}} value=""
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0"}}>
+                    <div style={{flex:1,fontSize:13.5,color:"#fff",fontWeight:600}}>{t.name}</div>
+                    <select style={{...C.select,width:140,padding:"9px 11px",fontSize:12.5}} value=""
                       onChange={e=>{ if(e.target.value) update({...data, tasks:data.tasks.map(x=>x.id===t.id?{...x,catId:e.target.value}:x)}); }}>
                       <option value="">Assign...</option>
                       {data.categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                     </select>
                     <button onClick={()=>setConfirmBox({type:"task",id:t.id,name:t.name})}
-                      style={{background:"none",border:"none",color:T.faint,fontSize:15,cursor:"pointer"}}>✕</button>
+                      style={{background:"none",border:"none",color:FAINT,fontSize:16,cursor:"pointer"}}>✕</button>
                   </div>
                 ))}
               </div>
@@ -1522,10 +1546,8 @@ export default function App() {
           if (!t) return null;
           return (
             <div style={{padding:"14px 16px"}}>
-              <div style={{fontSize:13,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:2,color:T.text,marginBottom:12}}>
-                {isEdit?"EDIT QUEST":"NEW QUEST"}
-              </div>
-              <div style={C.card}>
+              <div style={{...C.sectionTitle,marginBottom:12}}>{isEdit?"Edit Quest":"New Quest"}</div>
+              <div style={C.glass}>
                 <div style={C.label}>QUEST NAME</div>
                 <input style={C.input} value={t.name} placeholder="e.g. Morning run"
                   onChange={e=>set({name:e.target.value})}/>
@@ -1536,10 +1558,10 @@ export default function App() {
                 <div style={{marginTop:16}}>
                   <ImportanceBlock value={t.importance??5} onChange={v=>set({importance:v})}/>
                 </div>
-                <div style={{...C.label,marginTop:16}}>TIMES PER DAY: <span style={{color:T.accent}}>{t.targetReps||1}</span></div>
+                <div style={{...C.label,marginTop:16}}>TIMES PER DAY: <span style={{color:"#fff"}}>{t.targetReps||1}</span></div>
                 <input type="range" min="1" max="10" step="1" value={t.targetReps||1}
                   onChange={e=>set({targetReps:parseInt(e.target.value)})}
-                  style={{width:"100%",accentColor:T.accent}}/>
+                  style={{width:"100%",accentColor:"#ffffff"}}/>
                 <div style={{...C.label,marginTop:16}}>SCHEDULED DAYS</div>
                 <div style={{display:"flex",gap:6,justifyContent:"space-between"}}>
                   {DAYS.map((d,i)=>(
@@ -1551,12 +1573,12 @@ export default function App() {
                   ))}
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:20}}>
-                  <button style={{...C.btnSm,flex:1,padding:"13px"}} onClick={()=>{isEdit?setEditTask(null):null; setView("tasks");}}>CANCEL</button>
+                  <button style={{...C.btnSm,flex:1,padding:"14px"}} onClick={()=>{isEdit?setEditTask(null):null; setView("tasks");}}>CANCEL</button>
                   {isEdit && (
-                    <button style={{...C.btnSm,flex:1,padding:"13px",color:"#ef4444",borderColor:"#ef444433"}}
+                    <button style={{...C.btnSm,flex:1,padding:"14px",color:BAD}}
                       onClick={()=>setConfirmBox({type:"task",id:t.id,name:t.name})}>DELETE</button>
                   )}
-                  <button style={{...C.btn,flex:1,padding:"13px"}} onClick={isEdit?saveEditTask:addTask}>
+                  <button style={{...C.btn,flex:1,padding:"14px"}} onClick={isEdit?saveEditTask:addTask}>
                     {isEdit?"SAVE":"CREATE"}
                   </button>
                 </div>
@@ -1565,88 +1587,87 @@ export default function App() {
           );
         })()}
 
-        {/* ══ BOARD (Reminders-style hub + draggable kanban) ══ */}
+        {/* ══ BOARD (Reminders hub + draggable kanban) ══ */}
         {view==="board" && S.kanbanEnabled && (
           <div style={{padding:"14px 16px"}}>
-            {/* Reminders-style summary tiles */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
               {[
                 { label:"To Do", count:data.kanban.todo.length, color:"#3b82f6", icon:"☰" },
                 { label:"In Progress", count:data.kanban.doing.length, color:"#f59e0b", icon:"◑" },
-                { label:"Done", count:data.kanban.done.length, color:"#34d399", icon:"✓" },
-                { label:"Quests Left", count:todayTasks.length-todayDone, color:"#a78bfa", icon:"⚔" },
+                { label:"Done", count:data.kanban.done.length, color:"#22c55e", icon:"✓" },
+                { label:"Quests Left", count:todayTasks.length-todayDone, color:"#a855f7", icon:"⚔" },
               ].map(tile=>(
                 <div key={tile.label} style={{
-                  background:`linear-gradient(150deg,${tile.color}cc,${tile.color}88)`,
-                  borderRadius:16,padding:"12px 14px",boxShadow:`0 4px 16px ${tile.color}33`,
+                  background:`linear-gradient(150deg,${tile.color},${shade(tile.color,-55)})`,
+                  borderRadius:20,padding:"13px 15px",boxShadow:`0 8px 22px ${tile.color}44`,
                 }}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div style={{width:28,height:28,borderRadius:"50%",background:"#ffffff2e",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"#fff"}}>{tile.icon}</div>
-                    <div style={{fontSize:24,fontWeight:900,color:"#fff",lineHeight:1}}>{tile.count}</div>
+                    <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,255,255,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#fff"}}>{tile.icon}</div>
+                    <div style={{fontSize:27,fontWeight:900,color:"#fff",lineHeight:1}}>{tile.count}</div>
                   </div>
-                  <div style={{fontSize:12,fontWeight:700,color:"#fff",marginTop:8,opacity:.95}}>{tile.label}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:"#fff",marginTop:9}}>{tile.label}</div>
                 </div>
               ))}
             </div>
 
-            {/* Quick add (goes to To Do) */}
             <div style={{display:"flex",gap:8,marginBottom:14}}>
               <input style={{...C.input,flex:1}} value={boardInput} placeholder="Add a task or reminder..."
                 onChange={e=>setBoardInput(e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter")boardAdd();}}/>
-              <button style={{...C.btn,padding:"0 18px",fontSize:18,fontWeight:900}} onClick={boardAdd}>+</button>
+              <button style={{...C.btn,padding:"0 19px",fontSize:20}} onClick={boardAdd}>+</button>
             </div>
 
-            {/* 3 vertical columns, drag between them */}
             <div ref={boardRef} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,alignItems:"start"}}>
               {[
                 { col:"todo",  label:"TO DO",       color:"#3b82f6" },
                 { col:"doing", label:"IN PROGRESS", color:"#f59e0b" },
-                { col:"done",  label:"DONE",        color:"#34d399" },
+                { col:"done",  label:"DONE",        color:"#22c55e" },
               ].map(({col,label,color})=>(
                 <div key={col} style={{
-                  background:T.card2,border:`1.5px solid ${dragOverCol===col&&drag?color:T.line2}`,
-                  borderRadius:14,padding:"8px 6px",minHeight:180,transition:"border .15s",
-                  boxShadow: dragOverCol===col&&drag ? `0 0 16px ${color}33` : "none",
+                  background: dragOverCol===col&&drag ? "rgba(255,255,255,0.16)" : GLASS,
+                  backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",
+                  border: dragOverCol===col&&drag ? `1.5px solid ${color}` : `1px solid ${LINE}`,
+                  borderRadius:18,padding:"9px 6px",minHeight:190,transition:"all .15s",
                 }}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:8}}>
-                    <div style={{width:7,height:7,borderRadius:"50%",background:color}}/>
-                    <div style={{fontSize:8,fontWeight:800,letterSpacing:1,color:T.dim}}>{label}</div>
-                    <div style={{fontSize:8,fontWeight:800,color:T.faint}}>{data.kanban[col].length}</div>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:color}}/>
+                    <div style={{fontSize:8.5,fontWeight:900,color:"#fff"}}>{label}</div>
+                    <div style={{fontSize:8.5,fontWeight:900,color:FAINT}}>{data.kanban[col].length}</div>
                   </div>
                   {data.kanban[col].map(card=>(
                     <div key={card.id}
                       onPointerDown={e=>dragStart(e, col, card)}
                       style={{
-                        background:T.card,border:`1px solid ${drag?.id===card.id?color:T.line}`,
-                        borderRadius:10,padding:"9px 8px",marginBottom:6,
-                        fontSize:11.5,lineHeight:1.35,color:col==="done"?T.faint:T.text,
+                        background:`linear-gradient(150deg,${color}55,rgba(0,0,0,0.3))`,
+                        borderRadius:13,padding:"10px 9px",marginBottom:6,
+                        fontSize:12,lineHeight:1.35,fontWeight:600,color:col==="done"?DIM:"#fff",
                         textDecoration:col==="done"?"line-through":"none",
                         touchAction:"pan-y",cursor:"grab",position:"relative",
                         opacity:drag?.id===card.id?0.35:1,
                         WebkitUserSelect:"none",userSelect:"none",
-                        boxShadow:"0 2px 8px #00000030",
+                        boxShadow:"0 3px 10px rgba(0,0,0,0.3)",
+                        paddingRight:20,
                       }}>
                       {card.text}
                       <button
                         onPointerDown={e=>e.stopPropagation()}
                         onClick={e=>{e.stopPropagation(); boardDelete(col, card.id);}}
-                        style={{position:"absolute",top:1,right:2,background:"none",border:"none",color:T.faint,fontSize:11,cursor:"pointer",padding:"3px 4px"}}>✕</button>
+                        style={{position:"absolute",top:2,right:3,background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer",padding:"3px 4px"}}>✕</button>
                     </div>
                   ))}
                   {data.kanban[col].length===0 && (
-                    <div style={{fontSize:9,color:T.faint,textAlign:"center",padding:"22px 4px",fontWeight:600}}>
+                    <div style={{fontSize:9.5,color:FAINT,textAlign:"center",padding:"24px 4px",fontWeight:800}}>
                       {drag ? "DROP HERE" : "EMPTY"}
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            <div style={{fontSize:8.5,color:T.faint,textAlign:"center",marginTop:10,fontWeight:700,letterSpacing:1}}>
+            <div style={{fontSize:9,color:DIM,textAlign:"center",marginTop:10,fontWeight:800}}>
               DRAG A CARD SIDEWAYS TO MOVE IT BETWEEN COLUMNS
             </div>
             {data.kanban.done.length>0 && (
-              <button style={{...C.btnSm,width:"100%",marginTop:12,padding:"11px"}} onClick={boardClearDone}>
+              <button style={{...C.btnSm,width:"100%",marginTop:12,padding:"12px"}} onClick={boardClearDone}>
                 CLEAR COMPLETED ({data.kanban.done.length})
               </button>
             )}
@@ -1656,92 +1677,92 @@ export default function App() {
         {/* ══ FOCUS (Pomodoro) ══ */}
         {view==="focus" && S.pomodoroEnabled && (
           <div style={{padding:"14px 16px"}}>
-            <div style={{...C.card,textAlign:"center",padding:"24px 18px",background:`linear-gradient(160deg,${pomoPhase==="work"?T.accent:"#34d399"}0e 0%,${T.card} 40%,${T.card2} 100%)`}}>
-              <div style={{fontSize:11,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:3,color:pomoPhase==="work"?T.accent:"#34d399"}}>
+            <div style={{...C.glass,textAlign:"center",padding:"26px 18px"}}>
+              <div style={{fontSize:13,fontWeight:900,color:pomoPhase==="work"?"#fff":GOOD}}>
                 {pomoPhase==="work"?"⚔ FOCUS BATTLE":"🛡 RESTING AT CAMP"}
               </div>
-              <div style={{position:"relative",width:215,height:215,margin:"20px auto"}}>
-                <svg width="215" height="215">
-                  <circle cx="107.5" cy="107.5" r="96" fill="none" stroke={T.line} strokeWidth="9"/>
-                  <circle cx="107.5" cy="107.5" r="96" fill="none"
-                    stroke={pomoPhase==="work"?T.accent:"#34d399"} strokeWidth="9" strokeLinecap="round"
-                    strokeDasharray={2*Math.PI*96}
-                    strokeDashoffset={2*Math.PI*96*(1-(pomoTotal?pomoLeft/pomoTotal:0))}
-                    transform="rotate(-90 107.5 107.5)"
-                    style={{transition:"stroke-dashoffset 1s linear",filter:`drop-shadow(0 0 8px ${pomoPhase==="work"?T.accent:"#34d399"}66)`}}/>
+              <div style={{position:"relative",width:218,height:218,margin:"20px auto"}}>
+                <svg width="218" height="218">
+                  <circle cx="109" cy="109" r="97" fill="rgba(0,0,0,0.2)" stroke="rgba(255,255,255,0.18)" strokeWidth="10"/>
+                  <circle cx="109" cy="109" r="97" fill="none"
+                    stroke={pomoPhase==="work"?"#ffffff":GOOD} strokeWidth="10" strokeLinecap="round"
+                    strokeDasharray={2*Math.PI*97}
+                    strokeDashoffset={2*Math.PI*97*(1-(pomoTotal?pomoLeft/pomoTotal:0))}
+                    transform="rotate(-90 109 109)"
+                    style={{transition:"stroke-dashoffset 1s linear",filter:"drop-shadow(0 0 8px rgba(255,255,255,0.5))"}}/>
                 </svg>
                 <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-                  <div style={{fontSize:46,fontWeight:900,fontFamily:FONT_DISPLAY,color:T.text,letterSpacing:2}}>
+                  <div style={{fontSize:52,fontWeight:900,color:"#fff",letterSpacing:1}}>
                     {String(Math.floor(pomoLeft/60)).padStart(2,"0")}:{String(pomoLeft%60).padStart(2,"0")}
                   </div>
-                  <div style={{fontSize:9,color:T.faint,letterSpacing:2,fontWeight:700,marginTop:2}}>
+                  <div style={{fontSize:10,color:DIM,fontWeight:800,marginTop:2}}>
                     {pomoPhase==="work"?`${data.pomodoro.workMin} MIN FOCUS`:`${data.pomodoro.breakMin} MIN BREAK`}
                   </div>
                 </div>
               </div>
               <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-                <button style={{...C.btn,padding:"13px 34px",fontSize:13}}
+                <button style={{...C.btn,padding:"14px 36px",fontSize:14}}
                   onClick={()=>setPomoRunning(!pomoRunning)}>
                   {pomoRunning?"PAUSE":"START"}
                 </button>
-                <button style={{...C.btnSm,padding:"13px 22px"}} onClick={pomoReset}>RESET</button>
+                <button style={{...C.btnSm,padding:"14px 24px"}} onClick={pomoReset}>RESET</button>
               </div>
-              <div style={{marginTop:18,display:"inline-flex",alignItems:"center",gap:8,background:`${T.accent}12`,border:`1px solid ${T.accent}33`,borderRadius:20,padding:"7px 16px"}}>
-                <span style={{fontSize:13}}>🏆</span>
-                <span style={{fontSize:11,fontWeight:800,color:T.text}}>{pomoToday} BATTLE{pomoToday===1?"":"S"} WON TODAY</span>
+              <div style={{marginTop:18,display:"inline-flex",alignItems:"center",gap:8,background:"rgba(0,0,0,0.25)",borderRadius:20,padding:"8px 17px"}}>
+                <span style={{fontSize:14}}>🏆</span>
+                <span style={{fontSize:12,fontWeight:900,color:"#fff"}}>{pomoToday} BATTLE{pomoToday===1?"":"S"} WON TODAY</span>
               </div>
             </div>
-            <div style={C.card}>
-              <div style={C.label}>FOCUS LENGTH: <span style={{color:T.accent}}>{data.pomodoro.workMin} MIN</span></div>
+            <div style={C.glass}>
+              <div style={C.label}>FOCUS LENGTH: <span style={{color:"#fff"}}>{data.pomodoro.workMin} MIN</span></div>
               <input type="range" min="5" max="60" step="5" value={data.pomodoro.workMin}
                 onChange={e=>setPomoDur("workMin",parseInt(e.target.value))}
-                style={{width:"100%",accentColor:T.accent}}/>
-              <div style={{...C.label,marginTop:14}}>BREAK LENGTH: <span style={{color:"#34d399"}}>{data.pomodoro.breakMin} MIN</span></div>
+                style={{width:"100%",accentColor:"#ffffff"}}/>
+              <div style={{...C.label,marginTop:14}}>BREAK LENGTH: <span style={{color:GOOD}}>{data.pomodoro.breakMin} MIN</span></div>
               <input type="range" min="1" max="30" step="1" value={data.pomodoro.breakMin}
                 onChange={e=>setPomoDur("breakMin",parseInt(e.target.value))}
-                style={{width:"100%",accentColor:"#34d399"}}/>
+                style={{width:"100%",accentColor:GOOD}}/>
             </div>
           </div>
         )}
 
-        {/* ══ STATS (categories + ascension path) ══ */}
+        {/* ══ STATS ══ */}
         {view==="stats" && (
           <div style={{padding:"14px 16px"}}>
-            <div style={{fontSize:13,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:2,color:T.text,marginBottom:12}}>ATTRIBUTES</div>
-            <div style={C.card}>
+            <div style={{...C.sectionTitle,marginBottom:12}}>Attributes</div>
+            <div style={C.glass}>
               {data.categories.map(c=>{
                 const pct=(c.value/c.maxValue)*100;
                 const editing = editingCat===c.id;
                 return (
-                  <div key={c.id} style={{padding:"10px 0",borderBottom:`1px solid ${T.line2}`}}>
+                  <div key={c.id} style={{padding:"10px 0",borderBottom:`1px solid ${LINE}`}}>
                     {!editing ? (
                       <div onClick={()=>setEditingCat(c.id)} style={{cursor:"pointer"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                          <span style={{fontSize:13.5,fontWeight:700,color:T.text}}>{c.icon} {c.name}</span>
-                          <span style={{fontSize:12,fontWeight:800,color:c.color}}>{S.showXP?`${c.value.toFixed(2)} / ${c.maxValue}`:`${Math.round(pct)}%`}</span>
+                          <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>{c.icon} {c.name}</span>
+                          <span style={{fontSize:12.5,fontWeight:900,color:"#fff"}}>{S.showXP?`${c.value.toFixed(2)} / ${c.maxValue}`:`${Math.round(pct)}%`}</span>
                         </div>
-                        <div style={{height:8,background:"#00000055",borderRadius:4,overflow:"hidden",border:`1px solid ${T.line2}`}}>
-                          <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${c.color}99,${c.color})`,borderRadius:4,boxShadow:`0 0 8px ${c.color}55`}}/>
+                        <div style={{height:11,background:"rgba(0,0,0,0.3)",borderRadius:6,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${pct}%`,background:c.color,borderRadius:6,boxShadow:`0 0 10px ${c.color}88`}}/>
                         </div>
                       </div>
                     ) : (
                       <div>
                         <div style={{display:"flex",gap:8,marginBottom:8}}>
-                          <input style={{...C.input,width:54,textAlign:"center",padding:"10px 4px"}} value={c.icon} maxLength={2}
+                          <input style={{...C.input,width:56,textAlign:"center",padding:"11px 4px"}} value={c.icon} maxLength={2}
                             onChange={e=>saveEditCat(c.id,{icon:e.target.value})}/>
                           <input style={{...C.input,flex:1}} value={c.name}
                             onChange={e=>saveEditCat(c.id,{name:e.target.value})}/>
                         </div>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                        <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:10}}>
                           {CAT_COLORS.map(col=>(
                             <button key={col} onClick={()=>saveEditCat(c.id,{color:col})}
-                              style={{width:26,height:26,borderRadius:"50%",background:col,cursor:"pointer",
-                                border:c.color===col?"2.5px solid #fff":"2px solid transparent",padding:0}}/>
+                              style={{width:28,height:28,borderRadius:"50%",background:col,cursor:"pointer",
+                                border:c.color===col?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",padding:0}}/>
                           ))}
                         </div>
                         <div style={{display:"flex",gap:8}}>
                           <button style={{...C.btnSm,flex:1}} onClick={()=>setEditingCat(null)}>DONE</button>
-                          <button style={{...C.btnSm,flex:1,color:"#ef4444",borderColor:"#ef444433"}}
+                          <button style={{...C.btnSm,flex:1,color:BAD}}
                             onClick={()=>setConfirmBox({type:"cat",id:c.id,name:c.name,taskCount:data.tasks.filter(t=>t.catId===c.id).length})}>
                             DELETE
                           </button>
@@ -1754,22 +1775,22 @@ export default function App() {
               <div style={{marginTop:12}}>
                 <div style={C.label}>NEW ATTRIBUTE</div>
                 <div style={{display:"flex",gap:8}}>
-                  <input style={{...C.input,width:54,textAlign:"center",padding:"10px 4px"}} value={newCat.icon} maxLength={2}
+                  <input style={{...C.input,width:56,textAlign:"center",padding:"11px 4px"}} value={newCat.icon} maxLength={2}
                     onChange={e=>setNewCat({...newCat,icon:e.target.value})}/>
                   <input style={{...C.input,flex:1}} value={newCat.name} placeholder="Name..."
                     onChange={e=>setNewCat({...newCat,name:e.target.value})}/>
-                  <button style={{...C.btn,padding:"0 16px"}} onClick={addCat}>+</button>
+                  <button style={{...C.btn,padding:"0 17px"}} onClick={addCat}>+</button>
                 </div>
               </div>
             </div>
 
             {orphanTasks.length>0 && (
-              <div style={{...C.card,border:"1px solid #fb923c44"}}>
-                <div style={{...C.label,color:"#fb923c"}}>QUESTS NEEDING REASSIGNMENT</div>
+              <div style={{...C.glass,border:"1.5px solid #ffc46b66"}}>
+                <div style={{...C.label,color:"#ffc46b"}}>QUESTS NEEDING REASSIGNMENT</div>
                 {orphanTasks.map(t=>(
                   <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0"}}>
-                    <div style={{flex:1,fontSize:13,color:T.text}}>{t.name}</div>
-                    <select style={{...C.select,width:140,padding:"8px 10px",fontSize:12}} value=""
+                    <div style={{flex:1,fontSize:13.5,color:"#fff",fontWeight:600}}>{t.name}</div>
+                    <select style={{...C.select,width:140,padding:"9px 11px",fontSize:12.5}} value=""
                       onChange={e=>{ if(e.target.value) update({...data, tasks:data.tasks.map(x=>x.id===t.id?{...x,catId:e.target.value}:x)}); }}>
                       <option value="">Assign...</option>
                       {data.categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
@@ -1779,9 +1800,8 @@ export default function App() {
               </div>
             )}
 
-            {/* PATH OF ASCENSION — full-color gear previews */}
-            <div style={{fontSize:13,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:2,color:T.text,margin:"18px 2px 4px"}}>THE PATH OF ASCENSION</div>
-            <div style={{fontSize:10,color:T.faint,margin:"0 2px 12px",fontWeight:600}}>Every level forges new gear. Tap ✎ to rename a title.</div>
+            <div style={{...C.sectionTitle,margin:"18px 2px 4px"}}>The Path of Ascension</div>
+            <div style={{fontSize:11,color:DIM,margin:"0 2px 12px",fontWeight:700}}>Every level forges new gear. Tap ✎ to rename a title.</div>
             {LEVELS.map(L=>{
               const achieved = level.lvl >= L.lvl;
               const isNext = level.lvl + 1 === L.lvl;
@@ -1789,40 +1809,41 @@ export default function App() {
               return (
                 <div key={L.lvl} style={{
                   display:"flex",alignItems:"center",gap:12,
-                  background: isNext ? `linear-gradient(135deg,${T.accent}16,${T.card2})` : isCurrent ? `linear-gradient(135deg,${T.accent}0c,${T.card2})` : T.card2,
-                  border: isNext ? `1.5px solid ${T.accent}` : isCurrent ? `1px solid ${T.accent}66` : `1px solid ${T.line2}`,
-                  borderRadius:16,padding:"10px 13px",marginBottom:8,
-                  boxShadow: isNext ? `0 0 20px ${T.accent}26` : "none",
+                  background: isNext ? "rgba(255,255,255,0.14)" : GLASS,
+                  backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",
+                  border: isNext ? `2px solid ${T.accent}` : isCurrent ? `1.5px solid rgba(255,255,255,0.5)` : `1px solid ${LINE}`,
+                  borderRadius:20,padding:"11px 13px",marginBottom:9,
+                  boxShadow: isNext ? `0 0 24px ${T.accent}55` : "0 4px 16px rgba(0,0,0,0.25)",
                 }}>
                   <div style={{flexShrink:0,width:68,display:"flex",justifyContent:"center"}}>
                     <PixelCharacter level={L.lvl} character={cz} scale={2.7} previewAllGear/>
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                      <span style={{fontSize:9,fontWeight:900,color:achieved?T.accent:T.dim,background:achieved?`${T.accent}1a`:"#00000040",border:`1px solid ${achieved?T.accent+"44":T.line}`,borderRadius:6,padding:"2px 7px",letterSpacing:1}}>LV {L.lvl}</span>
+                      <span style={{fontSize:9.5,fontWeight:900,color:"#fff",background:"rgba(0,0,0,0.3)",borderRadius:8,padding:"2.5px 8px"}}>LV {L.lvl}</span>
                       {editingTitleLvl===L.lvl ? (
-                        <input autoFocus style={{...C.input,padding:"5px 9px",fontSize:13,width:130}}
+                        <input autoFocus style={{...C.input,padding:"6px 10px",fontSize:13.5,width:130}}
                           value={titleDraft} onChange={e=>setTitleDraft(e.target.value)}
                           onKeyDown={e=>{if(e.key==="Enter")saveTitle(L.lvl);}}/>
                       ) : (
-                        <span style={{fontSize:14,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:1,color:achieved?T.text:T.dim}}>
-                          {getTitle(data, L.lvl).toUpperCase()}
+                        <span style={{fontSize:15,fontWeight:900,color:"#fff"}}>
+                          {getTitle(data, L.lvl)}
                         </span>
                       )}
-                      {isNext && <span style={{fontSize:8,fontWeight:900,color:"#0a0a14",background:T.accent,borderRadius:6,padding:"2px 7px",letterSpacing:1}}>NEXT</span>}
-                      {isCurrent && <span style={{fontSize:8,fontWeight:900,color:T.accent,letterSpacing:1}}>◄ YOU</span>}
-                      {achieved && !isCurrent && <span style={{fontSize:11,color:T.good}}>✓</span>}
-                      {!achieved && !isNext && <span style={{fontSize:10,color:T.faint}}>🔒</span>}
+                      {isNext && <span style={{fontSize:9,fontWeight:900,color:"#2a1600",background:T.accent,borderRadius:8,padding:"2.5px 8px"}}>NEXT</span>}
+                      {isCurrent && <span style={{fontSize:9,fontWeight:900,color:T.accent}}>◄ YOU</span>}
+                      {achieved && !isCurrent && <span style={{fontSize:12,color:GOOD}}>✓</span>}
+                      {!achieved && !isNext && <span style={{fontSize:11,color:FAINT}}>🔒</span>}
                     </div>
-                    <div style={{fontSize:11,color:isNext?T.accent:T.dim,marginTop:4,fontWeight:isNext?700:500}}>
+                    <div style={{fontSize:11.5,color:isNext?"#fff":DIM,marginTop:4,fontWeight:isNext?800:600}}>
                       {L.unlock}{!achieved && ` · reach rating ${L.lvl*7}`}
                     </div>
                   </div>
                   {editingTitleLvl===L.lvl ? (
-                    <button onClick={()=>saveTitle(L.lvl)} style={{background:"none",border:"none",color:T.good,fontSize:16,cursor:"pointer",padding:4}}>✓</button>
+                    <button onClick={()=>saveTitle(L.lvl)} style={{background:"none",border:"none",color:GOOD,fontSize:17,cursor:"pointer",padding:4}}>✓</button>
                   ) : (
                     <button onClick={()=>{setEditingTitleLvl(L.lvl); setTitleDraft(getTitle(data,L.lvl));}}
-                      style={{background:"none",border:"none",color:T.faint,fontSize:13,cursor:"pointer",padding:4}}>✎</button>
+                      style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:10,color:DIM,fontSize:13,cursor:"pointer",padding:"6px 8px"}}>✎</button>
                   )}
                 </div>
               );
@@ -1833,25 +1854,29 @@ export default function App() {
         {/* ══ SETTINGS ══ */}
         {view==="settings" && (
           <div style={{padding:"14px 16px"}}>
-            <div style={{fontSize:13,fontFamily:FONT_DISPLAY,fontWeight:800,letterSpacing:2,color:T.text,marginBottom:12}}>SETTINGS</div>
+            <div style={{...C.sectionTitle,marginBottom:12}}>Settings</div>
 
-            {/* THEME */}
-            <div style={C.card}>
-              <div style={C.label}>THEME</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {/* SKY THEME */}
+            <div style={C.glass}>
+              <div style={C.label}>SKY</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
                 {THEME_KEYS.map(key=>{
                   const th = THEMES[key];
                   const on = S.theme===key;
                   return (
                     <button key={key} onClick={()=>setSetting("theme",key)}
                       style={{
-                        background:th.bg,border:on?`2px solid ${th.swatch}`:`1.5px solid ${T.line}`,
-                        borderRadius:14,padding:"12px 6px",cursor:"pointer",
-                        display:"flex",flexDirection:"column",alignItems:"center",gap:7,
-                        boxShadow:on?`0 0 16px ${th.swatch}44`:"none",
+                        background:`linear-gradient(180deg,${th.sky[0]},${th.sky[1]} 55%,${th.sky[2]})`,
+                        border:on?"2.5px solid #ffffff":"1.5px solid rgba(255,255,255,0.18)",
+                        borderRadius:16,padding:0,cursor:"pointer",height:74,position:"relative",overflow:"hidden",
+                        boxShadow:on?"0 0 18px rgba(255,255,255,0.45)":"0 4px 12px rgba(0,0,0,0.3)",
                       }}>
-                      <div style={{width:26,height:26,borderRadius:"50%",background:th.swatch,boxShadow:`0 0 10px ${th.swatch}66`}}/>
-                      <div style={{fontSize:9,fontWeight:800,letterSpacing:1,color:on?th.swatch:T.dim}}>{th.name.toUpperCase()}</div>
+                      <svg width="100%" height="100%" viewBox="0 0 100 74" preserveAspectRatio="none" style={{position:"absolute",inset:0}}>
+                        <circle cx="74" cy="18" r="9" fill={th.sun} opacity="0.95"/>
+                        <polygon fill={th.m2} points="0,74 0,52 26,34 50,52 74,32 100,50 100,74"/>
+                        <polygon fill={th.m3} points="0,74 0,64 34,46 66,64 100,52 100,74"/>
+                      </svg>
+                      <div style={{position:"absolute",bottom:5,left:0,right:0,fontSize:9,fontWeight:900,color:"#fff",textShadow:"0 1px 4px rgba(0,0,0,0.6)"}}>{th.name.toUpperCase()}</div>
                     </button>
                   );
                 })}
@@ -1859,7 +1884,7 @@ export default function App() {
             </div>
 
             {/* DISPLAY */}
-            <div style={C.card}>
+            <div style={C.glass}>
               <div style={C.label}>STAT DISPLAY</div>
               <div style={{display:"flex",gap:8,marginBottom:16}}>
                 {[["radar","RADAR"],["bars","BARS"],["none","HIDDEN"]].map(([v,l])=>(
@@ -1868,34 +1893,34 @@ export default function App() {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:13.5,fontWeight:700,color:T.text}}>Show XP numbers</div>
-                  <div style={{fontSize:10.5,color:T.faint,marginTop:2}}>Off = difficulty words instead of decimals</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>Show XP numbers</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = difficulty words instead of decimals</div>
                 </div>
-                <Switch on={S.showXP} onToggle={()=>setSetting("showXP",!S.showXP)} color={T.accent} track={T.line}/>
+                <Switch on={S.showXP} onToggle={()=>setSetting("showXP",!S.showXP)}/>
               </div>
             </div>
 
-            {/* FEATURES */}
-            <div style={C.card}>
+            {/* PAGES */}
+            <div style={C.glass}>
               <div style={C.label}>PAGES</div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:13.5,fontWeight:700,color:T.text}}>▦ Board</div>
-                  <div style={{fontSize:10.5,color:T.faint,marginTop:2}}>Reminders hub & kanban</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>▦ Board</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Reminders hub & kanban</div>
                 </div>
-                <Switch on={S.kanbanEnabled} onToggle={()=>setSetting("kanbanEnabled",!S.kanbanEnabled)} color={T.accent} track={T.line}/>
+                <Switch on={S.kanbanEnabled} onToggle={()=>setSetting("kanbanEnabled",!S.kanbanEnabled)}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:13.5,fontWeight:700,color:T.text}}>◔ Focus</div>
-                  <div style={{fontSize:10.5,color:T.faint,marginTop:2}}>Pomodoro timer</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>◔ Focus</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Pomodoro timer</div>
                 </div>
-                <Switch on={S.pomodoroEnabled} onToggle={()=>setSetting("pomodoroEnabled",!S.pomodoroEnabled)} color={T.accent} track={T.line}/>
+                <Switch on={S.pomodoroEnabled} onToggle={()=>setSetting("pomodoroEnabled",!S.pomodoroEnabled)}/>
               </div>
             </div>
 
             {/* CHARACTER */}
-            <div style={C.card}>
+            <div style={C.glass}>
               <div style={C.label}>YOUR CHAMPION</div>
               <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
                 <PixelCharacter level={level.lvl} character={cz} scale={6.5} idle/>
@@ -1903,12 +1928,12 @@ export default function App() {
               {[["skin","SKIN",SKINS],["hair","HAIR",HAIRS],["shirt","SHIRT",SHIRTS],["pants","PANTS",PANTS]].map(([key,lab,opts])=>(
                 <div key={key} style={{marginBottom:12}}>
                   <div style={{...C.label,marginBottom:6}}>{lab}</div>
-                  <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {opts.map(col=>(
                       <button key={col} onClick={()=>setChar(key,col)}
-                        style={{width:30,height:30,borderRadius:"50%",background:col,cursor:"pointer",
-                          border:cz[key]===col?`2.5px solid ${T.accent}`:`2px solid ${T.line}`,padding:0,
-                          boxShadow:cz[key]===col?`0 0 10px ${T.accent}55`:"none"}}/>
+                        style={{width:32,height:32,borderRadius:"50%",background:col,cursor:"pointer",
+                          border:cz[key]===col?"3px solid #ffffff":"2px solid rgba(255,255,255,0.2)",padding:0,
+                          boxShadow:cz[key]===col?"0 0 12px rgba(255,255,255,0.5)":"none"}}/>
                     ))}
                   </div>
                 </div>
@@ -1916,32 +1941,32 @@ export default function App() {
             </div>
 
             {/* WARDROBE */}
-            <div style={C.card}>
+            <div style={C.glass}>
               <div style={C.label}>WARDROBE</div>
-              <div style={{fontSize:10.5,color:T.faint,marginBottom:12,fontWeight:600}}>Unlocked gear can be worn or stored.</div>
+              <div style={{fontSize:11,color:DIM,marginBottom:12,fontWeight:600}}>Unlocked gear can be worn or stored.</div>
               {GEAR.map(g=>{
                 const unlocked = level.lvl >= g.lvl;
                 const worn = cz.equipped[g.slot] !== false;
                 return (
-                  <div key={g.slot} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${T.line2}`,opacity:unlocked?1:0.45}}>
+                  <div key={g.slot} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${LINE}`,opacity:unlocked?1:0.5}}>
                     <div>
-                      <div style={{fontSize:13,fontWeight:700,color:unlocked?T.text:T.dim}}>{g.name}</div>
-                      <div style={{fontSize:9.5,color:unlocked?T.good:T.faint,fontWeight:700,letterSpacing:.5,marginTop:1}}>
+                      <div style={{fontSize:13.5,fontWeight:800,color:"#fff"}}>{g.name}</div>
+                      <div style={{fontSize:10,color:unlocked?GOOD:FAINT,fontWeight:800,marginTop:1}}>
                         {unlocked?"UNLOCKED":`UNLOCKS AT LV ${g.lvl}`}
                       </div>
                     </div>
                     {unlocked
-                      ? <Switch on={worn} onToggle={()=>toggleGear(g.slot)} color={T.accent} track={T.line}/>
-                      : <span style={{fontSize:13,color:T.faint}}>🔒</span>}
+                      ? <Switch on={worn} onToggle={()=>toggleGear(g.slot)}/>
+                      : <span style={{fontSize:14,color:FAINT}}>🔒</span>}
                   </div>
                 );
               })}
             </div>
 
             {/* DANGER ZONE */}
-            <div style={{...C.card,border:"1px solid #ef444433"}}>
-              <div style={{...C.label,color:"#ef4444"}}>DANGER ZONE</div>
-              <button style={{...C.btnSm,width:"100%",padding:"13px",color:"#ef4444",borderColor:"#ef444444"}}
+            <div style={{...C.glass,border:`1.5px solid ${BAD}55`}}>
+              <div style={{...C.label,color:BAD}}>DANGER ZONE</div>
+              <button style={{...C.btnSm,width:"100%",padding:"14px",color:BAD}}
                 onClick={()=>setConfirmBox({type:"reset"})}>
                 ↺ RESET STATS (KEEPS QUESTS & HISTORY)
               </button>
@@ -1950,11 +1975,11 @@ export default function App() {
         )}
       </div>
 
-      {/* ══ BOTTOM NAV ══ */}
+      {/* ══ FLOATING DOCK ══ */}
       <div style={C.nav}>
         {navItems.map(n=>(
           <button key={n.v} style={C.navBtn(isActive(n.v))} onClick={()=>setView(n.v)}>
-            <span style={{fontSize:17,lineHeight:1}}>{n.icon}</span>
+            <span style={{fontSize:18,lineHeight:1}}>{n.icon}</span>
             {n.label}
           </button>
         ))}
