@@ -85,6 +85,7 @@ const DEFAULT_SETTINGS = {
   showXP: true,
   statStyle: "radar", // "radar" | "bars" | "none"
   theme: "ember",
+  cardStyle: "vivid", // "vivid" | "tinted"
 };
 const DEFAULT_EQUIPPED = {
   boots:true, sword:true, armor:true, shield:true, helm:true,
@@ -92,6 +93,7 @@ const DEFAULT_EQUIPPED = {
 };
 const DEFAULT_CHARACTER = {
   skin:"#9c6b3c", hair:"#1a0e08", shirt:"#a16207", pants:"#1f2937",
+  body:"m", hairstyle:"classic",
   equipped: { ...DEFAULT_EQUIPPED },
 };
 const DEFAULT_POMO = { workMin:25, breakMin:5, sessionsByDay:{} };
@@ -100,6 +102,9 @@ const SKINS  = ["#f6d7b0","#eac086","#c98c53","#9c6b3c","#7b4a24","#5a3318"];
 const HAIRS  = ["#1a0e08","#3b2219","#6b3e1e","#a8763e","#d9a05b","#4a4a4a","#b5b5b5","#e8c14d","#8a2f1d","#46355c"];
 const SHIRTS = ["#a16207","#7c2d12","#1d4ed8","#15803d","#7e22ce","#be185d","#0e7490","#3f3f46","#b91c1c","#ca8a04"];
 const PANTS  = ["#1f2937","#3f2d1d","#1e3a8a","#14532d","#4c1d95","#52525b","#7f1d1d","#374151"];
+const HAIRSTYLES = [["classic","Classic"],["long","Long"],["fro","Fro"],["braids","Braids"],["buzz","Buzz"],["bald","Bald"]];
+const BODIES = [["m","Champion"],["f","Champion (F)"]];
+const LIST_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#ec4899","#14b8a6","#f97316"];
 const CAT_COLORS = ["#f59e0b","#ef4444","#38bdf8","#34d399","#a78bfa","#f472b6","#fb923c","#22c55e","#e879f9","#fbbf24"];
 
 const GEAR = [
@@ -195,6 +200,7 @@ const INIT = {
   character: { ...DEFAULT_CHARACTER, equipped:{ ...DEFAULT_EQUIPPED } },
   customTitles: {},
   kanban: { todo:[], doing:[], done:[] },
+  lists: [],
   pomodoro: { ...DEFAULT_POMO },
   lastDecayDate: null,
 };
@@ -330,18 +336,53 @@ function migrate(d) {
   const settings = { ...DEFAULT_SETTINGS, ...(d.settings||{}) };
   if (!THEMES[settings.theme]) settings.theme = "ember";
   if (!["radar","bars","none"].includes(settings.statStyle)) settings.statStyle = "radar";
+  if (!["vivid","tinted"].includes(settings.cardStyle)) settings.cardStyle = "vivid";
+  const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
+    equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
+  if (!["m","f"].includes(chr.body)) chr.body = "m";
+  if (!HAIRSTYLES.some(h=>h[0]===chr.hairstyle)) chr.hairstyle = "classic";
   return {
     ...d,
     settings,
-    character: {
-      ...DEFAULT_CHARACTER, ...(d.character||{}),
-      equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) },
-    },
+    character: chr,
+    tasks: (d.tasks||[]).map((t,i)=>({
+      ...t,
+      order: typeof t.order === "number" ? t.order : i,
+      createdAt: t.createdAt || Object.keys(t.completions||{}).sort()[0] || dateKey(),
+    })),
     customTitles: d.customTitles || {},
     kanban: (d.kanban && Array.isArray(d.kanban.todo)) ? d.kanban : { todo:[], doing:[], done:[] },
+    lists: Array.isArray(d.lists) ? d.lists : [],
     pomodoro: { ...DEFAULT_POMO, ...(d.pomodoro||{}), sessionsByDay: { ...((d.pomodoro||{}).sessionsByDay||{}) } },
     lastDecayDate: d.lastDecayDate || dateKey(),
   };
+}
+
+// Per-quest stats: completion rate since the quest became active
+function questStats(task) {
+  const keys = Object.keys(task.completions||{}).sort();
+  const start = task.createdAt || keys[0] || dateKey();
+  let expected = 0;
+  try {
+    const cur = new Date(start + "T00:00:00");
+    const end = new Date(dateKey() + "T00:00:00");
+    let safety = 0;
+    while (cur <= end && safety < 1500) {
+      if (isScheduledOn(task, dateKey(cur))) expected++;
+      cur.setDate(cur.getDate()+1);
+      safety++;
+    }
+  } catch {}
+  const done = totalCompletions(task);
+  const rate = expected > 0 ? Math.min(100, Math.round((done/expected)*100)) : 0;
+  return { start, expected, done, rate };
+}
+// Last 7 day keys ending today (HabitKit grid)
+function last7Keys() {
+  const out = [];
+  const cur = new Date();
+  for (let i=6;i>=0;i--) { const d=new Date(cur); d.setDate(cur.getDate()-i); out.push(dateKey(d)); }
+  return out;
 }
 
 // ── COLOR HELPERS ─────────────────────────────────────────────────────────────
@@ -392,10 +433,17 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(9,19.8,2.2,1.4,skin,0.6); R(12.8,19.8,2.2,1.4,skin,0.6);
   }
 
+  const fem = cz.body === "f";
   const steel = has("armor",7), leather = !steel && has("armor",5);
   const torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
-  R(8.7,10.8,6.6,5.4,torsoColor,0.9);
-  R(8.7,15.2,6.6,1.0,shade(torsoColor,-26),0.5);
+  if (fem) {
+    R(9.1,10.8,5.8,5.4,torsoColor,1.1);
+    R(8.8,14.6,6.4,1.6,torsoColor,0.8);
+    R(9.1,15.2,5.8,1.0,shade(torsoColor,-26),0.5);
+  } else {
+    R(8.7,10.8,6.6,5.4,torsoColor,0.9);
+    R(8.7,15.2,6.6,1.0,shade(torsoColor,-26),0.5);
+  }
   if (steel) {
     R(8.7,10.8,2.4,1.0,shade(torsoColor,38),0.5);
     R(10.9,13.0,2.2,1.1,"#22304a",0.4);
@@ -421,11 +469,33 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   R(8.2,3.8,7.6,7.2,skin,1.6);
   R(8.2,10.0,7.6,1.0,shade(skin,-18),0.8);
   const helm = has("helm",8) && !has("crown",12);
-  if (!helm) {
-    R(8.0,2.9,8.0,2.2,hair,1.0);
-    R(8.0,4.6,1.3,1.9,hair,0.5);
-    R(14.7,4.6,1.3,1.9,hair,0.5);
-    R(11.2,4.8,1.6,0.9,hair,0.4);
+  const hs = cz.hairstyle || "classic";
+  if (!helm && hs !== "bald") {
+    if (hs === "classic") {
+      R(8.0,2.9,8.0,2.2,hair,1.0);
+      R(8.0,4.6,1.3,1.9,hair,0.5);
+      R(14.7,4.6,1.3,1.9,hair,0.5);
+      R(11.2,4.8,1.6,0.9,hair,0.4);
+    } else if (hs === "long") {
+      R(8.0,2.9,8.0,2.2,hair,1.0);
+      R(7.7,4.4,1.6,6.8,hair,0.8);
+      R(14.7,4.4,1.6,6.8,hair,0.8);
+      R(11.2,4.8,1.6,0.9,hair,0.4);
+    } else if (hs === "fro") {
+      R(7.2,1.2,9.6,5.2,hair,2.6);
+      R(7.0,3.4,1.6,2.6,hair,1.0);
+      R(15.4,3.4,1.6,2.6,hair,1.0);
+    } else if (hs === "braids") {
+      R(8.0,2.9,8.0,2.2,hair,1.0);
+      R(7.8,4.4,1.2,6.4,hair,0.6);
+      R(15.0,4.4,1.2,6.4,hair,0.6);
+      R(7.8,7.2,1.2,0.7,"#caa05a",0.3);
+      R(15.0,7.2,1.2,0.7,"#caa05a",0.3);
+      R(7.8,9.4,1.2,0.7,"#caa05a",0.3);
+      R(15.0,9.4,1.2,0.7,"#caa05a",0.3);
+    } else if (hs === "buzz") {
+      R(8.2,3.2,7.6,1.3,hair,0.9);
+    }
   }
   R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
   R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
@@ -494,6 +564,7 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
   const raf = useRef(null);
   const startT = useRef(0);
   const fired = useRef(false);
+  const boxRef = useRef(null);
   const done = reps >= target;
   const isBonus = reps > target;
   const stroke = 5;
@@ -512,7 +583,9 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
         if (!fired.current) {
           fired.current = true;
           try { navigator.vibrate && navigator.vibrate([20,40,30]); } catch {}
-          onComplete();
+          let cx2=null, cy2=null;
+          try { const r2 = boxRef.current.getBoundingClientRect(); cx2 = r2.left + r2.width/2; cy2 = r2.top + r2.height/2; } catch {}
+          onComplete(cx2, cy2);
         }
         setTimeout(()=>setProg(0), 200);
         return;
@@ -532,7 +605,7 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
 
   const ringPct = prog > 0 ? prog : (done ? 1 : Math.min(1, reps/target));
   return (
-    <div
+    <div ref={boxRef}
       onPointerDown={begin} onPointerUp={end} onPointerLeave={end} onPointerCancel={end}
       onContextMenu={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();e.preventDefault();}}
       style={{ width:size, height:size, position:"relative", flexShrink:0, cursor:"pointer",
@@ -680,7 +753,7 @@ function Switch({ on, onToggle, color=GOOD }) {
 }
 
 // ── WEEK PILLS (white-on-color, for colored quest cards) ──────────────────────
-function WeekPills({ task, cardColor }) {
+function WeekPills({ task, cardColor, tinted }) {
   const wk = weekDateKeys();
   const labels = ["M","T","W","T","F","S","S"];
   const todayK = dateKey();
@@ -694,8 +767,8 @@ function WeekPills({ task, cardColor }) {
           <div key={dk} style={{
             width:18, height:18, borderRadius:9, fontSize:9, fontWeight:900,
             display:"flex", alignItems:"center", justifyContent:"center",
-            background: done ? "#ffffff" : sched ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.07)",
-            color: done ? cardColor : sched ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.4)",
+            background: done ? (tinted ? cardColor : "#ffffff") : sched ? (tinted ? `${cardColor}33` : "rgba(255,255,255,0.22)") : "rgba(255,255,255,0.07)",
+            color: done ? (tinted ? "#ffffff" : cardColor) : sched ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.4)",
             boxShadow: isToday ? "0 0 0 1.5px rgba(255,255,255,0.9)" : "none",
           }}>
             {done ? "✓" : labels[i]}
@@ -752,6 +825,12 @@ export default function App() {
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
   const [dragOverCol, setDragOverCol] = useState(null);
+  const [bursts, setBursts] = useState([]);
+  const [openListId, setOpenListId] = useState(null);
+  const [listInput, setListInput] = useState("");
+  const [itemInput, setItemInput] = useState("");
+  const [subFor, setSubFor] = useState(null);
+  const [subInput, setSubInput] = useState("");
   // Pomodoro client state
   const [pomoPhase, setPomoPhase] = useState("work");
   const [pomoLeft, setPomoLeft] = useState(25*60);
@@ -948,6 +1027,7 @@ export default function App() {
   const addTask = () => {
     if (!newTask.name.trim()) return;
     const task = { ...newTask, id:`t${Date.now()}`,
+      order: data.tasks.length, createdAt: dateKey(),
       points: calcPoints(newTask.importance), decayRate: calcDecay(newTask.importance), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
     setNewTask({name:"",catId:data.categories[0]?.id||"career",importance:5,targetReps:1,days:[1,2,3,4,5]});
@@ -1021,6 +1101,82 @@ export default function App() {
     update({...data, kanban:{...data.kanban, [col]: data.kanban[col].filter(c=>c.id!==id)}});
   const boardClearDone = () =>
     update({...data, kanban:{...data.kanban, done:[]}});
+  const boardAdvance = (col, id) => {
+    const next = col==="todo" ? "doing" : col==="doing" ? "done" : null;
+    if (next) boardMoveTo(col, id, next);
+  };
+
+  // ── COMPLETION BURST (the juice) ────────────────────────────────────────────
+  const fireBurst = (x, y, color, label) => {
+    if (x === null || x === undefined) return;
+    const id = Date.now() + Math.random();
+    setBursts(b=>[...b, {id, x, y, color, label}]);
+    setTimeout(()=>setBursts(b=>b.filter(z=>z.id!==id)), 1100);
+  };
+
+  // ── QUEST ORDER / RESET ─────────────────────────────────────────────────────
+  const moveTask = (id, dir) => {
+    const sorted = [...data.tasks].sort((a,b)=>(a.order??0)-(b.order??0));
+    const i = sorted.findIndex(t=>t.id===id);
+    const j = i + dir;
+    if (i<0 || j<0 || j>=sorted.length) return;
+    [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
+    const orderMap = {}; sorted.forEach((t,k)=>orderMap[t.id]=k);
+    update({...data, tasks: data.tasks.map(t=>({...t, order:orderMap[t.id]}))});
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
+  };
+  const resetQuest = (id) => {
+    update({...data, tasks:data.tasks.map(t=>t.id===id?{...t, completions:{}, createdAt: dateKey()}:t)});
+    toast$("QUEST HISTORY RESET");
+  };
+
+  // ── REMINDERS-STYLE LISTS ───────────────────────────────────────────────────
+  const mutateList = (id, fn) => update({...data, lists: data.lists.map(l=>l.id===id?fn(l):l)});
+  const addList = () => {
+    const name = listInput.trim(); if (!name) return;
+    const color = LIST_COLORS[data.lists.length % LIST_COLORS.length];
+    update({...data, lists:[...data.lists, {id:`l${Date.now()}`, name, color, items:[]}]});
+    setListInput("");
+  };
+  const deleteList = (id) => {
+    update({...data, lists:data.lists.filter(l=>l.id!==id)});
+    if (openListId===id) setOpenListId(null);
+  };
+  const addListItem = (listId, parentId) => {
+    const text = (parentId ? subInput : itemInput).trim(); if (!text) return;
+    mutateList(listId, l=>{
+      if (!parentId) return {...l, items:[...l.items, {id:`i${Date.now()}`, text, done:false, children:[]}]};
+      return {...l, items:l.items.map(it=>it.id===parentId?{...it, children:[...(it.children||[]), {id:`i${Date.now()}`, text, done:false}]}:it)};
+    });
+    if (parentId) { setSubInput(""); setSubFor(null); } else setItemInput("");
+  };
+  const toggleListItem = (listId, itemId, parentId) => mutateList(listId, l=>({...l, items:l.items.map(it=>{
+    if (parentId) { if (it.id!==parentId) return it; return {...it, children:(it.children||[]).map(c=>c.id===itemId?{...c,done:!c.done}:c)}; }
+    return it.id===itemId?{...it,done:!it.done}:it;
+  })}));
+  const deleteListItem = (listId, itemId, parentId) => mutateList(listId, l=>({...l, items: parentId
+    ? l.items.map(it=>it.id!==parentId?it:{...it, children:(it.children||[]).filter(c=>c.id!==itemId)})
+    : l.items.filter(it=>it.id!==itemId)}));
+  const sendToBoard = (listId, itemId, parentId) => {
+    const list = data.lists.find(l=>l.id===listId); if (!list) return;
+    let texts = [];
+    if (parentId) {
+      const p = list.items.find(i=>i.id===parentId);
+      const c = (p?.children||[]).find(c=>c.id===itemId);
+      if (c) texts = [c.text];
+    } else {
+      const it = list.items.find(i=>i.id===itemId);
+      if (it) texts = [it.text, ...(it.children||[]).map(c=>c.text)];
+    }
+    if (!texts.length) return;
+    const cards = texts.map((t,i)=>({id:`k${Date.now()+i}`, text:t}));
+    const newLists = data.lists.map(l=>l.id!==listId?l:{...l, items: parentId
+      ? l.items.map(it=>it.id!==parentId?it:{...it, children:(it.children||[]).filter(c=>c.id!==itemId)})
+      : l.items.filter(it=>it.id!==itemId)});
+    update({...data, lists:newLists, kanban:{...data.kanban, todo:[...data.kanban.todo, ...cards]}});
+    toast$(`SENT TO BOARD (${cards.length})`);
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
 
   // Drag-and-drop (pointer-based so it works on iPhone)
   const COLS = ["todo","doing","done"];
@@ -1055,6 +1211,9 @@ export default function App() {
         const rel = (ev.clientX - r.left) / r.width;
         const target = rel < 1/3 ? "todo" : rel < 2/3 ? "doing" : "done";
         boardMoveTo(m.col, m.card.id, target);
+      } else if (m && !m.active) {
+        const dist = Math.hypot(ev.clientX - m.startX, ev.clientY - m.startY);
+        if (dist < 8) boardAdvance(m.col, m.card.id);
       }
     };
     window.addEventListener("pointermove", move, { passive:false });
@@ -1108,6 +1267,8 @@ export default function App() {
   const ratingIfNoneDone = projectRating(data.categories, data.tasks, today, "decay");
   const detailTask = detailTaskId ? data.tasks.find(t=>t.id===detailTaskId) : null;
   const detailCat = detailTask ? data.categories.find(c=>c.id===detailTask.catId) : null;
+  const detailColor = detailTask ? (detailTask.color || detailCat?.color || "#ffffff") : "#ffffff";
+  const dStats = detailTask ? questStats(detailTask) : null;
   const orphanTasks = data.tasks.filter(t=>!t.catId || !data.categories.find(c=>c.id===t.catId));
   const pomoTotal = (pomoPhase==="work" ? (data.pomodoro.workMin||25) : (data.pomodoro.breakMin||5))*60;
   const pomoToday = (data.pomodoro.sessionsByDay||{})[today]||0;
@@ -1145,10 +1306,11 @@ export default function App() {
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks");
 
-  // ── QUEST CARD (full-color Not Boring style) ────────────────────────────────
-  const QuestCard = ({task, showEdit}) => {
+  // ── QUEST CARD (ring on the LEFT; vivid or tinted; per-quest color) ─────────
+  const QuestCard = ({task}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
-    const color = cat?.color || T.accent;
+    const color = task.color || cat?.color || T.accent;
+    const tinted = S.cardStyle === "tinted";
     const target = task.targetReps||1;
     const reps = getReps(task, today);
     const done = reps >= target;
@@ -1156,56 +1318,64 @@ export default function App() {
     const qlvl = questLevel(task);
     const qpct = questLevelPct(task);
     const schedToday = isScheduledOn(task, today);
+    const burstLabel = S.showXP ? `+${(task.points/target).toFixed(3)}` : "✦ NICE";
     return (
       <div
         onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
-        style={{
+        style={ tinted ? {
+          background:`linear-gradient(155deg,${color}24 0%,${color}0e 50%,${GLASS} 100%)`,
+          backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
+          border:`1px solid ${done?`${color}66`:`${color}33`}`,
+          borderRadius:22, padding:"13px 14px", marginBottom:11, cursor:"pointer",
+          opacity: done ? 0.65 : 1, transition:"all .25s",
+          boxShadow:"0 4px 18px rgba(0,0,0,0.3)",
+        } : {
           background:`linear-gradient(155deg,${color} 0%,${shade(color,-58)} 100%)`,
           borderRadius:22, padding:"13px 14px", marginBottom:11, cursor:"pointer",
           opacity: done ? 0.6 : 1, transition:"all .25s",
           boxShadow:`0 8px 24px ${color}40, 0 2px 8px rgba(0,0,0,0.3)`,
         }}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          {/* Level badge */}
-          <div style={{
-            width:40,height:40,borderRadius:13,flexShrink:0,
-            background:"rgba(255,255,255,0.22)",
-            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-          }}>
-            <div style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.85)",lineHeight:1}}>LV</div>
-            <div style={{fontSize:16,fontWeight:900,color:"#fff",lineHeight:1.1}}>{qlvl}</div>
-          </div>
+          {/* COMPLETE BUTTON — left side so it never fights your scroll thumb */}
+          {schedToday || done ? (
+            <HoldRing
+              color={tinted ? color : "#ffffff"}
+              checkColor={tinted ? "#ffffff" : color}
+              trackColor={tinted ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.35)"}
+              reps={reps} target={target}
+              onComplete={(x,y)=>{ addRep(task.id, today); fireBurst(x, y, tinted ? color : "#ffffff", burstLabel); }}
+              onShortTap={()=>toast$("HOLD TO COMPLETE")} />
+          ) : (
+            <div style={{width:54,textAlign:"center",fontSize:8.5,color:"rgba(255,255,255,0.6)",fontWeight:900,lineHeight:1.5,flexShrink:0}}>REST<br/>DAY</div>
+          )}
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:7}}>
               <div style={{fontSize:15.5,fontWeight:800,color:"#fff",textDecoration:done?"line-through":"none",
-                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textShadow:"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
+                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textShadow:tinted?"none":"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
               {streak >= 2 && (
                 <div style={{flexShrink:0,fontSize:10,fontWeight:900,color:"#fff",background:"rgba(0,0,0,0.25)",
                   padding:"2px 7px",borderRadius:10}}>🔥{streak}</div>
               )}
             </div>
-            {/* Quest XP bar */}
             <div style={{height:6,background:"rgba(0,0,0,0.3)",borderRadius:3,overflow:"hidden",marginTop:7,marginBottom:7}}>
-              <div style={{height:"100%",width:`${qpct}%`,background:"rgba(255,255,255,0.92)",borderRadius:3,transition:"width .5s ease"}}/>
+              <div style={{height:"100%",width:`${qpct}%`,background:tinted?color:"rgba(255,255,255,0.92)",borderRadius:3,transition:"width .5s ease"}}/>
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-              <WeekPills task={task} cardColor={color}/>
+              <WeekPills task={task} cardColor={color} tinted={tinted}/>
               <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap"}}>
                 {cat?.icon} {S.showXP ? `+${task.points.toFixed(3)}` : diffLabel(task.importance??5)}
               </div>
             </div>
           </div>
-          {schedToday || done ? (
-            <HoldRing color="#ffffff" checkColor={color} trackColor="rgba(255,255,255,0.35)" reps={reps} target={target}
-              onComplete={()=>addRep(task.id, today)}
-              onShortTap={()=>toast$("HOLD TO COMPLETE", "#ffffff")} />
-          ) : (
-            <div style={{width:54,textAlign:"center",fontSize:8.5,color:"rgba(255,255,255,0.7)",fontWeight:900,lineHeight:1.5}}>REST<br/>DAY</div>
-          )}
-          {showEdit && (
-            <button onClick={e=>{e.stopPropagation(); setEditTask({...task}); setView("editTask");}}
-              style={{background:"rgba(0,0,0,0.2)",border:"none",borderRadius:10,color:"#fff",fontSize:13,cursor:"pointer",padding:"6px 8px"}}>✎</button>
-          )}
+          {/* Level badge — right side */}
+          <div style={{
+            width:40,height:40,borderRadius:13,flexShrink:0,
+            background: tinted ? `${color}33` : "rgba(255,255,255,0.22)",
+            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+          }}>
+            <div style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.85)",lineHeight:1}}>LV</div>
+            <div style={{fontSize:16,fontWeight:900,color:"#fff",lineHeight:1.1}}>{qlvl}</div>
+          </div>
         </div>
       </div>
     );
@@ -1241,12 +1411,36 @@ export default function App() {
         @keyframes sparkle { 0%,100%{opacity:.4;transform:scale(.9)} 50%{opacity:1;transform:scale(1.15)} }
         @keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
         @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+        @keyframes burstFly { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--dx),var(--dy)) scale(.3);opacity:0} }
+        @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 15%{opacity:1;transform:translate(-50%,-12px) scale(1.15)} 100%{transform:translate(-50%,-52px) scale(1);opacity:0} }
+        @keyframes ringPop { 0%{transform:scale(.4);opacity:.9} 100%{transform:scale(2.4);opacity:0} }
         * { -webkit-tap-highlight-color: transparent; }
         input[type=range]{ height: 30px; }
         body { background: ${T.sky[0]}; }
       `}</style>
       {/* FULL-BLEED SKY */}
       <div style={{position:"fixed",inset:0,background:skyGradient,zIndex:0}}/>
+
+      {/* COMPLETION BURSTS */}
+      {bursts.map(b=>(
+        <div key={b.id} style={{position:"fixed",left:b.x,top:b.y,zIndex:1300,pointerEvents:"none"}}>
+          <div style={{position:"absolute",left:-27,top:-27,width:54,height:54,borderRadius:"50%",
+            border:`3px solid ${b.color}`,animation:"ringPop .55s ease-out forwards"}}/>
+          {Array.from({length:12}).map((_,i)=>{
+            const a = (Math.PI*2*i)/12 + (b.id%1);
+            const dist = 34 + (i%3)*14;
+            return <span key={i} style={{
+              position:"absolute",left:-3,top:-3,width:i%2?7:5,height:i%2?7:5,borderRadius:i%3?2:"50%",
+              background: i%4===0 ? "#ffd76b" : b.color,
+              "--dx":`${Math.cos(a)*dist}px`, "--dy":`${Math.sin(a)*dist}px`,
+              animation:"burstFly .75s cubic-bezier(.1,.6,.3,1) forwards",
+            }}/>;
+          })}
+          {b.label && <div style={{position:"absolute",left:0,top:-34,transform:"translateX(-50%)",
+            fontSize:17,fontWeight:900,color:"#fff",textShadow:`0 0 12px ${b.color}, 0 2px 6px rgba(0,0,0,0.6)`,
+            whiteSpace:"nowrap",animation:"floatUp 1s ease-out forwards"}}>{b.label}</div>}
+        </div>
+      ))}
 
       {/* TOAST */}
       {toast && (
@@ -1281,11 +1475,13 @@ export default function App() {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setConfirmBox(null)}>
           <div onClick={e=>e.stopPropagation()} style={{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",border:`2px solid ${BAD}`,borderRadius:26,padding:"24px 26px",maxWidth:340,width:"100%",boxShadow:`0 0 40px ${BAD}55`,animation:"popIn .25s ease"}}>
             <div style={{fontSize:12,letterSpacing:2,color:BAD,fontWeight:900,textAlign:"center",marginBottom:14}}>
-              {confirmBox.type==="reset" ? "⚠ RESET STATS" : "⚠ CONFIRM DELETE"}
+              {confirmBox.type==="reset" ? "⚠ RESET STATS" : confirmBox.type==="questReset" ? "⚠ RESET QUEST" : "⚠ CONFIRM DELETE"}
             </div>
             <div style={{fontSize:14.5,color:"#fff",textAlign:"center",marginBottom:10,lineHeight:1.5,fontWeight:600}}>
               {confirmBox.type==="reset"
                 ? <>Reset your champion's stats back to the start? Your quests, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
+                : confirmBox.type==="questReset"
+                ? <>Wipe the history and streak of <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span> and start counting fresh from today? Your character's stats are <span style={{color:GOOD,fontWeight:900}}>unchanged</span>.</>
                 : <>Are you sure you want to delete <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span>?</>}
             </div>
             {confirmBox.type==="cat" && confirmBox.taskCount > 0 && (
@@ -1299,10 +1495,12 @@ export default function App() {
                 onClick={()=>{
                   if (confirmBox.type==="cat") { deleteCat(confirmBox.id); setEditingCat(null); }
                   else if (confirmBox.type==="task") { deleteTask(confirmBox.id); toast$("QUEST DELETED"); }
+                  else if (confirmBox.type==="questReset") resetQuest(confirmBox.id);
+                  else if (confirmBox.type==="list") deleteList(confirmBox.id);
                   else if (confirmBox.type==="reset") resetStats();
                   setConfirmBox(null);
                 }}>
-                {confirmBox.type==="reset" ? "RESET" : "DELETE"}
+                {confirmBox.type==="reset"||confirmBox.type==="questReset" ? "RESET" : "DELETE"}
               </button>
             </div>
           </div>
@@ -1326,9 +1524,9 @@ export default function App() {
           <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:42,height:5,background:"rgba(255,255,255,0.3)",borderRadius:3,margin:"0 auto 16px"}}/>
             <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
-              <HoldRing color={detailCat?.color||"#fff"} checkColor="#fff" trackColor="rgba(255,255,255,0.25)" size={76}
+              <HoldRing color={detailColor} checkColor="#fff" trackColor="rgba(255,255,255,0.25)" size={76}
                 reps={getReps(detailTask,today)} target={detailTask.targetReps||1}
-                onComplete={()=>addRep(detailTask.id, today)}
+                onComplete={(x,y)=>{ addRep(detailTask.id, today); fireBurst(x, y, detailColor, S.showXP?`+${(detailTask.points/(detailTask.targetReps||1)).toFixed(3)}`:"✦ NICE"); }}
                 onShortTap={()=>toast$("HOLD TO COMPLETE")}/>
               <div style={{flex:1}}>
                 <div style={{fontSize:19,color:"#fff",fontWeight:900}}>{detailTask.name}</div>
@@ -1342,7 +1540,7 @@ export default function App() {
                     <div style={{fontSize:8,color:FAINT,fontWeight:800}}>STREAK</div>
                   </div>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:17,color:detailCat?.color||"#fff",fontWeight:900}}>{totalCompletions(detailTask)}</div>
+                    <div style={{fontSize:17,color:detailColor,fontWeight:900}}>{totalCompletions(detailTask)}</div>
                     <div style={{fontSize:8,color:FAINT,fontWeight:800}}>TOTAL</div>
                   </div>
                   <div style={{textAlign:"center"}}>
@@ -1355,8 +1553,24 @@ export default function App() {
             <div style={{fontSize:9,color:FAINT,fontWeight:800,textAlign:"center",marginBottom:14}}>
               HOLD THE RING TO COMPLETE · TAP A PAST DAY BELOW TO LOG IT
             </div>
+            {dStats && (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+                <div style={{background:"rgba(0,0,0,0.25)",borderRadius:16,padding:"11px 8px",textAlign:"center"}}>
+                  <div style={{fontSize:21,fontWeight:900,color:dStats.rate>=80?GOOD:dStats.rate>=50?"#ffc46b":BAD}}>{dStats.rate}%</div>
+                  <div style={{fontSize:8,color:FAINT,fontWeight:800,marginTop:2}}>COMPLETION RATE</div>
+                </div>
+                <div style={{background:"rgba(0,0,0,0.25)",borderRadius:16,padding:"11px 8px",textAlign:"center"}}>
+                  <div style={{fontSize:21,fontWeight:900,color:"#fff"}}>{dStats.done}<span style={{fontSize:12,color:FAINT}}>/{dStats.expected}</span></div>
+                  <div style={{fontSize:8,color:FAINT,fontWeight:800,marginTop:2}}>DONE / EXPECTED</div>
+                </div>
+                <div style={{background:"rgba(0,0,0,0.25)",borderRadius:16,padding:"11px 8px",textAlign:"center"}}>
+                  <div style={{fontSize:13,fontWeight:900,color:"#fff",marginTop:4}}>{dStats.start.slice(5).replace("-","/")}</div>
+                  <div style={{fontSize:8,color:FAINT,fontWeight:800,marginTop:5}}>ACTIVE SINCE</div>
+                </div>
+              </div>
+            )}
             <div style={{background:"rgba(0,0,0,0.22)",borderRadius:20,padding:"14px 15px",marginBottom:12}}>
-              <MonthCalendar task={detailTask} color={detailCat?.color||"#fff"}
+              <MonthCalendar task={detailTask} color={detailColor}
                 viewYear={calCursor.y} viewMonth={calCursor.m}
                 onPrev={()=>setCalCursor(c=>c.m===0?{y:c.y-1,m:11}:{y:c.y,m:c.m-1})}
                 onNext={()=>setCalCursor(c=>c.m===11?{y:c.y+1,m:0}:{y:c.y,m:c.m+1})}
@@ -1369,6 +1583,8 @@ export default function App() {
               )}
               <button style={{...C.btnSm,flex:1,padding:"13px"}}
                 onClick={()=>{ setEditTask({...detailTask}); setDetailTaskId(null); setView("editTask"); }}>✎ EDIT</button>
+              <button style={{...C.btnSm,flex:1,padding:"13px",color:"#ffc46b"}}
+                onClick={()=>setConfirmBox({type:"questReset",id:detailTask.id,name:detailTask.name})}>↺ RESET</button>
               <button style={{...C.btn,flex:1,padding:"13px"}} onClick={()=>setDetailTaskId(null)}>DONE</button>
             </div>
           </div>
@@ -1409,7 +1625,7 @@ export default function App() {
                   <span style={{fontSize:11,fontWeight:900,color:T.accent}}>LV {level.lvl}</span>
                   <span style={{fontSize:11,fontWeight:800,color:"#fff"}}>{getTitle(data, level.lvl)}</span>
                 </div>
-                <div style={{fontSize:78,fontWeight:900,color:"#fff",lineHeight:1,marginTop:4,textShadow:"0 4px 24px rgba(0,0,0,0.45)"}}>{rating}</div>
+                <div key={rating} style={{fontSize:78,fontWeight:900,color:"#fff",lineHeight:1,marginTop:4,textShadow:"0 4px 24px rgba(0,0,0,0.45)",animation:"popIn .45s ease"}}>{rating}</div>
                 <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>{tier.label}</div>
               </div>
               <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)"}}>
@@ -1502,22 +1718,91 @@ export default function App() {
               {[...todayTasks].sort((a,b)=>{
                 const ad=isCompletedOn(a,today)?1:0, bd=isCompletedOn(b,today)?1:0;
                 if (ad!==bd) return ad-bd;
-                return (b.importance??5)-(a.importance??5);
+                return (a.order??0)-(b.order??0);
               }).map(t=><QuestCard key={t.id} task={t}/>)}
             </div>
           </div>
         )}
 
-        {/* ══ QUESTS (all) ══ */}
-        {view==="tasks" && (
+        {/* ══ QUESTS (HabitKit-style grid) ══ */}
+        {view==="tasks" && (()=>{
+          const wk7 = last7Keys();
+          const todayK = dateKey();
+          const sortedTasks = [...data.tasks]
+            .filter(t=>t.catId && data.categories.find(c=>c.id===t.catId))
+            .sort((a,b)=>(a.order??0)-(b.order??0));
+          return (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
               <div style={C.sectionTitle}>All Quests</div>
               <button style={{...C.btn,padding:"10px 16px",fontSize:11.5}} onClick={()=>setView("addTask")}>+ NEW QUEST</button>
             </div>
-            {[...data.tasks].filter(t=>t.catId && data.categories.find(c=>c.id===t.catId))
-              .sort((a,b)=>(b.importance??5)-(a.importance??5))
-              .map(t=><QuestCard key={t.id} task={t} showEdit/>)}
+            {/* Day header (HabitKit style) */}
+            <div style={{display:"flex",alignItems:"flex-end",gap:10,marginBottom:8,padding:"0 13px"}}>
+              <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"6px 12px",fontSize:10.5,fontWeight:800,color:"#fff"}}>Last 7 days</div>
+              <div style={{flex:1}}/>
+              <div style={{display:"flex",gap:4}}>
+                {wk7.map(dk=>{
+                  const d = new Date(dk+"T00:00:00");
+                  const isT = dk===todayK;
+                  return (
+                    <div key={dk} style={{width:22,textAlign:"center"}}>
+                      <div style={{fontSize:8.5,fontWeight:isT?900:700,color:isT?"#fff":FAINT}}>{DAYS[d.getDay()].slice(0,2)}</div>
+                      <div style={{fontSize:8.5,fontWeight:isT?900:700,color:isT?"#fff":FAINT}}>{d.getDate()}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{width:20}}/>
+            </div>
+            {sortedTasks.map((task,idx)=>{
+              const cat = data.categories.find(c=>c.id===task.catId);
+              const color = task.color || cat?.color || T.accent;
+              const streak = getStreak(task);
+              return (
+                <div key={task.id}
+                  onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                  style={{...C.glass,padding:"11px 13px",marginBottom:9,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:38,height:38,borderRadius:12,flexShrink:0,background:`${color}33`,
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>
+                    {cat?.icon}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{task.name}</div>
+                    <div style={{fontSize:9,color:DIM,fontWeight:700,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                      {(task.days||[]).length===7 ? "Every day" : (task.days||[]).map(d=>DAYS[d].slice(0,2)).join(" ")}
+                      {streak>=2 && <span style={{color:"#ffc46b"}}> · 🔥{streak}</span>}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:4,flexShrink:0}}>
+                    {wk7.map(dk=>{
+                      const sched = isScheduledOn(task, dk);
+                      const done = isCompletedOn(task, dk);
+                      const partial = !done && getReps(task, dk) > 0;
+                      const isT = dk===todayK;
+                      return (
+                        <button key={dk}
+                          onClick={e=>{ e.stopPropagation(); if (dk<=todayK) toggleDay(task.id, dk); }}
+                          style={{
+                            width:22,height:22,borderRadius:7,padding:0,cursor:dk<=todayK?"pointer":"default",
+                            background: done ? color : partial ? `${color}55` : sched ? `${color}1e` : "rgba(255,255,255,0.06)",
+                            border: isT ? "1.5px solid rgba(255,255,255,0.9)" : "none",
+                            boxShadow: done ? `0 0 7px ${color}66` : "none",
+                          }}/>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
+                    <button onClick={e=>{e.stopPropagation(); moveTask(task.id,-1);}}
+                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:idx===0?FAINT:"#fff",fontSize:9,cursor:"pointer",padding:"2px 5px",fontWeight:900}}>▲</button>
+                    <button onClick={e=>{e.stopPropagation(); setEditTask({...task}); setView("editTask");}}
+                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:DIM,fontSize:9,cursor:"pointer",padding:"2px 5px"}}>✎</button>
+                    <button onClick={e=>{e.stopPropagation(); moveTask(task.id,1);}}
+                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:idx===sortedTasks.length-1?FAINT:"#fff",fontSize:9,cursor:"pointer",padding:"2px 5px",fontWeight:900}}>▼</button>
+                  </div>
+                </div>
+              );
+            })}
             {orphanTasks.length>0 && (
               <div style={{...C.glass,marginTop:12,border:"1.5px solid #ffc46b66"}}>
                 <div style={{...C.label,color:"#ffc46b"}}>NEEDS A CATEGORY</div>
@@ -1536,7 +1821,8 @@ export default function App() {
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* ══ ADD / EDIT QUEST ══ */}
         {(view==="addTask"||view==="editTask") && (()=> {
@@ -1555,6 +1841,18 @@ export default function App() {
                 <select style={C.select} value={t.catId||""} onChange={e=>set({catId:e.target.value})}>
                   {data.categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                 </select>
+                <div style={{...C.label,marginTop:16}}>QUEST COLOR</div>
+                <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
+                  <button onClick={()=>set({color:null})}
+                    style={{height:30,padding:"0 12px",borderRadius:15,border:!t.color?"2.5px solid #fff":"2px solid rgba(255,255,255,0.2)",
+                      background:"rgba(0,0,0,0.25)",color:"#fff",fontSize:10,fontWeight:900,cursor:"pointer",fontFamily:FONT}}>AUTO</button>
+                  {CAT_COLORS.map(col=>(
+                    <button key={col} onClick={()=>set({color:col})}
+                      style={{width:30,height:30,borderRadius:"50%",background:col,cursor:"pointer",
+                        border:t.color===col?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",padding:0}}/>
+                  ))}
+                </div>
+                <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>AUTO uses the category's color</div>
                 <div style={{marginTop:16}}>
                   <ImportanceBlock value={t.importance??5} onChange={v=>set({importance:v})}/>
                 </div>
@@ -1664,13 +1962,105 @@ export default function App() {
               ))}
             </div>
             <div style={{fontSize:9,color:DIM,textAlign:"center",marginTop:10,fontWeight:800}}>
-              DRAG A CARD SIDEWAYS TO MOVE IT BETWEEN COLUMNS
+              TAP A CARD TO MOVE IT FORWARD · DRAG SIDEWAYS FOR ANY COLUMN
             </div>
             {data.kanban.done.length>0 && (
               <button style={{...C.btnSm,width:"100%",marginTop:12,padding:"12px"}} onClick={boardClearDone}>
                 CLEAR COMPLETED ({data.kanban.done.length})
               </button>
             )}
+
+            {/* ── MY LISTS (Reminders-style; send any bullet to the board) ── */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"24px 2px 10px"}}>
+              <div style={C.sectionTitle}>My Lists</div>
+              {openListId && <button onClick={()=>setOpenListId(null)} style={{...C.btnSm,padding:"8px 14px"}}>‹ ALL LISTS</button>}
+            </div>
+            {!openListId ? (
+              <div style={C.glass}>
+                {data.lists.length===0 && (
+                  <div style={{fontSize:12,color:DIM,fontWeight:600,textAlign:"center",padding:"4px 0 14px",lineHeight:1.5}}>
+                    Make lists like the iPhone Reminders app.<br/>Open one to add bullets and sub-bullets, then send any of them straight to the board.
+                  </div>
+                )}
+                {data.lists.map(l=>{
+                  const count = l.items.reduce((s,it)=>s+1+(it.children||[]).length,0);
+                  return (
+                    <div key={l.id} onClick={()=>setOpenListId(l.id)}
+                      style={{display:"flex",alignItems:"center",gap:12,padding:"11px 2px",borderBottom:`1px solid ${LINE}`,cursor:"pointer"}}>
+                      <div style={{width:30,height:30,borderRadius:"50%",background:l.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff",flexShrink:0}}>{l.name.slice(0,1).toUpperCase()}</div>
+                      <div style={{flex:1,fontSize:14.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name}</div>
+                      <div style={{fontSize:13,color:FAINT,fontWeight:800}}>{count}</div>
+                      <div style={{fontSize:15,color:FAINT}}>›</div>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex",gap:8,marginTop:12}}>
+                  <input style={{...C.input,flex:1}} value={listInput} placeholder="New list..."
+                    onChange={e=>setListInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter")addList();}}/>
+                  <button style={{...C.btn,padding:"0 18px",fontSize:18}} onClick={addList}>+</button>
+                </div>
+              </div>
+            ) : (()=>{
+              const l = data.lists.find(x=>x.id===openListId);
+              if (!l) return null;
+              return (
+                <div style={C.glass}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                    <div style={{width:30,height:30,borderRadius:"50%",background:l.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff"}}>{l.name.slice(0,1).toUpperCase()}</div>
+                    <div style={{flex:1,fontSize:17,fontWeight:900,color:"#fff"}}>{l.name}</div>
+                    <button onClick={()=>setConfirmBox({type:"list",id:l.id,name:l.name})}
+                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:10,color:BAD,fontSize:12,cursor:"pointer",padding:"7px 10px",fontWeight:800}}>DELETE</button>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    <input style={{...C.input,flex:1}} value={itemInput} placeholder="Add a bullet..."
+                      onChange={e=>setItemInput(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter")addListItem(l.id,null);}}/>
+                    <button style={{...C.btn,padding:"0 16px",fontSize:17}} onClick={()=>addListItem(l.id,null)}>+</button>
+                  </div>
+                  <div style={{fontSize:8.5,color:FAINT,fontWeight:800,marginBottom:6,textAlign:"center"}}>➜ SENDS IT TO THE BOARD'S TO-DO · ⊕ ADDS A SUB-BULLET</div>
+                  {l.items.map(it=>(
+                    <div key={it.id}>
+                      <div style={{display:"flex",alignItems:"center",gap:9,padding:"7px 0"}}>
+                        <button onClick={()=>toggleListItem(l.id,it.id,null)}
+                          style={{width:21,height:21,borderRadius:"50%",border:`2px solid ${l.color}`,flexShrink:0,
+                            background:it.done?l.color:"transparent",cursor:"pointer",padding:0}}/>
+                        <div style={{flex:1,fontSize:13.5,fontWeight:600,color:it.done?FAINT:"#fff",
+                          textDecoration:it.done?"line-through":"none",wordBreak:"break-word"}}>{it.text}</div>
+                        <button onClick={()=>sendToBoard(l.id,it.id,null)} title="Send to board"
+                          style={{background:`${l.color}33`,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",padding:"5px 9px",fontWeight:900,flexShrink:0}}>➜</button>
+                        <button onClick={()=>{setSubFor(subFor===it.id?null:it.id); setSubInput("");}}
+                          style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:8,color:DIM,fontSize:12,cursor:"pointer",padding:"5px 8px",flexShrink:0}}>⊕</button>
+                        <button onClick={()=>deleteListItem(l.id,it.id,null)}
+                          style={{background:"none",border:"none",color:FAINT,fontSize:13,cursor:"pointer",padding:"4px 2px",flexShrink:0}}>✕</button>
+                      </div>
+                      {(it.children||[]).map(c=>(
+                        <div key={c.id} style={{display:"flex",alignItems:"center",gap:9,padding:"5px 0 5px 30px"}}>
+                          <button onClick={()=>toggleListItem(l.id,c.id,it.id)}
+                            style={{width:17,height:17,borderRadius:"50%",border:`2px solid ${l.color}aa`,flexShrink:0,
+                              background:c.done?`${l.color}aa`:"transparent",cursor:"pointer",padding:0}}/>
+                          <div style={{flex:1,fontSize:12.5,fontWeight:600,color:c.done?FAINT:DIM,
+                            textDecoration:c.done?"line-through":"none",wordBreak:"break-word"}}>{c.text}</div>
+                          <button onClick={()=>sendToBoard(l.id,c.id,it.id)}
+                            style={{background:`${l.color}26`,border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"4px 8px",fontWeight:900,flexShrink:0}}>➜</button>
+                          <button onClick={()=>deleteListItem(l.id,c.id,it.id)}
+                            style={{background:"none",border:"none",color:FAINT,fontSize:12,cursor:"pointer",padding:"3px 2px",flexShrink:0}}>✕</button>
+                        </div>
+                      ))}
+                      {subFor===it.id && (
+                        <div style={{display:"flex",gap:8,padding:"4px 0 8px 30px"}}>
+                          <input autoFocus style={{...C.input,flex:1,padding:"9px 12px",fontSize:13}} value={subInput} placeholder="Sub-bullet..."
+                            onChange={e=>setSubInput(e.target.value)}
+                            onKeyDown={e=>{if(e.key==="Enter")addListItem(l.id,it.id);}}/>
+                          <button style={{...C.btnSm,padding:"0 14px"}} onClick={()=>addListItem(l.id,it.id)}>✓</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {l.items.length===0 && <div style={{fontSize:12,color:FAINT,textAlign:"center",padding:"10px 0",fontWeight:600}}>No bullets yet.</div>}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1891,6 +2281,13 @@ export default function App() {
                   <button key={v} style={C.chip(S.statStyle===v)} onClick={()=>setSetting("statStyle",v)}>{l}</button>
                 ))}
               </div>
+              <div style={C.label}>QUEST CARD STYLE</div>
+              <div style={{display:"flex",gap:8,marginBottom:16}}>
+                {[["vivid","VIVID"],["tinted","TINTED"]].map(([v,l])=>(
+                  <button key={v} style={C.chip(S.cardStyle===v)} onClick={()=>setSetting("cardStyle",v)}>{l}</button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginTop:-8,marginBottom:16}}>Vivid = full color cards · Tinted = subtle glass with a touch of color</div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>Show XP numbers</div>
@@ -1924,6 +2321,18 @@ export default function App() {
               <div style={C.label}>YOUR CHAMPION</div>
               <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
                 <PixelCharacter level={level.lvl} character={cz} scale={6.5} idle/>
+              </div>
+              <div style={{...C.label,marginBottom:6}}>BODY</div>
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                {BODIES.map(([v,l])=>(
+                  <button key={v} style={C.chip(cz.body===v)} onClick={()=>setChar("body",v)}>{l.toUpperCase()}</button>
+                ))}
+              </div>
+              <div style={{...C.label,marginBottom:6}}>HAIRSTYLE</div>
+              <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+                {HAIRSTYLES.map(([v,l])=>(
+                  <button key={v} style={{...C.chip(cz.hairstyle===v),flex:"0 0 auto",padding:"10px 15px"}} onClick={()=>setChar("hairstyle",v)}>{l.toUpperCase()}</button>
+                ))}
               </div>
               {[["skin","SKIN",SKINS],["hair","HAIR",HAIRS],["shirt","SHIRT",SHIRTS],["pants","PANTS",PANTS]].map(([key,lab,opts])=>(
                 <div key={key} style={{marginBottom:12}}>
