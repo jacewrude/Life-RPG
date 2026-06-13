@@ -88,6 +88,8 @@ const DEFAULT_SETTINGS = {
   cardStyle: "vivid", // "vivid" | "tinted"
   casinoEnabled: true,
   shopEnabled: true,
+  questsEnabled: true,
+  statsEnabled: true,
   devMode: false,
 };
 const DEFAULT_EQUIPPED = {
@@ -733,23 +735,47 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
       els.push(<path key={k++} d={`M ${5*s} ${20*s} Q ${3*s} ${10*s} ${7*s} ${4*s} Q ${7*s} ${11*s} ${9*s} ${9*s} Q ${8*s} ${3*s} ${12*s} ${0.5*s} Q ${16*s} ${3*s} ${15*s} ${9*s} Q ${17*s} ${11*s} ${17*s} ${4*s} Q ${21*s} ${10*s} ${19*s} ${20*s} Z`} fill={auraColor} opacity="0.55" style={{animation: idle?"breathe 1.4s ease-in-out infinite":"none"}}/>);
       els.push(<path key={k++} d={`M ${7*s} ${20*s} Q ${6*s} ${12*s} ${9*s} ${7*s} Q ${10*s} ${12*s} ${12*s} ${9*s} Q ${14*s} ${12*s} ${15*s} ${7*s} Q ${18*s} ${12*s} ${17*s} ${20*s} Z`} fill={shade(auraColor,60)} opacity="0.6"/>);
     } else if (shape === "cloud") {
-      els.push(<circle key={k++} cx={8*s} cy={6*s} r={4*s} fill={auraColor} opacity="0.5"/>);
-      els.push(<circle key={k++} cx={14*s} cy={5*s} r={4.5*s} fill={auraColor} opacity="0.5"/>);
-      els.push(<circle key={k++} cx={17*s} cy={8*s} r={3.5*s} fill={auraColor} opacity="0.5"/>);
-      els.push(<circle key={k++} cx={6*s} cy={9*s} r={3*s} fill={auraColor} opacity="0.45"/>);
-      els.push(<circle key={k++} cx={12*s} cy={11*s} r={12*s} fill={auraColor} opacity="0.14"/>);
+      // Dark Omen — a brooding storm mass with a jagged underside + inner shadow + lightning glow
+      const dk = shade(auraColor,-45), mid = shade(auraColor,-10), lt = shade(auraColor,35);
+      els.push(<circle key={k++} cx={12*s} cy={9*s} r={12*s} fill={auraColor} opacity="0.13"/>);
+      // billowing top lobes
+      [[6.5,6,3.4],[10,4.3,4.2],[14.5,4.6,4],[17.6,7,3.2],[8.8,7.2,3.6],[13.2,7.4,3.8]].forEach(([x,y,r])=>
+        els.push(<circle key={k++} cx={x*s} cy={y*s} r={r*s} fill={mid} opacity="0.6"/>));
+      // dark underbelly
+      els.push(<path key={k++} d={`M ${4*s} ${9*s} Q ${6*s} ${12.5*s} ${8*s} ${9.5*s} Q ${10*s} ${13*s} ${12*s} ${9.5*s} Q ${14*s} ${13*s} ${16*s} ${9.5*s} Q ${18*s} ${12.5*s} ${20*s} ${9*s} L ${20*s} ${6*s} L ${4*s} ${6*s} Z`} fill={dk} opacity="0.7"/>);
+      // top highlight
+      els.push(<circle key={k++} cx={10*s} cy={4.3*s} r={2.2*s} fill={lt} opacity="0.5"/>);
+      // lightning flicker beneath
+      els.push(<polyline key={k++} points={`${12*s},${9*s} ${10.6*s},${13*s} ${12.4*s},${13*s} ${10.8*s},${17*s}`} fill="none" stroke={shade(auraColor,80)} strokeWidth={0.5*s} opacity="0.8" style={{animation: idle?"sparkle 1.1s ease-in-out infinite":"none"}}/>);
     } else if (shape === "electric") {
-      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11.5*s} fill={auraColor} opacity="0.12"/>);
-      [[2,3,5,9],[22,4,18,10],[3,16,7,12],[21,17,17,13],[12,0,12,4]].forEach((b,bi)=>
-        els.push(<polyline key={k++} points={`${b[0]*s},${b[1]*s} ${(b[0]+b[2])/2*s+ (bi%2?3:-3)},${(b[1]+b[3])/2*s} ${b[2]*s},${b[3]*s}`} fill="none" stroke={shade(auraColor,80)} strokeWidth={0.6*s} opacity="0.85"/>));
+      // Static Storm — radiating lightning bolts around an energized core
+      els.push(<circle key={k++} cx={12*s} cy={12*s} r={12*s} fill={auraColor} opacity="0.12"/>);
+      els.push(<circle key={k++} cx={12*s} cy={11*s} r={4*s} fill={auraColor} opacity="0.22" style={{animation: idle?"sparkle 0.9s ease-in-out infinite":"none"}}/>);
+      const bolt = (deg) => {
+        const a = deg*Math.PI/180, c=Math.cos(a), sn=Math.sin(a);
+        const px=(r)=>(12+r*c)*s, py=(r)=>(11+r*sn)*s;
+        // zig-zag bolt from r=4 out to r=12, kinked at the midpoint perpendicular
+        const perpc = Math.cos(a+Math.PI/2), perps = Math.sin(a+Math.PI/2);
+        const mx = (12 + 8*c + 1.6*perpc)*s, my = (11 + 8*sn + 1.6*perps)*s;
+        return `${px(4)},${py(4)} ${mx},${my} ${px(12)},${py(12)}`;
+      };
+      [25,90,160,210,300,340].forEach(deg=>
+        els.push(<polyline key={k++} points={bolt(deg)} fill="none" stroke={shade(auraColor,85)} strokeWidth={0.55*s} strokeLinejoin="round" opacity="0.9"/>));
     } else if (shape === "halo") {
       els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill={auraColor} opacity="0.16"/>);
       els.push(<ellipse key={k++} cx={12*s} cy={1.2*s} rx={4*s} ry={1.3*s} fill="none" stroke={auraColor} strokeWidth={0.8*s} style={{filter:`drop-shadow(0 0 ${0.6*s}px ${auraColor})`}}/>);
     } else if (shape === "orbit") {
-      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill={auraColor} opacity="0.12"/>);
-      [0,72,144,216,288].forEach((deg,di)=>{
-        const rad = deg*Math.PI/180;
-        els.push(<circle key={k++} cx={(12+9*Math.cos(rad))*s} cy={(11+9*Math.sin(rad))*s} r={0.9*s} fill={shade(auraColor,50)} opacity="0.9"/>);
+      // Orbiting Sparks — comet-like orbs with trailing tails on an elliptical ring
+      els.push(<circle key={k++} cx={12*s} cy={11*s} r={4.5*s} fill={auraColor} opacity="0.2"/>);
+      els.push(<ellipse key={k++} cx={12*s} cy={11*s} rx={10*s} ry={6*s} fill="none" stroke={auraColor} strokeWidth={0.3*s} opacity="0.4"/>);
+      [10,130,250].forEach((deg)=>{
+        const a=deg*Math.PI/180, ox=(12+10*Math.cos(a)), oy=(11+6*Math.sin(a));
+        // tail (a few fading dots back along the ellipse)
+        for (let t=1;t<=3;t++){
+          const at=(deg-t*14)*Math.PI/180;
+          els.push(<circle key={k++} cx={(12+10*Math.cos(at))*s} cy={(11+6*Math.sin(at))*s} r={(0.5-t*0.1)*s} fill={shade(auraColor,55)} opacity={0.5-t*0.12}/>);
+        }
+        els.push(<circle key={k++} cx={ox*s} cy={oy*s} r={1.2*s} fill={shade(auraColor,70)} opacity="0.95" style={{filter:`drop-shadow(0 0 ${0.5*s}px ${auraColor})`}}/>);
       });
     }
   }
@@ -1220,9 +1246,7 @@ function SlotMachine({ state, onSettle }) {
 function PrizeWheel({ state, onSettle }) {
   const n = WHEEL_SEGMENTS.length;
   const segAng = 360/n;
-  // Distinct color per segment by gem value (zeros are dark slate so they read as "no win")
-  const segColor = (g) => g>=25?"#f5b827" : g>=20?"#9b4dff" : g>=15?"#1d6ef2" : g>=10?"#10b981" : g>=5?"#e0115f" : "#3a3a52";
-  const colors = WHEEL_SEGMENTS.map(segColor);
+  const segColor = (g) => g>=25?"#f5b827" : g>=20?"#9b4dff" : g>=15?"#1d6ef2" : g>=10?"#10b981" : g>=5?"#e0115f" : "#2f2f47";
   const [rot, setRot] = useState(0);
   useEffect(()=>{
     if (state==="spinning") {
@@ -1232,30 +1256,45 @@ function PrizeWheel({ state, onSettle }) {
       requestAnimationFrame(()=>setRot(target));
       const t = setTimeout(()=>onSettle(gem, gemsToRarity(gem)), 2500);
       return ()=>clearTimeout(t);
-    } else if (state==="ready") {
-      setRot(0);
-    }
+    } else if (state==="ready") { setRot(0); }
   }, [state]);
-  // Build gradient with exact matching stops so there are no color seams
-  const stops = colors.map((c,i)=>`${c} ${(i*segAng).toFixed(3)}deg ${((i+1)*segAng).toFixed(3)}deg`).join(",");
+
+  const R = 100, cx = 105, cy = 105;
+  // Build each slice as an SVG path wedge. Slice i spans [i*segAng, (i+1)*segAng), measured from top (−90°).
+  const polar = (deg, r) => {
+    const a = (deg - 90) * Math.PI/180;
+    return [cx + r*Math.cos(a), cy + r*Math.sin(a)];
+  };
+  const slices = WHEEL_SEGMENTS.map((g,i)=>{
+    const a0 = i*segAng, a1 = (i+1)*segAng;
+    const [x0,y0] = polar(a0, R), [x1,y1] = polar(a1, R);
+    const large = segAng > 180 ? 1 : 0;
+    const d = `M ${cx} ${cy} L ${x0.toFixed(2)} ${y0.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z`;
+    const [lx,ly] = polar(a0 + segAng/2, R*0.66); // label position
+    return { d, color:segColor(g), g, lx, ly };
+  });
+
   return (
     <div style={{position:"relative",width:210,height:210,margin:"0 auto"}}>
-      <div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",zIndex:3,fontSize:26,color:"#fff",filter:"drop-shadow(0 2px 3px #000)"}}>▼</div>
-      <div style={{width:210,height:210,borderRadius:"50%",position:"relative",overflow:"hidden",
-        border:"6px solid rgba(255,255,255,0.25)",boxShadow:"0 8px 30px rgba(0,0,0,0.4)",
-        transition: state==="spinning" ? "transform 2.4s cubic-bezier(.12,.85,.2,1)" : "none",
-        transform:`rotate(${rot}deg)`,
-        background:`conic-gradient(from 0deg, ${stops})`}}>
-        {WHEEL_SEGMENTS.map((g,i)=>(
-          <div key={i} style={{position:"absolute",left:"50%",top:0,height:"50%",transformOrigin:"50% 100%",
-            transform:`rotate(${(i+0.5)*segAng}deg)`,display:"flex",justifyContent:"center",paddingTop:14,
-            fontSize:14,fontWeight:900,color:g===0?"#9a9ab8":"#1c1430",width:0,overflow:"visible"}}>
-            <span style={{display:"block",width:30,textAlign:"center",marginLeft:-15}}>{g===0?"✕":g}</span>
-          </div>
+      <div style={{position:"absolute",top:-6,left:"50%",transform:"translateX(-50%)",zIndex:3,fontSize:28,color:"#fff",filter:"drop-shadow(0 2px 3px #000)"}}>▼</div>
+      <svg width="210" height="210" viewBox="0 0 210 210"
+        style={{display:"block",borderRadius:"50%",boxShadow:"0 8px 30px rgba(0,0,0,0.45)",
+          transition: state==="spinning" ? "transform 2.4s cubic-bezier(.12,.85,.2,1)" : "none",
+          transform:`rotate(${rot}deg)`}}>
+        {slices.map((s,i)=>(
+          <g key={i}>
+            <path d={s.d} fill={s.color} stroke="rgba(0,0,0,0.28)" strokeWidth="1.5"/>
+            <text x={s.lx} y={s.ly} fill={s.g===0?"#8a8aa8":"#0d0a1a"} fontSize="19" fontWeight="900"
+              textAnchor="middle" dominantBaseline="central"
+              transform={`rotate(${(i+0.5)*segAng}, ${s.lx}, ${s.ly})`}>
+              {s.g===0 ? "✕" : s.g}
+            </text>
+          </g>
         ))}
-      </div>
-      <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",width:38,height:38,borderRadius:"50%",
-        background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 2px 8px #0007",zIndex:2}}>💎</div>
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="5"/>
+      </svg>
+      <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",width:42,height:42,borderRadius:"50%",
+        background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"0 2px 8px #0007",zIndex:2}}>💎</div>
     </div>
   );
 }
@@ -1363,10 +1402,10 @@ function ShopPreview({ item }) {
   if (item.type === "aura") {
     const c = item.color || "#f5b827";
     if (item.auraShape==="saiyan") return <div style={{width:30,height:30,borderRadius:"50%",background:`radial-gradient(circle,${c} 20%,transparent 72%)`,boxShadow:`0 0 12px ${c}`}}/>;
-    if (item.auraShape==="cloud") return <div style={{width:34,height:24,borderRadius:14,background:`radial-gradient(${c},transparent)`,filter:"blur(1px)"}}/>;
-    if (item.auraShape==="electric") return <div style={{width:30,height:30,borderRadius:"50%",border:`2px dashed ${c}`,boxShadow:`0 0 10px ${c}`}}/>;
+    if (item.auraShape==="cloud") return <div style={{width:36,height:26,borderRadius:"48% 48% 42% 42%",background:`radial-gradient(ellipse at 50% 30%, ${c}, ${c}99 55%, transparent)`,boxShadow:`inset 0 -4px 6px rgba(0,0,0,0.4), 0 0 8px ${c}66`}}/>;
+    if (item.auraShape==="electric") return <div style={{position:"relative",width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{position:"absolute",width:12,height:12,borderRadius:"50%",background:c,boxShadow:`0 0 8px ${c}`}}/>{[0,60,120,180,240,300].map(d=><div key={d} style={{position:"absolute",width:2,height:14,background:c,transformOrigin:"center",transform:`rotate(${d}deg) translateY(-9px)`,boxShadow:`0 0 4px ${c}`}}/>)}</div>;
     if (item.auraShape==="halo") return <div style={{width:30,height:30,borderRadius:"50%",border:`3px solid ${c}`,boxShadow:`0 0 10px ${c}`}}/>;
-    if (item.auraShape==="orbit") return <div style={{position:"relative",width:34,height:34}}>{[0,120,240].map(d=><div key={d} style={{position:"absolute",left:16,top:16,width:6,height:6,borderRadius:"50%",background:c,transform:`rotate(${d}deg) translateX(14px)`}}/>)}</div>;
+    if (item.auraShape==="orbit") return <div style={{position:"relative",width:34,height:24}}>{[20,140,260].map((d,i)=><div key={d} style={{position:"absolute",left:"50%",top:"50%",width:6,height:6,borderRadius:"50%",background:c,boxShadow:`0 0 6px ${c}`,transform:`translate(-50%,-50%) rotate(${d}deg) translateX(13px)`}}/>)}<div style={{position:"absolute",left:"50%",top:"50%",width:8,height:8,borderRadius:"50%",background:c,opacity:0.4,transform:"translate(-50%,-50%)"}}/></div>;
   }
   // cape — color swatch
   return <div style={{width:30,height:30,borderRadius:"50%",background:item.color||"#888",border:"2px solid rgba(255,255,255,0.3)"}}/>;
@@ -1427,9 +1466,6 @@ export default function App() {
       const { data: decayed, lost } = applyDecay(merged);
       const { wallet: decayedWallet, lostCoins } = applyCoinDecay(decayed);
       decayed.wallet = decayedWallet;
-      // TESTING: clear today's used spins so you can re-test the casino each load
-      decayed.wallet.spinsUsedByDay = { ...(decayed.wallet.spinsUsedByDay||{}) };
-      delete decayed.wallet.spinsUsedByDay[dateKey()];
       setData(decayed);
       setPomoLeft((decayed.pomodoro.workMin||25)*60);
       persistRaw(decayed);
@@ -1659,6 +1695,8 @@ export default function App() {
     if (key==="pomodoroEnabled" && !val && view==="focus") setView("dashboard");
     if (key==="casinoEnabled" && !val && view==="casino") setView("dashboard");
     if (key==="shopEnabled" && !val && view==="shop") setView("dashboard");
+    if (key==="questsEnabled" && !val && (view==="tasks"||view==="addTask"||view==="editTask")) setView("dashboard");
+    if (key==="statsEnabled" && !val && view==="stats") setView("dashboard");
     update(next);
   };
   const setChar = (key, val) =>
@@ -1835,6 +1873,20 @@ export default function App() {
       const n={...cur, wallet:w}; persistRaw(n); return n;
     });
     toast$("DEV: CURRENCY SET","#a855f7");
+  };
+  // Dev: force how many spins are AVAILABLE today, regardless of XP earned.
+  // available = unlocked - used, so used = unlocked - want (may go negative = bonus spins).
+  const devSetAvailableSpins = (avail) => {
+    setData(cur=>{
+      const dk = dateKey();
+      const unlocked = spinsUnlocked(cur, dk);
+      const want = Math.max(0, Math.min(4, Math.round(avail)));
+      const used = unlocked - want;
+      const map = {...(cur.wallet.spinsUsedByDay||{})}; map[dk] = used;
+      const n = {...cur, wallet:{...cur.wallet, spinsUsedByDay:map}};
+      persistRaw(n); return n;
+    });
+    toast$("DEV: SPINS SET","#a855f7");
   };
 
   // ── PERFECT-DAY JACKPOT ─────────────────────────────────────────────────────
@@ -2041,12 +2093,12 @@ export default function App() {
   };
   const navItems = [
     { v:"dashboard", icon:"⛰", label:"HOME" },
-    { v:"tasks",     icon:"⚔", label:"QUESTS" },
+    ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
     ...(S.kanbanEnabled   ? [{ v:"board", icon:"▦", label:"BOARD" }] : []),
     ...(S.pomodoroEnabled ? [{ v:"focus", icon:"◔", label:"FOCUS" }] : []),
     ...(S.casinoEnabled ? [{ v:"casino", icon:"🎰", label:"CASINO" }] : []),
     ...(S.shopEnabled ? [{ v:"shop", icon:"🛍", label:"SHOP" }] : []),
-    { v:"stats", icon:"◆", label:"STATS" },
+    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"◆", label:"STATS" }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks");
@@ -3121,6 +3173,21 @@ export default function App() {
             {/* PAGES */}
             <div style={C.glass}>
               <div style={C.label}>PAGES</div>
+              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>Home and More are always on. Toggle the rest to keep your bottom bar tidy.</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⚔ Quests</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your habit list & 7-day grid</div>
+                </div>
+                <Switch on={S.questsEnabled!==false} onToggle={()=>setSetting("questsEnabled",!(S.questsEnabled!==false))}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>◆ Stats</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Radar, bars & ascension path</div>
+                </div>
+                <Switch on={S.statsEnabled!==false} onToggle={()=>setSetting("statsEnabled",!(S.statsEnabled!==false))}/>
+              </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>▦ Board</div>
@@ -3296,7 +3363,19 @@ export default function App() {
                       if(!isNaN(v)) devSetCurrency(null, v); el.value="";
                     }}>SET 💎</button>
                   </div>
-                  <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:8}}>Tip: give yourself gems, then buy items to verify they wear correctly.</div>
+                  <div style={{height:1,background:LINE,margin:"12px 0"}}/>
+                  <div style={{fontSize:11,fontWeight:800,color:"#c084fc",marginBottom:7}}>AVAILABLE GAMES (max 4)</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <input id="devSpins" type="number" min="0" max="4" placeholder={`Now ${spinsAvail} available`} style={{...C.input,flex:1}}/>
+                    <button style={{...C.btnSm,padding:"0 16px"}} onClick={()=>{
+                      const el=document.getElementById("devSpins"); const v=parseInt(el.value);
+                      if(!isNaN(v)) devSetAvailableSpins(v); el.value="";
+                    }}>SET 🎰</button>
+                  </div>
+                  <button style={{...C.btnSm,width:"100%",padding:"11px",marginTop:8}} onClick={()=>devSetAvailableSpins(4)}>
+                    ↺ RESET TO 4 SPINS
+                  </button>
+                  <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:8}}>Tip: give yourself gems, then buy items to verify they wear correctly. Reset spins to keep testing the casino.</div>
                 </div>
               )}
             </div>
