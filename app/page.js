@@ -105,6 +105,120 @@ const PANTS  = ["#1f2937","#3f2d1d","#1e3a8a","#14532d","#4c1d95","#52525b","#7f
 const HAIRSTYLES = [["classic","Classic"],["long","Long"],["fro","Fro"],["braids","Braids"],["buzz","Buzz"],["bald","Bald"]];
 const BODIES = [["m","Champion"],["f","Champion (F)"]];
 const LIST_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#ec4899","#14b8a6","#f97316"];
+
+// ── REWARD ECONOMY ────────────────────────────────────────────────────────────
+// Coins are earned by completing quests (scaled to difficulty). They are BET in
+// the spin games, which pay out Gems. Gems are spent in the Shop. The ledger is
+// lifetime-earned minus lifetime-spent, clamped at zero, so unchecking can never
+// create a negative balance or an infinite farm (spent coins are gone for good).
+const COIN_PER_IMPORTANCE = 2;          // a 10-difficulty quest mints 20 coins
+const coinsForTask = (task) => Math.max(1, Math.round((task.importance ?? 5) * COIN_PER_IMPORTANCE));
+// Daily spins unlock as the day's earned XP crosses these fractions of the day's max.
+const SPIN_THRESHOLDS = [0.15, 0.40, 0.70, 1.0]; // up to 4 spins/day on a full day
+const SPIN_COST = 25;                    // coins per pull
+const PERFECT_DAY_BONUS_GEMS = 30;
+
+const DEFAULT_WALLET = {
+  coinsEarned: 0, coinsSpent: 0,
+  gemsEarned: 0, gemsSpent: 0,
+  spinsUsedByDay: {}, perfectClaimedByDay: {},
+  owned: [], equippedCosmetics: {}, pet: null,
+};
+
+// Rarity → gem payout weighting for the spin games
+const RARITY = {
+  common:   { label:"COMMON",    color:"#9ca3af", gems:[3,6] },
+  uncommon: { label:"UNCOMMON",  color:"#4ade80", gems:[7,14] },
+  rare:     { label:"RARE",      color:"#38bdf8", gems:[16,30] },
+  epic:     { label:"EPIC",      color:"#a855f7", gems:[34,60] },
+  legendary:{ label:"LEGENDARY", color:"#f59e0b", gems:[80,150] },
+};
+
+// ── SHOP CATALOG (60+ cosmetics + 10 pets) ────────────────────────────────────
+// gate: optional unlock requirement beyond gems (streak = best current streak of ANY quest day at 100%)
+const SHOP = [
+  // ── PETS (idle companion beside your champion) ──
+  { id:"pet_slime",   type:"pet", name:"Pet Slime",        rarity:"common",    gems:40,  emoji:"🟢" },
+  { id:"pet_cat",     type:"pet", name:"Shadow Cat",       rarity:"common",    gems:55,  emoji:"🐈‍⬛" },
+  { id:"pet_dog",     type:"pet", name:"Loyal Hound",      rarity:"uncommon",  gems:80,  emoji:"🐕" },
+  { id:"pet_owl",     type:"pet", name:"Wise Owl",         rarity:"uncommon",  gems:95,  emoji:"🦉" },
+  { id:"pet_fox",     type:"pet", name:"Ember Fox",        rarity:"rare",      gems:140, emoji:"🦊", gate:{streak:3} },
+  { id:"pet_wolf",    type:"pet", name:"Dire Wolf",        rarity:"rare",      gems:175, emoji:"🐺", gate:{streak:3} },
+  { id:"pet_eagle",   type:"pet", name:"Storm Eagle",      rarity:"epic",      gems:240, emoji:"🦅", gate:{streak:5} },
+  { id:"pet_drake",   type:"pet", name:"Baby Drake",       rarity:"epic",      gems:300, emoji:"🐲", gate:{streak:7} },
+  { id:"pet_phoenix", type:"pet", name:"Phoenix",          rarity:"legendary", gems:500, emoji:"🔥", gate:{streak:10} },
+  { id:"pet_dragon",  type:"pet", name:"Ancient Dragon",   rarity:"legendary", gems:750, emoji:"🐉", gate:{streak:14} },
+
+  // ── AURAS (glow ring behind the champion) ──
+  { id:"aura_white",  type:"aura", name:"Soft Glow",       rarity:"common",    gems:35,  color:"#ffffff" },
+  { id:"aura_green",  type:"aura", name:"Verdant Aura",    rarity:"common",    gems:45,  color:"#4ade80" },
+  { id:"aura_blue",   type:"aura", name:"Frost Aura",      rarity:"uncommon",  gems:70,  color:"#38bdf8" },
+  { id:"aura_purple", type:"aura", name:"Arcane Aura",     rarity:"uncommon",  gems:90,  color:"#a855f7" },
+  { id:"aura_gold",   type:"aura", name:"Golden Aura",     rarity:"rare",      gems:150, color:"#f59e0b", gate:{streak:3} },
+  { id:"aura_pink",   type:"aura", name:"Radiant Bloom",   rarity:"rare",      gems:165, color:"#ec4899", gate:{streak:3} },
+  { id:"aura_rainbow",type:"aura", name:"Prism Aura",      rarity:"epic",      gems:280, color:"rainbow", gate:{streak:5} },
+  { id:"aura_inferno",type:"aura", name:"Inferno Aura",    rarity:"legendary", gems:520, color:"#ef4444", gate:{streak:10} },
+
+  // ── CAPES (behind the body) ──
+  { id:"cape_brown",  type:"cape", name:"Traveler's Cloak",rarity:"common",    gems:30,  color:"#6b3a1f" },
+  { id:"cape_red",    type:"cape", name:"Crimson Cape",    rarity:"common",    gems:45,  color:"#b91c1c" },
+  { id:"cape_blue",   type:"cape", name:"Royal Cape",      rarity:"uncommon",  gems:75,  color:"#1d4ed8" },
+  { id:"cape_green",  type:"cape", name:"Ranger Cloak",    rarity:"uncommon",  gems:75,  color:"#15803d" },
+  { id:"cape_purple", type:"cape", name:"Sorcerer Cape",   rarity:"rare",      gems:140, color:"#7e22ce", gate:{streak:3} },
+  { id:"cape_gold",   type:"cape", name:"Gilded Cape",     rarity:"epic",      gems:260, color:"#f59e0b", gate:{streak:5} },
+  { id:"cape_star",   type:"cape", name:"Starfall Cape",   rarity:"legendary", gems:480, color:"#312e81", gate:{streak:10} },
+
+  // ── WEAPON SKINS (dye the sword) ──
+  { id:"wpn_iron",    type:"weapon", name:"Polished Iron", rarity:"common",    gems:35,  color:"#cbd5e1" },
+  { id:"wpn_bronze",  type:"weapon", name:"Bronze Edge",   rarity:"common",    gems:40,  color:"#b45309" },
+  { id:"wpn_emerald", type:"weapon", name:"Emerald Blade", rarity:"uncommon",  gems:80,  color:"#10b981" },
+  { id:"wpn_sapphire",type:"weapon", name:"Sapphire Blade",rarity:"uncommon",  gems:80,  color:"#2563eb" },
+  { id:"wpn_ruby",    type:"weapon", name:"Ruby Edge",     rarity:"rare",      gems:150, color:"#dc2626", gate:{streak:3} },
+  { id:"wpn_amethyst",type:"weapon", name:"Amethyst Edge", rarity:"rare",      gems:160, color:"#9333ea", gate:{streak:3} },
+  { id:"wpn_flame",   type:"weapon", name:"Flameforged",   rarity:"epic",      gems:300, color:"#f97316", gate:{streak:6} },
+  { id:"wpn_void",    type:"weapon", name:"Voidsteel",     rarity:"legendary", gems:560, color:"#1e1b4b", gate:{streak:12} },
+
+  // ── GEAR DYES (recolor the armor/shirt) ──
+  { id:"dye_crimson", type:"dye", name:"Crimson Dye",      rarity:"common",    gems:25,  color:"#b91c1c" },
+  { id:"dye_navy",    type:"dye", name:"Navy Dye",         rarity:"common",    gems:25,  color:"#1e3a8a" },
+  { id:"dye_forest",  type:"dye", name:"Forest Dye",       rarity:"common",    gems:25,  color:"#14532d" },
+  { id:"dye_violet",  type:"dye", name:"Violet Dye",       rarity:"uncommon",  gems:55,  color:"#6b21a8" },
+  { id:"dye_teal",    type:"dye", name:"Teal Dye",         rarity:"uncommon",  gems:55,  color:"#0e7490" },
+  { id:"dye_rose",    type:"dye", name:"Rose Dye",         rarity:"uncommon",  gems:60,  color:"#be185d" },
+  { id:"dye_gold",    type:"dye", name:"Gold Dye",         rarity:"rare",      gems:130, color:"#ca8a04", gate:{streak:3} },
+  { id:"dye_obsidian",type:"dye", name:"Obsidian Dye",     rarity:"epic",      gems:240, color:"#18181b", gate:{streak:5} },
+
+  // ── EFFECTS (ambient particle around the hero) ──
+  { id:"fx_sparkle",  type:"effect", name:"Sparkles",      rarity:"uncommon",  gems:70,  emoji:"✨" },
+  { id:"fx_petals",   type:"effect", name:"Falling Petals",rarity:"uncommon",  gems:85,  emoji:"🌸" },
+  { id:"fx_embers",   type:"effect", name:"Rising Embers", rarity:"rare",      gems:150, emoji:"🔥", gate:{streak:3} },
+  { id:"fx_snow",     type:"effect", name:"Snowfall",      rarity:"rare",      gems:150, emoji:"❄️" , gate:{streak:3} },
+  { id:"fx_stars",    type:"effect", name:"Starlight",     rarity:"epic",      gems:270, emoji:"⭐", gate:{streak:5} },
+  { id:"fx_lightning",type:"effect", name:"Static Charge", rarity:"epic",      gems:290, emoji:"⚡", gate:{streak:6} },
+  { id:"fx_galaxy",   type:"effect", name:"Galaxy Swirl",  rarity:"legendary", gems:540, emoji:"🌌", gate:{streak:12} },
+
+  // ── TITLES (shown under the champion) ──
+  { id:"ttl_rising",  type:"title", name:"the Rising",     rarity:"common",    gems:30 },
+  { id:"ttl_steady",  type:"title", name:"the Steadfast",  rarity:"common",    gems:40 },
+  { id:"ttl_relent",  type:"title", name:"the Relentless", rarity:"uncommon",  gems:75 },
+  { id:"ttl_unbroken",type:"title", name:"the Unbroken",   rarity:"uncommon",  gems:90 },
+  { id:"ttl_ascend",  type:"title", name:"the Ascendant",  rarity:"rare",      gems:160, gate:{streak:3} },
+  { id:"ttl_eternal", type:"title", name:"the Eternal",    rarity:"epic",      gems:300, gate:{streak:7} },
+  { id:"ttl_god",     type:"title", name:"the Godlike",    rarity:"legendary", gems:600, gate:{streak:14} },
+
+  // ── CROWNS / HALOS (above the head) ──
+  { id:"halo_silver", type:"halo", name:"Silver Halo",     rarity:"rare",      gems:140, color:"#e5e7eb", gate:{streak:3} },
+  { id:"halo_gold",   type:"halo", name:"Gold Halo",       rarity:"epic",      gems:260, color:"#fcd34d", gate:{streak:5} },
+  { id:"halo_holy",   type:"halo", name:"Divine Halo",     rarity:"legendary", gems:500, color:"#fffbeb", gate:{streak:10} },
+
+  // ── BADGES (floating icon companion) ──
+  { id:"bdg_star",    type:"badge", name:"Star Badge",     rarity:"common",    gems:35,  emoji:"⭐" },
+  { id:"bdg_skull",   type:"badge", name:"Skull Badge",    rarity:"uncommon",  gems:65,  emoji:"💀" },
+  { id:"bdg_crown",   type:"badge", name:"Crown Badge",    rarity:"rare",      gems:150, emoji:"👑", gate:{streak:3} },
+  { id:"bdg_diamond", type:"badge", name:"Diamond Badge",  rarity:"epic",      gems:280, emoji:"💎", gate:{streak:6} },
+];
+const SHOP_TYPES = [["all","ALL"],["pet","PETS"],["aura","AURAS"],["cape","CAPES"],["weapon","WEAPONS"],["dye","DYES"],["effect","EFFECTS"],["title","TITLES"],["halo","HALOS"],["badge","BADGES"]];
+const SPIN_GAMES = ["slot","wheel","blackjack"];
 const CAT_COLORS = ["#f59e0b","#ef4444","#38bdf8","#34d399","#a78bfa","#f472b6","#fb923c","#22c55e","#e879f9","#fbbf24"];
 
 const GEAR = [
@@ -202,6 +316,7 @@ const INIT = {
   kanban: { todo:[], doing:[], done:[] },
   lists: [],
   pomodoro: { ...DEFAULT_POMO },
+  wallet: { ...DEFAULT_WALLET },
   lastDecayDate: null,
 };
 
@@ -304,8 +419,10 @@ function applyDecay(data) {
   let cats = data.categories.map(c=>({...c}));
   let lost = 0;
   try {
+    // Process every elapsed day from the anchor up to and INCLUDING yesterday.
+    // (The old version started at anchor+1 and ran while < today, which skipped
+    //  the anchor day's own missed quests entirely — so rank never dropped.)
     const cursor = new Date(anchor + "T00:00:00");
-    cursor.setDate(cursor.getDate()+1);
     const todayD = new Date(today + "T00:00:00");
     let safety = 0;
     while (cursor < todayD && safety < 400) {
@@ -354,8 +471,80 @@ function migrate(d) {
     kanban: (d.kanban && Array.isArray(d.kanban.todo)) ? d.kanban : { todo:[], doing:[], done:[] },
     lists: Array.isArray(d.lists) ? d.lists : [],
     pomodoro: { ...DEFAULT_POMO, ...(d.pomodoro||{}), sessionsByDay: { ...((d.pomodoro||{}).sessionsByDay||{}) } },
+    wallet: { ...DEFAULT_WALLET, ...(d.wallet||{}),
+      spinsUsedByDay: { ...((d.wallet||{}).spinsUsedByDay||{}) },
+      perfectClaimedByDay: { ...((d.wallet||{}).perfectClaimedByDay||{}) },
+      owned: Array.isArray((d.wallet||{}).owned) ? d.wallet.owned : [],
+      equippedCosmetics: { ...((d.wallet||{}).equippedCosmetics||{}) },
+    },
     lastDecayDate: d.lastDecayDate || dateKey(),
   };
+}
+
+// Spendable balances (never negative; spent currency is gone for good)
+const coinBalance = (w) => Math.max(0, (w.coinsEarned||0) - (w.coinsSpent||0));
+const gemBalance  = (w) => Math.max(0, (w.gemsEarned||0) - (w.gemsSpent||0));
+
+// XP earned today (sum of points actually banked from today's completions)
+function earnedXpToday(data, dk) {
+  let xp = 0;
+  data.tasks.forEach(t=>{
+    if (!t.catId) return;
+    if (!isScheduledOn(t, dk)) return;
+    const target = t.targetReps||1;
+    const reps = getReps(t, dk);
+    xp += calcEarnedPoints(t.points, target, reps);
+  });
+  return xp;
+}
+// Max XP attainable today (everything to target)
+function maxXpToday(data, dk) {
+  let xp = 0;
+  data.tasks.forEach(t=>{
+    if (!t.catId) return;
+    if (!isScheduledOn(t, dk)) return;
+    const target = t.targetReps||1;
+    xp += calcEarnedPoints(t.points, target, target);
+  });
+  return xp;
+}
+// How many spins the day's progress has UNLOCKED (vs used)
+function spinsUnlocked(data, dk) {
+  const max = maxXpToday(data, dk);
+  if (max <= 0) return 0;
+  const frac = earnedXpToday(data, dk) / max;
+  return SPIN_THRESHOLDS.filter(t => frac >= t - 0.0001).length;
+}
+// Best run of consecutive 100%-complete days ending today (drives shop gates)
+function bestPerfectStreak(data) {
+  const cur = new Date();
+  let streak = 0;
+  for (let i=0;i<400;i++){
+    const dk = dateKey(cur);
+    const sched = data.tasks.filter(t=>t.catId && isScheduledOn(t,dk));
+    if (i===0 && sched.length===0) { cur.setDate(cur.getDate()-1); continue; }
+    if (sched.length===0) { cur.setDate(cur.getDate()-1); continue; }
+    const allDone = sched.every(t=>isCompletedOn(t,dk));
+    if (allDone) streak++;
+    else {
+      if (i===0) { cur.setDate(cur.getDate()-1); continue; } // today not finished yet — don't break
+      break;
+    }
+    cur.setDate(cur.getDate()-1);
+  }
+  return streak;
+}
+function rollRarity() {
+  const r = Math.random();
+  if (r < 0.50) return "common";
+  if (r < 0.78) return "uncommon";
+  if (r < 0.93) return "rare";
+  if (r < 0.985) return "epic";
+  return "legendary";
+}
+function gemsForRarity(rarity) {
+  const [lo,hi] = RARITY[rarity].gems;
+  return Math.floor(lo + Math.random()*(hi-lo+1));
 }
 
 // Per-quest stats: completion rate since the quest became active
@@ -398,7 +587,7 @@ function shade(hex, p) {
 }
 
 // ── PIXEL CHARACTER (soft rounded style, customizable, gear by level) ─────────
-function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=false }) {
+function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=false, cosmetics=null, pet=null }) {
   const cz = character || DEFAULT_CHARACTER;
   const eq = previewAllGear ? DEFAULT_EQUIPPED : (cz.equipped || DEFAULT_EQUIPPED);
   const s = scale;
@@ -412,6 +601,27 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
 
   const skin = cz.skin, hair = cz.hair;
   const shirt = cz.shirt, pants = cz.pants;
+
+  // ── Purchased cosmetics (from the shop) ──
+  const cos = cosmetics || {};
+  const cosItem = (type) => SHOP.find(it=>it.id===cos[type]);
+  const auraC = cosItem("aura"), capeC = cosItem("cape"), haloC = cosItem("halo"),
+        weaponC = cosItem("weapon"), dyeC = cosItem("dye"), badgeC = cosItem("badge");
+
+  // Cosmetic aura (drawn behind everything)
+  if (auraC) {
+    if (auraC.color === "rainbow") {
+      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill="url(#cosRainbow)" />);
+    } else {
+      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill={auraC.color} opacity="0.28" />);
+      els.push(<circle key={k++} cx={12*s} cy={12*s} r={8*s} fill={auraC.color} opacity="0.16" />);
+    }
+  }
+  // Cape (behind the torso)
+  if (capeC) {
+    R(8.2,10.4,7.6,9.2,capeC.color,1.4);
+    R(8.2,10.4,7.6,1.2,shade(capeC.color,28),0.8);
+  }
 
   if (has("aura",11)) {
     els.push(<circle key={k++} cx={12*s} cy={11*s} r={10.5*s} fill="url(#auraGrad)" />);
@@ -435,7 +645,8 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
 
   const fem = cz.body === "f";
   const steel = has("armor",7), leather = !steel && has("armor",5);
-  const torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
+  let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
+  if (dyeC && !steel && !leather && level>=1) torsoColor = dyeC.color;
   if (fem) {
     R(9.1,10.8,5.8,5.4,torsoColor,1.1);
     R(8.8,14.6,6.4,1.6,torsoColor,0.8);
@@ -524,23 +735,39 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   }
   if (has("sword",3)) {
     const ench = level >= 10, iron = level >= 4;
+    const wc = weaponC ? weaponC.color : null;
     if (ench) {
-      R(16.4,6.2,0.6,8.0,"#cfe7ff",0.3);
-      R(17.0,6.2,0.7,8.0,"#9fd0ff",0.3);
+      R(16.4,6.2,0.6,8.0, wc||"#cfe7ff",0.3);
+      R(17.0,6.2,0.7,8.0, wc?shade(wc,30):"#9fd0ff",0.3);
       R(16.0,13.9,2.8,0.9,"#7c5cd6",0.4);
       R(16.9,14.7,0.9,1.9,"#2a1f4a",0.4);
-      els.push(<circle key={k++} cx={17.3*s} cy={9.6*s} r={2.6*s} fill="#9fd0ff" opacity="0.16"/>);
+      els.push(<circle key={k++} cx={17.3*s} cy={9.6*s} r={2.6*s} fill={wc||"#9fd0ff"} opacity="0.16"/>);
     } else if (iron) {
-      R(16.5,7.6,0.6,6.4,"#eef2f6",0.3);
-      R(17.1,7.6,0.7,6.4,"#c4cfdb",0.3);
+      R(16.5,7.6,0.6,6.4, wc||"#eef2f6",0.3);
+      R(17.1,7.6,0.7,6.4, wc?shade(wc,28):"#c4cfdb",0.3);
       R(16.0,13.9,2.8,0.9,"#5b6573",0.4);
       R(16.9,14.7,0.9,1.7,"#3f2d1d",0.4);
       R(16.8,16.3,1.1,0.9,"#caa05a",0.5);
     } else {
-      R(16.7,8.8,1.0,5.2,"#b07d2e",0.4);
+      R(16.7,8.8,1.0,5.2, wc||"#b07d2e",0.4);
       R(16.0,13.9,2.6,0.9,"#5a3a1a",0.4);
       R(16.9,14.7,0.9,1.7,"#2e2017",0.4);
     }
+  }
+
+  // Cosmetic halo (above head)
+  if (haloC) {
+    els.push(<ellipse key={k++} cx={12*s} cy={1.4*s} rx={3.4*s} ry={1.1*s} fill="none" stroke={haloC.color} strokeWidth={0.7*s} opacity="0.95"/>);
+    els.push(<ellipse key={k++} cx={12*s} cy={1.4*s} rx={3.4*s} ry={1.1*s} fill="none" stroke={haloC.color} strokeWidth={0.3*s} opacity="0.5" style={{filter:`drop-shadow(0 0 ${0.5*s}px ${haloC.color})`}}/>);
+  }
+  // Cosmetic badge (floats top-left)
+  if (badgeC) {
+    els.push(<text key={k++} x={4.5*s} y={5*s} fontSize={3.4*s} textAnchor="middle">{badgeC.emoji}</text>);
+  }
+  // Pet companion (idle beside the champion)
+  if (pet) {
+    const petItem = SHOP.find(it=>it.id===pet);
+    if (petItem) els.push(<text key={k++} x={20.5*s} y={20.5*s} fontSize={4.2*s} textAnchor="middle">{petItem.emoji}</text>);
   }
 
   return (
@@ -551,6 +778,12 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
           <stop offset="0%" stopColor="#fde68a" stopOpacity="0.55"/>
           <stop offset="70%" stopColor="#fbbf24" stopOpacity="0.12"/>
           <stop offset="100%" stopColor="#fbbf24" stopOpacity="0"/>
+        </radialGradient>
+        <radialGradient id="cosRainbow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#f472b6" stopOpacity="0.4"/>
+          <stop offset="40%" stopColor="#a855f7" stopOpacity="0.3"/>
+          <stop offset="70%" stopColor="#38bdf8" stopOpacity="0.22"/>
+          <stop offset="100%" stopColor="#4ade80" stopOpacity="0"/>
         </radialGradient>
       </defs>
       {els}
@@ -805,6 +1038,90 @@ function Scene({ T, height=150 }) {
 
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SPIN GAME COMPONENTS
+// ══════════════════════════════════════════════════════════════════════════════
+const SLOT_SYMBOLS = ["🍒","🔔","💎","⭐","7️⃣","🪙","👑","🍀"];
+function SlotMachine({ state, result }) {
+  const reels = [0,1,2];
+  return (
+    <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+      {reels.map(ri=>{
+        const spinning = state==="spinning";
+        const finalSym = result ? SLOT_SYMBOLS[(ri + (result.gems||0)) % SLOT_SYMBOLS.length] : "💎";
+        return (
+          <div key={ri} style={{width:74,height:90,borderRadius:16,overflow:"hidden",position:"relative",
+            background:"rgba(0,0,0,0.4)",border:"2px solid rgba(255,255,255,0.18)"}}>
+            {spinning ? (
+              <div style={{position:"absolute",left:0,right:0,top:0,display:"flex",flexDirection:"column",alignItems:"center",
+                animation:`reelSpin ${0.5+ri*0.25}s linear infinite`}}>
+                {Array.from({length:24}).map((_,i)=>(
+                  <div key={i} style={{fontSize:40,height:50,display:"flex",alignItems:"center"}}>{SLOT_SYMBOLS[i%SLOT_SYMBOLS.length]}</div>
+                ))}
+              </div>
+            ) : (
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:42,animation: state==="done"?"popIn .4s ease":"none"}}>
+                {state==="done" ? finalSym : "❔"}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PrizeWheel({ state, result }) {
+  const segs = ["common","uncommon","rare","common","epic","uncommon","rare","legendary"];
+  const colors = segs.map(s=>RARITY[s].color);
+  const spin = state==="spinning" ? 1440 + Math.random()*720 : state==="done" ? 1440 : 0;
+  const n = segs.length;
+  return (
+    <div style={{position:"relative",width:200,height:200,margin:"0 auto"}}>
+      <div style={{position:"absolute",top:-6,left:"50%",transform:"translateX(-50%)",zIndex:3,fontSize:24}}>▼</div>
+      <div style={{width:200,height:200,borderRadius:"50%",position:"relative",overflow:"hidden",
+        border:"5px solid rgba(255,255,255,0.25)",
+        transition: state==="spinning" ? "transform 2.3s cubic-bezier(.15,.9,.25,1)" : "none",
+        transform:`rotate(${spin}deg)`,
+        background:`conic-gradient(${colors.map((c,i)=>`${c} ${i*(360/n)}deg ${(i+1)*(360/n)}deg`).join(",")})`}}>
+        {segs.map((s,i)=>(
+          <div key={i} style={{position:"absolute",left:"50%",top:"50%",transformOrigin:"0 0",
+            transform:`rotate(${(i+0.5)*(360/n)}deg) translate(48px,-6px)`,fontSize:11,fontWeight:900,color:"#000"}}>
+            {RARITY[s].gems[1]}
+          </div>
+        ))}
+      </div>
+      <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",width:34,height:34,borderRadius:"50%",
+        background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>💎</div>
+    </div>
+  );
+}
+
+function Blackjack({ state, result }) {
+  // Simplified: deal two hands; win shown by result rarity
+  const win = state==="done";
+  const playerCards = win ? ["A♠","K♥"] : state==="spinning" ? ["?","?"] : ["—","—"];
+  const dealerCards = win ? ["10♣","8♦"] : state==="spinning" ? ["?","?"] : ["—","—"];
+  const Card = ({c,i,red}) => (
+    <div style={{width:46,height:64,borderRadius:9,background:"#fff",color:red?"#dc2626":"#1c1430",
+      display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,
+      boxShadow:"0 3px 8px rgba(0,0,0,0.4)",animation: win?`cardDeal .4s ${i*0.12}s ease both`:"none"}}>{c}</div>
+  );
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
+      <div>
+        <div style={{fontSize:9,fontWeight:800,color:FAINT,marginBottom:5,letterSpacing:1}}>DEALER</div>
+        <div style={{display:"flex",gap:7}}>{dealerCards.map((c,i)=><Card key={i} c={c} i={i} red={c.includes("♥")||c.includes("♦")}/>)}</div>
+      </div>
+      <div>
+        <div style={{fontSize:9,fontWeight:800,color:"#4ade80",marginBottom:5,letterSpacing:1}}>YOU{win?" · BLACKJACK!":""}</div>
+        <div style={{display:"flex",gap:7}}>{playerCards.map((c,i)=><Card key={i} c={c} i={i} red={c.includes("♥")||c.includes("♦")}/>)}</div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -831,6 +1148,12 @@ export default function App() {
   const [itemInput, setItemInput] = useState("");
   const [subFor, setSubFor] = useState(null);
   const [subInput, setSubInput] = useState("");
+  const [spinGame, setSpinGame] = useState("slot");
+  const [spinState, setSpinState] = useState("ready"); // ready | spinning | done
+  const [spinResult, setSpinResult] = useState(null);
+  const [confetti, setConfetti] = useState([]);
+  const [perfectShow, setPerfectShow] = useState(false);
+  const [shopFilter, setShopFilter] = useState("all");
   // Pomodoro client state
   const [pomoPhase, setPomoPhase] = useState("work");
   const [pomoLeft, setPomoLeft] = useState(25*60);
@@ -968,6 +1291,11 @@ export default function App() {
     update({...data, categories:cats, tasks});
     const cat = data.categories.find(c=>c.id===task.catId);
     const justDone = prevReps < target && newReps >= target;
+    // Mint coins when the quest crosses into completion (scaled to difficulty)
+    if (justDone) {
+      const coins = coinsForTask(task);
+      setData(d=>{ const n={...d, wallet:{...d.wallet, coinsEarned:(d.wallet.coinsEarned||0)+coins}}; persistRaw(n); return n; });
+    }
     const showXP = data.settings.showXP;
     if (justDone) toast$(showXP ? `✓ ${task.name}  +${(delta+refund).toFixed(3)}` : `✓ ${task.name}`, cat?.color || "#34d399");
     else if (newReps > target) toast$(showXP ? `BONUS +${delta.toFixed(3)}` : "BONUS!", "#f59e0b");
@@ -991,6 +1319,13 @@ export default function App() {
       return {...t, completions: comps};
     });
     update({...data, categories:cats, tasks});
+    // If the quest was complete, remove the coins it minted from lifetime-earned.
+    // Balance is clamped at 0, so if those coins were already spent in the slot,
+    // the balance simply stays put — no negative, no infinite farm.
+    if (reps >= target) {
+      const coins = coinsForTask(task);
+      setData(d=>{ const n={...d, wallet:{...d.wallet, coinsEarned: Math.max(d.wallet.coinsSpent||0, (d.wallet.coinsEarned||0)-coins)}}; persistRaw(n); return n; });
+    }
     toast$("CLEARED", "#ef4444");
   };
 
@@ -1010,6 +1345,8 @@ export default function App() {
         return {...t, completions: comps};
       });
       update({...data, categories:cats, tasks});
+      const coins = coinsForTask(task);
+      setData(d=>{ const n={...d, wallet:{...d.wallet, coinsEarned:(d.wallet.coinsEarned||0)+coins}}; persistRaw(n); return n; });
       toast$(`LOGGED ${dk}`, "#34d399");
     }
   };
@@ -1128,6 +1465,94 @@ export default function App() {
   const resetQuest = (id) => {
     update({...data, tasks:data.tasks.map(t=>t.id===id?{...t, completions:{}, createdAt: dateKey()}:t)});
     toast$("QUEST HISTORY RESET");
+  };
+
+  // ── SPIN GAMES (slot / wheel / blackjack, chosen at random) ─────────────────
+  const spendCoins = (n) => setData(d=>{ const nd={...d, wallet:{...d.wallet, coinsSpent:(d.wallet.coinsSpent||0)+n}}; persistRaw(nd); return nd; });
+  const awardGems  = (n) => setData(d=>{ const nd={...d, wallet:{...d.wallet, gemsEarned:(d.wallet.gemsEarned||0)+n}}; persistRaw(nd); return nd; });
+  const markSpinUsed = (dk) => setData(d=>{
+    const used = {...(d.wallet.spinsUsedByDay||{})}; used[dk]=(used[dk]||0)+1;
+    const nd={...d, wallet:{...d.wallet, spinsUsedByDay:used}}; persistRaw(nd); return nd;
+  });
+
+  const openSpin = () => {
+    const dk = dateKey();
+    const unlocked = spinsUnlocked(data, dk);
+    const used = (data.wallet.spinsUsedByDay||{})[dk]||0;
+    if (used >= unlocked) { toast$("COMPLETE MORE QUESTS TO UNLOCK A SPIN","#ffc46b"); return; }
+    if (coinBalance(data.wallet) < SPIN_COST) { toast$(`NEED ${SPIN_COST} COINS TO PLAY`,"#ffc46b"); return; }
+    const game = SPIN_GAMES[Math.floor(Math.random()*SPIN_GAMES.length)];
+    setSpinGame(game); setSpinState("ready"); setSpinResult(null); setView("casino");
+  };
+
+  const runSpin = () => {
+    if (spinState === "spinning") return;
+    const dk = dateKey();
+    spendCoins(SPIN_COST);
+    markSpinUsed(dk);
+    setSpinState("spinning");
+    const rarity = rollRarity();
+    const gems = gemsForRarity(rarity);
+    // settle after the animation
+    const settleDelay = spinGame==="blackjack" ? 2600 : 2400;
+    setTimeout(()=>{
+      awardGems(gems);
+      setSpinResult({ rarity, gems });
+      setSpinState("done");
+      fireConfettiBig(RARITY[rarity].color);
+      try { navigator.vibrate && navigator.vibrate(rarity==="legendary"?[40,60,40,60,120]:[30,50,40]); } catch {}
+    }, settleDelay);
+  };
+
+  // ── SHOP ────────────────────────────────────────────────────────────────────
+  const buyItem = (item) => {
+    const w = data.wallet;
+    if ((w.owned||[]).includes(item.id)) { equipCosmetic(item); return; }
+    const streak = bestPerfectStreak(data);
+    if (item.gate?.streak && streak < item.gate.streak) {
+      toast$(`NEEDS A ${item.gate.streak}-DAY PERFECT STREAK`,"#ffc46b"); return;
+    }
+    if (gemBalance(w) < item.gems) { toast$("NOT ENOUGH GEMS","#ffc46b"); return; }
+    const nd = {...data, wallet:{...w, gemsSpent:(w.gemsSpent||0)+item.gems, owned:[...(w.owned||[]), item.id]}};
+    update(nd);
+    fireConfettiBig(RARITY[item.rarity].color);
+    toast$(`UNLOCKED ${item.name.toUpperCase()}!`, RARITY[item.rarity].color);
+    try { navigator.vibrate && navigator.vibrate([20,40,30]); } catch {}
+    setTimeout(()=>equipCosmetic(item), 400);
+  };
+  const equipCosmetic = (item) => {
+    const eq = {...(data.wallet.equippedCosmetics||{})};
+    if (item.type === "pet") {
+      const nd={...data, wallet:{...data.wallet, pet: data.wallet.pet===item.id?null:item.id}}; update(nd); return;
+    }
+    eq[item.type] = eq[item.type]===item.id ? null : item.id;
+    update({...data, wallet:{...data.wallet, equippedCosmetics:eq}});
+  };
+
+  // ── PERFECT-DAY JACKPOT ─────────────────────────────────────────────────────
+  const claimPerfectDay = () => {
+    const dk = dateKey();
+    if ((data.wallet.perfectClaimedByDay||{})[dk]) return;
+    const claimed = {...(data.wallet.perfectClaimedByDay||{})}; claimed[dk]=true;
+    update({...data, wallet:{...data.wallet, gemsEarned:(data.wallet.gemsEarned||0)+PERFECT_DAY_BONUS_GEMS, perfectClaimedByDay:claimed}});
+    setPerfectShow(true);
+    fireConfettiBig("#f59e0b");
+    try { navigator.vibrate && navigator.vibrate([40,60,40,60,40,60,150]); } catch {}
+    setTimeout(()=>setPerfectShow(false), 3800);
+  };
+
+  const fireConfettiBig = (color) => {
+    const pieces = Array.from({length:80},(_,i)=>({
+      id: Date.now()+i+Math.random(),
+      x: Math.random()*100,
+      delay: Math.random()*0.5,
+      dur: 1.6 + Math.random()*1.4,
+      color: i%3===0 ? color : i%3===1 ? "#ffd76b" : "#fff",
+      size: 6 + Math.random()*8,
+      rot: Math.random()*360,
+    }));
+    setConfetti(pieces);
+    setTimeout(()=>setConfetti([]), 3400);
   };
 
   // ── REMINDERS-STYLE LISTS ───────────────────────────────────────────────────
@@ -1273,6 +1698,14 @@ export default function App() {
   const pomoTotal = (pomoPhase==="work" ? (data.pomodoro.workMin||25) : (data.pomodoro.breakMin||5))*60;
   const pomoToday = (data.pomodoro.sessionsByDay||{})[today]||0;
   const [qText, qAuthor] = quoteOfDay();
+  const cosmetics = data.wallet.equippedCosmetics || {};
+  const pet = data.wallet.pet;
+  const coins = coinBalance(data.wallet);
+  const gems = gemBalance(data.wallet);
+  const spinsAvail = Math.max(0, spinsUnlocked(data, today) - ((data.wallet.spinsUsedByDay||{})[today]||0));
+  const perfectStreak = bestPerfectStreak(data);
+  const canClaimPerfect = allDone && !((data.wallet.perfectClaimedByDay||{})[today]);
+  const titleItem = SHOP.find(it=>it.id===cosmetics.title);
   const nowD = new Date();
   const dateLabel = `${DAYS[nowD.getDay()]}, ${MONTHS[nowD.getMonth()].slice(0,3)} ${nowD.getDate()}`;
 
@@ -1289,7 +1722,7 @@ export default function App() {
     btn:{background:"#ffffff",color:"#1c1430",border:"none",borderRadius:16,padding:"13px 20px",fontSize:13,cursor:"pointer",fontFamily:FONT,fontWeight:900,boxShadow:"0 6px 20px rgba(0,0,0,0.3)"},
     btnSm:{background:"rgba(255,255,255,0.14)",color:TXT,border:"none",borderRadius:14,padding:"10px 15px",fontSize:11.5,cursor:"pointer",fontFamily:FONT,fontWeight:800},
     nav:{position:"fixed",bottom:"calc(env(safe-area-inset-bottom, 0px) + 10px)",left:"50%",transform:"translateX(-50%)",width:"calc(100% - 24px)",maxWidth:406,background:GLASS_HEAVY,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:`1px solid ${LINE}`,borderRadius:26,display:"flex",justifyContent:"space-around",padding:"10px 4px",zIndex:10,boxShadow:"0 10px 36px rgba(0,0,0,0.45)"},
-    navBtn:a=>({background:a?"rgba(255,255,255,0.14)":"none",border:"none",color:a?"#fff":FAINT,fontSize:8,fontWeight:800,cursor:"pointer",fontFamily:FONT,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 9px",borderRadius:14,transition:"all .2s"}),
+    navBtn:a=>({background:a?"rgba(255,255,255,0.14)":"none",border:"none",color:a?"#fff":FAINT,fontSize:7,fontWeight:800,cursor:"pointer",fontFamily:FONT,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 5px",borderRadius:12,transition:"all .2s"}),
     dayBtn:on=>({width:38,height:38,borderRadius:"50%",border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:10.5,cursor:"pointer",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}),
     modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
     sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"88vh",overflowY:"auto",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 30px)"},
@@ -1301,6 +1734,8 @@ export default function App() {
     { v:"tasks",     icon:"⚔", label:"QUESTS" },
     ...(S.kanbanEnabled   ? [{ v:"board", icon:"▦", label:"BOARD" }] : []),
     ...(S.pomodoroEnabled ? [{ v:"focus", icon:"◔", label:"FOCUS" }] : []),
+    { v:"casino", icon:"🎰", label:"CASINO" },
+    { v:"shop", icon:"🛍", label:"SHOP" },
     { v:"stats", icon:"◆", label:"STATS" },
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
@@ -1414,12 +1849,42 @@ export default function App() {
         @keyframes burstFly { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--dx),var(--dy)) scale(.3);opacity:0} }
         @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 15%{opacity:1;transform:translate(-50%,-12px) scale(1.15)} 100%{transform:translate(-50%,-52px) scale(1);opacity:0} }
         @keyframes ringPop { 0%{transform:scale(.4);opacity:.9} 100%{transform:scale(2.4);opacity:0} }
+        @keyframes glowPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.18)} }
+        @keyframes confettiFall { 0%{transform:translateY(-20px) rotate(0deg);opacity:1} 100%{transform:translateY(110vh) rotate(720deg);opacity:.9} }
+        @keyframes reelSpin { 0%{transform:translateY(0)} 100%{transform:translateY(-1200px)} }
+        @keyframes wheelSpin { 0%{transform:rotate(0)} 100%{transform:rotate(var(--spin))} }
+        @keyframes flashBg { 0%{opacity:0} 30%{opacity:.85} 100%{opacity:0} }
+        @keyframes cardDeal { 0%{transform:translateY(-40px) scale(.7);opacity:0} 100%{transform:translateY(0) scale(1);opacity:1} }
         * { -webkit-tap-highlight-color: transparent; }
         input[type=range]{ height: 30px; }
         body { background: ${T.sky[0]}; }
       `}</style>
       {/* FULL-BLEED SKY */}
       <div style={{position:"fixed",inset:0,background:skyGradient,zIndex:0}}/>
+
+      {/* CONFETTI SHOWER (full screen) */}
+      {confetti.length>0 && (
+        <div style={{position:"fixed",inset:0,zIndex:1250,pointerEvents:"none",overflow:"hidden"}}>
+          {confetti.map(p=>(
+            <div key={p.id} style={{position:"absolute",top:0,left:`${p.x}%`,width:p.size,height:p.size*1.4,
+              background:p.color,borderRadius:2,opacity:0,
+              animation:`confettiFall ${p.dur}s ${p.delay}s cubic-bezier(.3,.6,.5,1) forwards`,
+              transform:`rotate(${p.rot}deg)`}}/>
+          ))}
+        </div>
+      )}
+
+      {/* PERFECT DAY OVERLAY */}
+      {perfectShow && (
+        <div style={{position:"fixed",inset:0,zIndex:1260,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+          <div style={{position:"absolute",inset:0,background:"radial-gradient(circle,#f59e0b 0%,transparent 70%)",animation:"flashBg 1.2s ease-out"}}/>
+          <div style={{textAlign:"center",animation:"popIn .5s ease"}}>
+            <div style={{fontSize:64}}>🏆</div>
+            <div style={{fontSize:30,fontWeight:900,color:"#fff",textShadow:"0 0 24px #f59e0b",letterSpacing:1}}>PERFECT DAY</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#fcd34d",marginTop:4}}>+{PERFECT_DAY_BONUS_GEMS} 💎</div>
+          </div>
+        </div>
+      )}
 
       {/* COMPLETION BURSTS */}
       {bursts.map(b=>(
@@ -1460,7 +1925,7 @@ export default function App() {
             padding:"32px 42px",textAlign:"center",boxShadow:`0 0 70px ${T.accent}88`,maxWidth:320,animation:"popIn .4s ease"}}>
             <div style={{fontSize:13,letterSpacing:3,color:T.accent,fontWeight:900,animation:"sparkle 1.2s infinite"}}>★ LEVEL UP ★</div>
             <div style={{margin:"18px 0",display:"flex",justifyContent:"center"}}>
-              <PixelCharacter level={showLevelUp.lvl} character={cz} scale={8} idle/>
+              <PixelCharacter level={showLevelUp.lvl} character={cz} scale={8} idle cosmetics={cosmetics} pet={pet}/>
             </div>
             <div style={{fontSize:34,fontWeight:900,color:"#fff",textShadow:`0 0 24px ${T.accent}`}}>LV {showLevelUp.lvl}</div>
             <div style={{fontSize:19,color:T.accent,fontWeight:900,marginTop:2}}>{showLevelUp.name}</div>
@@ -1626,10 +2091,19 @@ export default function App() {
                   <span style={{fontSize:11,fontWeight:800,color:"#fff"}}>{getTitle(data, level.lvl)}</span>
                 </div>
                 <div key={rating} style={{fontSize:78,fontWeight:900,color:"#fff",lineHeight:1,marginTop:4,textShadow:"0 4px 24px rgba(0,0,0,0.45)",animation:"popIn .45s ease"}}>{rating}</div>
-                <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>{tier.label}</div>
+                <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>{tier.label}{titleItem ? ` · ${titleItem.name}` : ""}</div>
+              </div>
+              {/* Coin / Gem HUD */}
+              <div style={{position:"absolute",top:8,right:12,display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:`1px solid ${LINE}`,borderRadius:14,padding:"4px 10px"}}>
+                  <span style={{fontSize:12}}>🪙</span><span style={{fontSize:12,fontWeight:900,color:"#fcd34d"}}>{coins}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:`1px solid ${LINE}`,borderRadius:14,padding:"4px 10px"}}>
+                  <span style={{fontSize:12}}>💎</span><span style={{fontSize:12,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
+                </div>
               </div>
               <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)"}}>
-                <PixelCharacter level={level.lvl} character={cz} scale={4.6} idle/>
+                <PixelCharacter level={level.lvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={pet}/>
               </div>
             </div>
 
@@ -1706,6 +2180,32 @@ export default function App() {
                 <div style={C.sectionTitle}>Today's Quests</div>
                 <div style={{fontSize:11,color:DIM,fontWeight:800}}>{todayDone} of {todayTasks.length}</div>
               </div>
+              {spinsAvail > 0 && (
+                <div onClick={openSpin} style={{
+                  background:"linear-gradient(135deg,#7c3aed,#db2777,#f59e0b)",borderRadius:20,padding:"14px 16px",marginBottom:11,
+                  cursor:"pointer",display:"flex",alignItems:"center",gap:12,boxShadow:"0 8px 26px rgba(219,39,119,0.45)",
+                  animation:"glowPulse 1.8s ease-in-out infinite"}}>
+                  <div style={{fontSize:30}}>🎰</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{spinsAvail} SPIN{spinsAvail>1?"S":""} READY!</div>
+                    <div style={{fontSize:10.5,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>Tap to play · {SPIN_COST} 🪙 per pull · win 💎</div>
+                  </div>
+                  <div style={{fontSize:20,color:"#fff"}}>›</div>
+                </div>
+              )}
+              {canClaimPerfect && (
+                <div onClick={claimPerfectDay} style={{
+                  background:"linear-gradient(135deg,#f59e0b,#fcd34d)",borderRadius:20,padding:"14px 16px",marginBottom:11,
+                  cursor:"pointer",display:"flex",alignItems:"center",gap:12,boxShadow:"0 8px 26px rgba(245,158,11,0.5)",
+                  animation:"glowPulse 1.4s ease-in-out infinite"}}>
+                  <div style={{fontSize:30}}>🏆</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:15,fontWeight:900,color:"#3a2200"}}>PERFECT DAY!</div>
+                    <div style={{fontSize:10.5,fontWeight:800,color:"#5a3600"}}>Claim your +{PERFECT_DAY_BONUS_GEMS} 💎 jackpot</div>
+                  </div>
+                  <div style={{fontSize:20,color:"#3a2200"}}>›</div>
+                </div>
+              )}
               {allDone && (
                 <div style={{...C.glass,textAlign:"center",border:`1.5px solid ${GOOD}66`}}>
                   <div style={{fontSize:15,fontWeight:900,color:GOOD}}>✦ SUMMIT REACHED ✦</div>
@@ -2320,7 +2820,7 @@ export default function App() {
             <div style={C.glass}>
               <div style={C.label}>YOUR CHAMPION</div>
               <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-                <PixelCharacter level={level.lvl} character={cz} scale={6.5} idle/>
+                <PixelCharacter level={level.lvl} character={cz} scale={6.5} idle cosmetics={cosmetics} pet={pet}/>
               </div>
               <div style={{...C.label,marginBottom:6}}>BODY</div>
               <div style={{display:"flex",gap:8,marginBottom:14}}>
@@ -2382,13 +2882,169 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ══ CASINO ══ */}
+        {view==="casino" && (
+          <div style={{padding:"14px 16px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={C.sectionTitle}>The Reward Hall</div>
+              <div style={{display:"flex",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:4,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 10px"}}>
+                  <span style={{fontSize:12}}>🪙</span><span style={{fontSize:12,fontWeight:900,color:"#fcd34d"}}>{coins}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 10px"}}>
+                  <span style={{fontSize:12}}>💎</span><span style={{fontSize:12,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Spins available */}
+            <div style={{...C.glass,textAlign:"center"}}>
+              <div style={{fontSize:11,fontWeight:800,color:DIM}}>SPINS AVAILABLE TODAY</div>
+              <div style={{display:"flex",justifyContent:"center",gap:8,margin:"12px 0"}}>
+                {SPIN_THRESHOLDS.map((th,i)=>{
+                  const unlocked = i < spinsUnlocked(data, today);
+                  const used = i < ((data.wallet.spinsUsedByDay||{})[today]||0);
+                  return (
+                    <div key={i} style={{width:42,height:42,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,
+                      background: used ? "rgba(255,255,255,0.08)" : unlocked ? "linear-gradient(135deg,#7c3aed,#db2777)" : "rgba(255,255,255,0.08)",
+                      border: unlocked && !used ? "2px solid #fff" : `1px solid ${LINE}`,
+                      opacity: used ? 0.4 : 1}}>
+                      {used ? "✓" : unlocked ? "🎰" : "🔒"}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginBottom:14}}>
+                Earn spins by completing your day's quests. {SPIN_COST} 🪙 per pull.
+              </div>
+              {spinsAvail > 0 && coins >= SPIN_COST ? (
+                <button style={{...C.btn,width:"100%",padding:"15px",fontSize:15,background:"linear-gradient(135deg,#7c3aed,#db2777,#f59e0b)",color:"#fff"}}
+                  onClick={()=>{ const g=SPIN_GAMES[Math.floor(Math.random()*SPIN_GAMES.length)]; setSpinGame(g); setSpinState("ready"); setSpinResult(null); }}>
+                  🎲 NEW GAME ({spinsAvail} LEFT)
+                </button>
+              ) : (
+                <div style={{fontSize:12,color:FAINT,fontWeight:700,padding:"4px 0"}}>
+                  {spinsAvail===0 ? "Complete more quests to unlock a spin" : `Need ${SPIN_COST} coins to play`}
+                </div>
+              )}
+            </div>
+
+            {/* The active game */}
+            {spinsAvail > 0 && coins >= SPIN_COST && (
+              <div style={{...C.glass,textAlign:"center",padding:"20px 16px"}}>
+                <div style={{fontSize:11,fontWeight:900,letterSpacing:2,color:T.accent,marginBottom:4}}>
+                  {spinGame==="slot"?"🎰 SLOT MACHINE":spinGame==="wheel"?"🎡 PRIZE WHEEL":"🃏 BLACKJACK"}
+                </div>
+                <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:16}}>The game is chosen at random each round</div>
+
+                {spinGame==="slot" && <SlotMachine state={spinState} result={spinResult}/>}
+                {spinGame==="wheel" && <PrizeWheel state={spinState} result={spinResult}/>}
+                {spinGame==="blackjack" && <Blackjack state={spinState} result={spinResult}/>}
+
+                {spinState!=="done" ? (
+                  <button disabled={spinState==="spinning"} style={{...C.btn,width:"100%",padding:"15px",fontSize:15,marginTop:18,
+                    opacity:spinState==="spinning"?0.5:1,background:"linear-gradient(135deg,#7c3aed,#db2777)",color:"#fff"}}
+                    onClick={runSpin}>
+                    {spinState==="spinning" ? "..." : `PULL · ${SPIN_COST} 🪙`}
+                  </button>
+                ) : (
+                  <div style={{marginTop:18}}>
+                    <div style={{fontSize:13,fontWeight:900,color:RARITY[spinResult.rarity].color,letterSpacing:1}}>
+                      {RARITY[spinResult.rarity].label} · +{spinResult.gems} 💎
+                    </div>
+                    {spinsAvail > 0 && coins >= SPIN_COST ? (
+                      <button style={{...C.btn,width:"100%",padding:"14px",fontSize:14,marginTop:10}}
+                        onClick={()=>{ const g=SPIN_GAMES[Math.floor(Math.random()*SPIN_GAMES.length)]; setSpinGame(g); setSpinState("ready"); setSpinResult(null); }}>
+                        PLAY AGAIN ({spinsAvail} LEFT)
+                      </button>
+                    ) : (
+                      <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:10}} onClick={()=>setView("shop")}>
+                        SPEND YOUR 💎 IN THE SHOP →
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{...C.glass}}>
+              <div style={C.label}>HOW IT WORKS</div>
+              <div style={{fontSize:12,color:DIM,fontWeight:600,lineHeight:1.6}}>
+                Completing quests earns <b style={{color:"#fcd34d"}}>coins</b> (harder quests = more). Finishing enough of your day unlocks <b style={{color:"#fff"}}>spins</b>. Spend coins to play a random game and win <b style={{color:"#67e8f9"}}>gems</b> — the currency for the Shop. Keep a perfect-day streak going to unlock the rarest gear.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ SHOP ══ */}
+        {view==="shop" && (
+          <div style={{padding:"14px 16px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={C.sectionTitle}>The Shop</div>
+              <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 12px"}}>
+                <span style={{fontSize:13}}>💎</span><span style={{fontSize:13,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
+              </div>
+            </div>
+            <div style={{fontSize:10.5,color:DIM,fontWeight:700,marginBottom:10}}>
+              🔥 Best perfect-day streak: <b style={{color:"#ffc46b"}}>{perfectStreak}</b> — some gear unlocks at higher streaks.
+            </div>
+            {/* Filter chips */}
+            <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:10,WebkitOverflowScrolling:"touch"}}>
+              {SHOP_TYPES.map(([v,l])=>(
+                <button key={v} onClick={()=>setShopFilter(v)} style={{
+                  flexShrink:0,padding:"8px 14px",borderRadius:14,border:"none",cursor:"pointer",fontFamily:FONT,
+                  fontSize:10.5,fontWeight:800,background:shopFilter===v?"#fff":"rgba(255,255,255,0.12)",
+                  color:shopFilter===v?"#1c1430":DIM}}>{l}</button>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {SHOP.filter(it=>shopFilter==="all"||it.type===shopFilter).map(item=>{
+                const owned = (data.wallet.owned||[]).includes(item.id);
+                const equipped = item.type==="pet" ? data.wallet.pet===item.id : cosmetics[item.type]===item.id;
+                const gated = item.gate?.streak && perfectStreak < item.gate.streak;
+                const r = RARITY[item.rarity];
+                return (
+                  <div key={item.id} onClick={()=>buyItem(item)} style={{
+                    background:`linear-gradient(160deg,${r.color}22,${GLASS})`,
+                    backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",
+                    border:equipped?`2px solid ${r.color}`:`1px solid ${r.color}44`,
+                    borderRadius:18,padding:"13px 12px",cursor:"pointer",position:"relative",
+                    opacity:gated&&!owned?0.6:1,boxShadow:owned?`0 0 16px ${r.color}33`:"none"}}>
+                    <div style={{position:"absolute",top:8,right:9,fontSize:7.5,fontWeight:900,color:r.color,letterSpacing:.5}}>{r.label}</div>
+                    <div style={{fontSize:32,textAlign:"center",marginTop:6,marginBottom:8,height:38,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {item.emoji
+                        ? item.emoji
+                        : <div style={{width:30,height:30,borderRadius:item.type==="title"?8:"50%",
+                            background:item.color==="rainbow"?"linear-gradient(135deg,#f472b6,#a855f7,#38bdf8,#4ade80)":item.color||r.color,
+                            border:"2px solid rgba(255,255,255,0.3)"}}/>}
+                    </div>
+                    <div style={{fontSize:12,fontWeight:800,color:"#fff",textAlign:"center",lineHeight:1.2,minHeight:29}}>{item.name}</div>
+                    <div style={{marginTop:8,textAlign:"center"}}>
+                      {owned ? (
+                        <div style={{fontSize:11,fontWeight:900,color:equipped?r.color:GOOD}}>
+                          {equipped ? "✓ EQUIPPED" : (item.type==="pet"||["aura","cape","weapon","dye","halo","badge","title"].includes(item.type)) ? "TAP TO EQUIP" : "OWNED"}
+                        </div>
+                      ) : gated ? (
+                        <div style={{fontSize:10,fontWeight:800,color:"#ffc46b"}}>🔒 {item.gate.streak}-DAY STREAK</div>
+                      ) : (
+                        <div style={{fontSize:12,fontWeight:900,color: gems>=item.gems ? "#67e8f9" : FAINT}}>💎 {item.gems}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{height:10}}/>
+          </div>
+        )}
       </div>
 
       {/* ══ FLOATING DOCK ══ */}
       <div style={C.nav}>
         {navItems.map(n=>(
           <button key={n.v} style={C.navBtn(isActive(n.v))} onClick={()=>setView(n.v)}>
-            <span style={{fontSize:18,lineHeight:1}}>{n.icon}</span>
+            <span style={{fontSize:15,lineHeight:1}}>{n.icon}</span>
             {n.label}
           </button>
         ))}
