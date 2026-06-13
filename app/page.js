@@ -1325,7 +1325,10 @@ function ShopPreview({ item, auraColor }) {
   return <div style={{width:30,height:30,borderRadius:"50%",background:item.color||"#888",border:"2px solid rgba(255,255,255,0.3)"}}/>;
 }
 
-
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ══════════════════════════════════════════════════════════════════════════════
+export default function App() {
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
   const [editTask, setEditTask] = useState(null);
