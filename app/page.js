@@ -86,6 +86,9 @@ const DEFAULT_SETTINGS = {
   statStyle: "radar", // "radar" | "bars" | "none"
   theme: "ember",
   cardStyle: "vivid", // "vivid" | "tinted"
+  casinoEnabled: true,
+  shopEnabled: true,
+  devMode: false,
 };
 const DEFAULT_EQUIPPED = {
   boots:true, sword:true, armor:true, shield:true, helm:true,
@@ -136,7 +139,7 @@ const RARITY = {
   legendary:{ label:"LEGENDARY", color:"#f59e0b", gems:[80,150] },
 };
 
-// ── AURA SHAPES (each recolorable) ────────────────────────────────────────────
+// ── AURA SHAPES (each recolorable; colors bought separately) ──────────────────
 const AURA_SHAPES = [
   { id:"saiyan",  name:"Saiyan Flame" },
   { id:"cloud",   name:"Dark Omen" },
@@ -144,52 +147,55 @@ const AURA_SHAPES = [
   { id:"halo",    name:"Holy Ring" },
   { id:"orbit",   name:"Orbiting Sparks" },
 ];
-const AURA_COLORS = ["#ffd11a","#38bdf8","#a855f7","#ffffff","#111827","#ef4444","#22c55e","#f472b6"];
 
-// ── PET DEFINITIONS (hand-drawn SVG creatures, Habitica-style) ────────────────
+// ── METAL/GEM COLOR TIERS (shared by auras + capes), ordered by real-world value
+// gate.streak = consecutive 100% days required; basic three have no gate.
+const METALS = [
+  { id:"bronze",   name:"Bronze",   color:"#b87333", rarity:"common",    gems:40  },
+  { id:"silver",   name:"Silver",   color:"#cbd5e1", rarity:"common",    gems:70  },
+  { id:"gold",     name:"Gold",     color:"#f5b827", rarity:"uncommon",  gems:120 },
+  { id:"ruby",     name:"Ruby",     color:"#e0115f", rarity:"rare",      gems:150, gate:{streak:7}  },
+  { id:"emerald",  name:"Emerald",  color:"#10b981", rarity:"rare",      gems:200, gate:{streak:14} },
+  { id:"sapphire", name:"Sapphire", color:"#1d6ef2", rarity:"epic",      gems:280, gate:{streak:30} },
+  { id:"amethyst", name:"Amethyst", color:"#9b4dff", rarity:"epic",      gems:360, gate:{streak:60} },
+  { id:"diamond",  name:"Diamond",  color:"#9af4ff", rarity:"legendary",gems:500, gate:{streak:90} },
+];
+const AURA_COLORS = METALS.map(m=>m.color); // legacy ref (free recolor disabled)
+
+// ── PET DEFINITIONS (hand-drawn SVG creatures; streak tiers 3/7/14/30/60/90) ──
 const PETS = [
-  { id:"pet_slime",   name:"Slime",         rarity:"common",    gems:40,  art:"slime",  color:"#4ade80" },
   { id:"pet_cat",     name:"Shadow Cat",    rarity:"common",    gems:55,  art:"cat",    color:"#3f3f46" },
-  { id:"pet_dog",     name:"Loyal Pup",     rarity:"uncommon",  gems:80,  art:"dog",    color:"#b45309" },
-  { id:"pet_owl",     name:"Wise Owl",      rarity:"uncommon",  gems:95,  art:"owl",    color:"#92580f" },
-  { id:"pet_fox",     name:"Ember Fox",     rarity:"rare",      gems:140, art:"fox",    color:"#ea580c", gate:{streak:3} },
-  { id:"pet_wolf",    name:"Dire Wolf",     rarity:"rare",      gems:175, art:"wolf",   color:"#64748b", gate:{streak:3} },
-  { id:"pet_dragon",  name:"Baby Dragon",   rarity:"epic",      gems:300, art:"dragon", color:"#16a34a", gate:{streak:7} },
-  { id:"pet_phoenix", name:"Phoenix Chick", rarity:"legendary", gems:500, art:"phoenix",color:"#f97316", gate:{streak:10} },
+  { id:"pet_owl",     name:"Wise Owl",      rarity:"common",    gems:75,  art:"owl",    color:"#92580f" },
+  { id:"pet_dog",     name:"Loyal Pup",     rarity:"uncommon",  gems:95,  art:"dog",    color:"#b45309" },
+  { id:"pet_fox",     name:"Ember Fox",     rarity:"rare",      gems:130, art:"fox",    color:"#ea580c", gate:{streak:3}  },
+  { id:"pet_wolf",    name:"Dire Wolf",     rarity:"rare",      gems:170, art:"wolf",   color:"#64748b", gate:{streak:7}  },
+  { id:"pet_stag",    name:"Spirit Stag",   rarity:"epic",      gems:230, art:"stag",   color:"#0ea5a0", gate:{streak:14} },
+  { id:"pet_dragon",  name:"Baby Dragon",   rarity:"epic",      gems:300, art:"dragon", color:"#16a34a", gate:{streak:30} },
+  { id:"pet_griffin", name:"Griffin",       rarity:"legendary", gems:420, art:"griffin",color:"#d4a017", gate:{streak:60} },
+  { id:"pet_phoenix", name:"Phoenix Chick", rarity:"legendary", gems:500, art:"phoenix",color:"#f97316", gate:{streak:90} },
 ];
 
-// ── SHOP CATALOG (auras, pets, capes, weapon skins) ───────────────────────────
+// ── SHOP CATALOG (auras [shape×metal], pets, capes [metal]) ───────────────────
+// Auras: one entry per shape×metal so each colored aura is a separate purchase.
+const AURA_ITEMS = [];
+AURA_SHAPES.forEach(shape=>{
+  METALS.forEach(m=>{
+    AURA_ITEMS.push({
+      id:`aura_${shape.id}_${m.id}`, type:"aura", auraShape:shape.id, metal:m.id,
+      name:`${m.name} ${shape.name}`, rarity:m.rarity, gems:m.gems, gate:m.gate, color:m.color,
+    });
+  });
+});
+const CAPE_ITEMS = METALS.map(m=>({
+  id:`cape_${m.id}`, type:"cape", metal:m.id, name:`${m.name} Cape`,
+  rarity:m.rarity, gems:m.gems, gate:m.gate, color:m.color,
+}));
 const SHOP = [
-  // AURAS — bought per shape, color chosen after
-  { id:"aura_saiyan",   type:"aura", auraShape:"saiyan",   name:"Saiyan Flame",  rarity:"uncommon",  gems:80 },
-  { id:"aura_cloud",    type:"aura", auraShape:"cloud",    name:"Dark Omen",     rarity:"rare",      gems:150, gate:{streak:3} },
-  { id:"aura_electric", type:"aura", auraShape:"electric", name:"Static Storm",  rarity:"rare",      gems:165, gate:{streak:3} },
-  { id:"aura_halo",     type:"aura", auraShape:"halo",     name:"Holy Ring",     rarity:"epic",      gems:260, gate:{streak:5} },
-  { id:"aura_orbit",    type:"aura", auraShape:"orbit",    name:"Orbiting Sparks",rarity:"epic",     gems:280, gate:{streak:6} },
-
-  // PETS (generated from PETS list below)
+  ...AURA_ITEMS,
   ...PETS.map(p=>({ id:p.id, type:"pet", name:p.name, rarity:p.rarity, gems:p.gems, gate:p.gate, art:p.art, color:p.color })),
-
-  // CAPES
-  { id:"cape_brown",  type:"cape", name:"Traveler's Cloak",rarity:"common",    gems:30,  color:"#6b3a1f" },
-  { id:"cape_red",    type:"cape", name:"Crimson Cape",    rarity:"common",    gems:45,  color:"#b91c1c" },
-  { id:"cape_blue",   type:"cape", name:"Royal Cape",      rarity:"uncommon",  gems:75,  color:"#1d4ed8" },
-  { id:"cape_green",  type:"cape", name:"Ranger Cloak",    rarity:"uncommon",  gems:75,  color:"#15803d" },
-  { id:"cape_purple", type:"cape", name:"Sorcerer Cape",   rarity:"rare",      gems:140, color:"#7e22ce", gate:{streak:3} },
-  { id:"cape_gold",   type:"cape", name:"Gilded Cape",     rarity:"epic",      gems:260, color:"#f59e0b", gate:{streak:5} },
-  { id:"cape_star",   type:"cape", name:"Starfall Cape",   rarity:"legendary", gems:480, color:"#312e81", gate:{streak:10} },
-
-  // WEAPON SKINS
-  { id:"wpn_iron",    type:"weapon", name:"Polished Iron", rarity:"common",    gems:35,  color:"#cbd5e1" },
-  { id:"wpn_bronze",  type:"weapon", name:"Bronze Edge",   rarity:"common",    gems:40,  color:"#b45309" },
-  { id:"wpn_emerald", type:"weapon", name:"Emerald Blade", rarity:"uncommon",  gems:80,  color:"#10b981" },
-  { id:"wpn_sapphire",type:"weapon", name:"Sapphire Blade",rarity:"uncommon",  gems:80,  color:"#2563eb" },
-  { id:"wpn_ruby",    type:"weapon", name:"Ruby Edge",     rarity:"rare",      gems:150, color:"#dc2626", gate:{streak:3} },
-  { id:"wpn_amethyst",type:"weapon", name:"Amethyst Edge", rarity:"rare",      gems:160, color:"#9333ea", gate:{streak:3} },
-  { id:"wpn_flame",   type:"weapon", name:"Flameforged",   rarity:"epic",      gems:300, color:"#f97316", gate:{streak:6} },
-  { id:"wpn_void",    type:"weapon", name:"Voidsteel",     rarity:"legendary", gems:560, color:"#1e1b4b", gate:{streak:12} },
+  ...CAPE_ITEMS,
 ];
-const SHOP_TYPES = [["all","ALL"],["aura","AURAS"],["pet","PETS"],["cape","CAPES"],["weapon","WEAPONS"]];
+const SHOP_TYPES = [["all","ALL"],["aura","AURAS"],["pet","PETS"],["cape","CAPES"]];
 const SPIN_GAMES = ["slot","wheel","blackjack"];
 const CAT_COLORS = ["#f59e0b","#ef4444","#38bdf8","#34d399","#a78bfa","#f472b6","#fb923c","#22c55e","#e879f9","#fbbf24"];
 
@@ -656,6 +662,35 @@ function drawPet(els, art, color, cx, cy, s, nk) {
     R(cx-1.6,cy+0.4,3.2,1.8,light,1);
     C(cx-0.8,cy-0.2,0.34,eyeB); C(cx+0.8,cy-0.2,0.34,eyeB);
     els.push(<polygon key={nk()} points={`${(cx-2)*s},${cy*s} ${(cx-3.6)*s},${(cy-1.4)*s} ${(cx-2.2)*s},${(cy+1)*s}`} fill={shade(color,20)}/>); // wing
+  } else if (art==="stag") {
+    // body
+    R(cx-1.8,cy-0.8,3.6,3,color,1.2);
+    R(cx-1.4,cy+0.6,2.8,1.7,light,1);
+    // antlers
+    els.push(<polygon key={nk()} points={`${(cx-1.1)*s},${(cy-0.8)*s} ${(cx-1.9)*s},${(cy-2.9)*s} ${(cx-1.3)*s},${(cy-0.9)*s}`} fill={dark}/>);
+    els.push(<polygon key={nk()} points={`${(cx-1.7)*s},${(cy-2)*s} ${(cx-2.7)*s},${(cy-2.4)*s} ${(cx-1.6)*s},${(cy-1.6)*s}`} fill={dark}/>);
+    els.push(<polygon key={nk()} points={`${(cx+1.1)*s},${(cy-0.8)*s} ${(cx+1.9)*s},${(cy-2.9)*s} ${(cx+1.3)*s},${(cy-0.9)*s}`} fill={dark}/>);
+    els.push(<polygon key={nk()} points={`${(cx+1.7)*s},${(cy-2)*s} ${(cx+2.7)*s},${(cy-2.4)*s} ${(cx+1.6)*s},${(cy-1.6)*s}`} fill={dark}/>);
+    // ears
+    els.push(<polygon key={nk()} points={`${(cx-1.8)*s},${(cy-0.9)*s} ${(cx-2.4)*s},${(cy-1.4)*s} ${(cx-1.3)*s},${(cy-0.4)*s}`} fill={color}/>);
+    els.push(<polygon key={nk()} points={`${(cx+1.8)*s},${(cy-0.9)*s} ${(cx+2.4)*s},${(cy-1.4)*s} ${(cx+1.3)*s},${(cy-0.4)*s}`} fill={color}/>);
+    C(cx-0.75,cy-0.1,0.3,eyeB); C(cx+0.75,cy-0.1,0.3,eyeB);
+    C(cx,cy+0.95,0.32,eyeB);
+    els.push(<circle key={nk()} cx={cx*s} cy={(cy-0.2)*s} r={3.4*s} fill={color} opacity="0.12"/>);
+  } else if (art==="griffin") {
+    els.push(<circle key={nk()} cx={cx*s} cy={cy*s} r={3*s} fill={color} opacity="0.16"/>);
+    // body
+    R(cx-1.7,cy-0.9,3.4,3,color,1.2);
+    R(cx-1.4,cy+0.5,2.8,1.8,shade(color,30),1);   // golden chest
+    // wings
+    els.push(<polygon key={nk()} points={`${(cx-1.7)*s},${(cy-0.4)*s} ${(cx-3.6)*s},${(cy-1.8)*s} ${(cx-3.4)*s},${(cy+1)*s}`} fill={shade(color,-15)}/>);
+    els.push(<polygon key={nk()} points={`${(cx+1.7)*s},${(cy-0.4)*s} ${(cx+3.6)*s},${(cy-1.8)*s} ${(cx+3.4)*s},${(cy+1)*s}`} fill={shade(color,-15)}/>);
+    // ears/tufts
+    els.push(<polygon key={nk()} points={`${(cx-1.4)*s},${(cy-0.9)*s} ${(cx-1.7)*s},${(cy-2.2)*s} ${(cx-0.8)*s},${(cy-1)*s}`} fill={dark}/>);
+    els.push(<polygon key={nk()} points={`${(cx+1.4)*s},${(cy-0.9)*s} ${(cx+1.7)*s},${(cy-2.2)*s} ${(cx+0.8)*s},${(cy-1)*s}`} fill={dark}/>);
+    // beak
+    els.push(<polygon key={nk()} points={`${(cx-0.4)*s},${cy*s} ${(cx+0.4)*s},${cy*s} ${cx*s},${(cy+0.9)*s}`} fill="#f59e0b"/>);
+    C(cx-0.7,cy-0.3,0.3,eyeB); C(cx+0.7,cy-0.3,0.3,eyeB);
   } else if (art==="phoenix") {
     els.push(<circle key={nk()} cx={cx*s} cy={cy*s} r={2.8*s} fill="#f97316" opacity="0.25"/>);
     R(cx-1.6,cy-1,3.2,3,color,1.3);
@@ -687,7 +722,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   const cos = cosmetics || {};
   const cosItem = (type) => SHOP.find(it=>it.id===cos[type]);
   const auraC = cosItem("aura"), capeC = cosItem("cape"), weaponC = cosItem("weapon");
-  const auraColor = cos.auraColor || "#ffd11a";
+  const auraColor = (auraC && auraC.color) || "#f5b827";
 
   // Cosmetic aura (drawn behind everything) — shape determined by purchase
   if (auraC) {
@@ -1129,8 +1164,11 @@ function Scene({ T, height=150 }) {
 // ══════════════════════════════════════════════════════════════════════════════
 const SLOT_SYMBOLS = ["🍒","🔔","💎","⭐","7️⃣","🪙","👑","🍀"];
 // Shared payout ladder (gems). All three games draw from this so they're fair.
-const WHEEL_SEGMENTS = [5, 12, 40, 8, 70, 20, 50, 100];
-const gemsToRarity = (g) => g>=80?"legendary":g>=34?"epic":g>=16?"rare":g>=7?"uncommon":"common";
+// Wheel: 8 segments, max 25, three zeros (real chance to lose). Order matters for layout.
+const WHEEL_SEGMENTS = [25, 0, 15, 5, 20, 0, 10, 0];
+const gemsToRarity = (g) => g>=25?"legendary":g>=20?"epic":g>=15?"rare":g>=5?"uncommon":"common";
+// Slot: weighted so big wins are rare; max 25, average ~10, plenty of 0s.
+const SLOT_PAYOUTS = [0,0,0,0,5,5,5,10,10,10,10,15,15,20,25]; // weighted pool
 
 function SlotMachine({ state, onSettle }) {
   const reels = [0,1,2];
@@ -1138,10 +1176,15 @@ function SlotMachine({ state, onSettle }) {
   useEffect(()=>{
     if (state==="spinning") {
       const t = setTimeout(()=>{
-        // pick a target gem from the ladder, map to a symbol triple
-        const gem = WHEEL_SEGMENTS[Math.floor(Math.random()*WHEEL_SEGMENTS.length)];
-        const sIdx = WHEEL_SEGMENTS.indexOf(gem);
-        setFinals([sIdx%SLOT_SYMBOLS.length,(sIdx+ (gem>=40?0:2))%SLOT_SYMBOLS.length,(sIdx+ (gem>=40?0:4))%SLOT_SYMBOLS.length]);
+        const gem = SLOT_PAYOUTS[Math.floor(Math.random()*SLOT_PAYOUTS.length)];
+        if (gem > 0) {
+          // win: three matching symbols (symbol picked by payout size)
+          const sym = gem>=25?6 : gem>=20?2 : gem>=15?3 : gem>=10?0 : 5;
+          setFinals([sym,sym,sym]);
+        } else {
+          // loss: deliberately mismatched
+          setFinals([0,3,6]);
+        }
         onSettle(gem, gemsToRarity(gem));
       }, 2200);
       return ()=>clearTimeout(t);
@@ -1177,13 +1220,14 @@ function SlotMachine({ state, onSettle }) {
 function PrizeWheel({ state, onSettle }) {
   const n = WHEEL_SEGMENTS.length;
   const segAng = 360/n;
-  const colors = WHEEL_SEGMENTS.map(g=>RARITY[gemsToRarity(g)].color);
+  // Distinct color per segment by gem value (zeros are dark slate so they read as "no win")
+  const segColor = (g) => g>=25?"#f5b827" : g>=20?"#9b4dff" : g>=15?"#1d6ef2" : g>=10?"#10b981" : g>=5?"#e0115f" : "#3a3a52";
+  const colors = WHEEL_SEGMENTS.map(segColor);
   const [rot, setRot] = useState(0);
   useEffect(()=>{
     if (state==="spinning") {
       const idx = Math.floor(Math.random()*n);
       const gem = WHEEL_SEGMENTS[idx];
-      // land the pointer (top, 0deg) on the middle of segment idx
       const target = 360*6 + (360 - (idx*segAng + segAng/2));
       requestAnimationFrame(()=>setRot(target));
       const t = setTimeout(()=>onSettle(gem, gemsToRarity(gem)), 2500);
@@ -1192,6 +1236,8 @@ function PrizeWheel({ state, onSettle }) {
       setRot(0);
     }
   }, [state]);
+  // Build gradient with exact matching stops so there are no color seams
+  const stops = colors.map((c,i)=>`${c} ${(i*segAng).toFixed(3)}deg ${((i+1)*segAng).toFixed(3)}deg`).join(",");
   return (
     <div style={{position:"relative",width:210,height:210,margin:"0 auto"}}>
       <div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",zIndex:3,fontSize:26,color:"#fff",filter:"drop-shadow(0 2px 3px #000)"}}>▼</div>
@@ -1199,16 +1245,17 @@ function PrizeWheel({ state, onSettle }) {
         border:"6px solid rgba(255,255,255,0.25)",boxShadow:"0 8px 30px rgba(0,0,0,0.4)",
         transition: state==="spinning" ? "transform 2.4s cubic-bezier(.12,.85,.2,1)" : "none",
         transform:`rotate(${rot}deg)`,
-        background:`conic-gradient(${colors.map((c,i)=>`${c} ${i*segAng}deg ${(i+1)*segAng}deg`).join(",")})`}}>
+        background:`conic-gradient(from 0deg, ${stops})`}}>
         {WHEEL_SEGMENTS.map((g,i)=>(
-          <div key={i} style={{position:"absolute",left:"50%",top:"8px",transformOrigin:"0 97px",
-            transform:`rotate(${(i+0.5)*segAng}deg)`,fontSize:13,fontWeight:900,color:"#1c1430",marginLeft:-8}}>
-            {g}
+          <div key={i} style={{position:"absolute",left:"50%",top:0,height:"50%",transformOrigin:"50% 100%",
+            transform:`rotate(${(i+0.5)*segAng}deg)`,display:"flex",justifyContent:"center",paddingTop:14,
+            fontSize:14,fontWeight:900,color:g===0?"#9a9ab8":"#1c1430",width:0,overflow:"visible"}}>
+            <span style={{display:"block",width:30,textAlign:"center",marginLeft:-15}}>{g===0?"✕":g}</span>
           </div>
         ))}
       </div>
       <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",width:38,height:38,borderRadius:"50%",
-        background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 2px 8px #0007"}}>💎</div>
+        background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:"0 2px 8px #0007",zIndex:2}}>💎</div>
     </div>
   );
 }
@@ -1241,10 +1288,10 @@ function Blackjack({ state, onSettle }) {
     if (settledRef.current) return; settledRef.current = true;
     const pt = handTotal(pl), dt = handTotal(dl);
     let gem;
-    if (pt>21) gem = 0;                                   // bust
-    else if (dt>21 || pt>dt) gem = (pt===21 && pl.length===2) ? 100 : 50; // win (natural = jackpot)
-    else if (pt===dt) gem = 12;                           // push
-    else gem = 5;                                         // loss consolation
+    if (pt>21) gem = 0;                 // bust
+    else if (dt>21 || pt>dt) gem = 10;  // win
+    else if (pt===dt) gem = 5;          // push
+    else gem = 0;                       // loss
     setPhase("over");
     onSettle(gem, gemsToRarity(gem));
   };
@@ -1307,21 +1354,21 @@ function Blackjack({ state, onSettle }) {
 }
 
 // Small preview thumbnail for a shop item
-function ShopPreview({ item, auraColor }) {
+function ShopPreview({ item }) {
   if (item.type === "pet") {
     const els = []; let kk = 0;
     drawPet(els, item.art, item.color, 12, 12, 1.7, ()=>kk++);
     return <svg width="44" height="44" viewBox="0 0 41 41" style={{overflow:"visible"}}>{els}</svg>;
   }
   if (item.type === "aura") {
-    const c = auraColor || "#ffd11a";
-    if (item.auraShape==="saiyan") return <div style={{fontSize:30}}>🔥</div>;
+    const c = item.color || "#f5b827";
+    if (item.auraShape==="saiyan") return <div style={{width:30,height:30,borderRadius:"50%",background:`radial-gradient(circle,${c} 20%,transparent 72%)`,boxShadow:`0 0 12px ${c}`}}/>;
     if (item.auraShape==="cloud") return <div style={{width:34,height:24,borderRadius:14,background:`radial-gradient(${c},transparent)`,filter:"blur(1px)"}}/>;
-    if (item.auraShape==="electric") return <div style={{fontSize:30}}>⚡</div>;
+    if (item.auraShape==="electric") return <div style={{width:30,height:30,borderRadius:"50%",border:`2px dashed ${c}`,boxShadow:`0 0 10px ${c}`}}/>;
     if (item.auraShape==="halo") return <div style={{width:30,height:30,borderRadius:"50%",border:`3px solid ${c}`,boxShadow:`0 0 10px ${c}`}}/>;
     if (item.auraShape==="orbit") return <div style={{position:"relative",width:34,height:34}}>{[0,120,240].map(d=><div key={d} style={{position:"absolute",left:16,top:16,width:6,height:6,borderRadius:"50%",background:c,transform:`rotate(${d}deg) translateX(14px)`}}/>)}</div>;
   }
-  // cape / weapon — color swatch
+  // cape — color swatch
   return <div style={{width:30,height:30,borderRadius:"50%",background:item.color||"#888",border:"2px solid rgba(255,255,255,0.3)"}}/>;
 }
 
@@ -1610,6 +1657,8 @@ export default function App() {
     const next = {...data, settings:{...data.settings, [key]:val}};
     if (key==="kanbanEnabled" && !val && view==="board") setView("dashboard");
     if (key==="pomodoroEnabled" && !val && view==="focus") setView("dashboard");
+    if (key==="casinoEnabled" && !val && view==="casino") setView("dashboard");
+    if (key==="shopEnabled" && !val && view==="shop") setView("dashboard");
     update(next);
   };
   const setChar = (key, val) =>
@@ -1773,12 +1822,19 @@ export default function App() {
     });
     try { navigator.vibrate && navigator.vibrate(10); } catch {}
   };
-  const setAuraColor = (color) => {
+
+  // ── RESET / DEVELOPER TOOLS ─────────────────────────────────────────────────
+  const resetGems = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, gemsEarned:0, gemsSpent:0}}; persistRaw(n); return n; }); toast$("GEMS RESET","#fb923c"); };
+  const resetCoins = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, coinsEarned:0, coinsSpent:0, coinsByTaskDay:{}}}; persistRaw(n); return n; }); toast$("COINS RESET","#fb923c"); };
+  const resetCosmetics = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, owned:[], equippedCosmetics:{}, pet:null}}; persistRaw(n); return n; }); toast$("COSMETICS RESET","#fb923c"); };
+  const devSetCurrency = (coinsVal, gemsVal) => {
     setData(cur=>{
-      const eq = {...(cur.wallet.equippedCosmetics||{}), auraColor:color};
-      const n = {...cur, wallet:{...cur.wallet, equippedCosmetics:eq}};
-      persistRaw(n); return n;
+      const w = {...cur.wallet};
+      if (coinsVal!=null && !isNaN(coinsVal)) { w.coinsEarned = Math.max(0,Math.round(coinsVal)) + (w.coinsSpent||0); }
+      if (gemsVal!=null && !isNaN(gemsVal)) { w.gemsEarned = Math.max(0,Math.round(gemsVal)) + (w.gemsSpent||0); }
+      const n={...cur, wallet:w}; persistRaw(n); return n;
     });
+    toast$("DEV: CURRENCY SET","#a855f7");
   };
 
   // ── PERFECT-DAY JACKPOT ─────────────────────────────────────────────────────
@@ -1988,8 +2044,8 @@ export default function App() {
     { v:"tasks",     icon:"⚔", label:"QUESTS" },
     ...(S.kanbanEnabled   ? [{ v:"board", icon:"▦", label:"BOARD" }] : []),
     ...(S.pomodoroEnabled ? [{ v:"focus", icon:"◔", label:"FOCUS" }] : []),
-    { v:"casino", icon:"🎰", label:"CASINO" },
-    { v:"shop", icon:"🛍", label:"SHOP" },
+    ...(S.casinoEnabled ? [{ v:"casino", icon:"🎰", label:"CASINO" }] : []),
+    ...(S.shopEnabled ? [{ v:"shop", icon:"🛍", label:"SHOP" }] : []),
     { v:"stats", icon:"◆", label:"STATS" },
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
@@ -2194,13 +2250,21 @@ export default function App() {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setConfirmBox(null)}>
           <div onClick={e=>e.stopPropagation()} style={{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",border:`2px solid ${BAD}`,borderRadius:26,padding:"24px 26px",maxWidth:340,width:"100%",boxShadow:`0 0 40px ${BAD}55`,animation:"popIn .25s ease"}}>
             <div style={{fontSize:12,letterSpacing:2,color:BAD,fontWeight:900,textAlign:"center",marginBottom:14}}>
-              {confirmBox.type==="reset" ? "⚠ RESET STATS" : confirmBox.type==="questReset" ? "⚠ RESET QUEST" : "⚠ CONFIRM DELETE"}
+              {confirmBox.type==="reset" ? "⚠ RESET STATS" : confirmBox.type==="questReset" ? "⚠ RESET QUEST"
+                : confirmBox.type==="resetCoins" ? "⚠ RESET COINS" : confirmBox.type==="resetGems" ? "⚠ RESET GEMS"
+                : confirmBox.type==="resetCosmetics" ? "⚠ RESET COSMETICS" : "⚠ CONFIRM DELETE"}
             </div>
             <div style={{fontSize:14.5,color:"#fff",textAlign:"center",marginBottom:10,lineHeight:1.5,fontWeight:600}}>
               {confirmBox.type==="reset"
                 ? <>Reset your champion's stats back to the start? Your quests, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="questReset"
                 ? <>Wipe the history and streak of <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span> and start counting fresh from today? Your character's stats are <span style={{color:GOOD,fontWeight:900}}>unchanged</span>.</>
+                : confirmBox.type==="resetCoins"
+                ? <>Set your coin (gold) balance back to <span style={{color:"#fcd34d",fontWeight:900}}>zero</span>?</>
+                : confirmBox.type==="resetGems"
+                ? <>Set your gem balance back to <span style={{color:"#67e8f9",fontWeight:900}}>zero</span>?</>
+                : confirmBox.type==="resetCosmetics"
+                ? <>Unequip and <span style={{color:BAD,fontWeight:900}}>permanently clear</span> every cosmetic you own? You'll have to re-earn them.</>
                 : <>Are you sure you want to delete <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span>?</>}
             </div>
             {confirmBox.type==="cat" && confirmBox.taskCount > 0 && (
@@ -2217,9 +2281,12 @@ export default function App() {
                   else if (confirmBox.type==="questReset") resetQuest(confirmBox.id);
                   else if (confirmBox.type==="list") deleteList(confirmBox.id);
                   else if (confirmBox.type==="reset") resetStats();
+                  else if (confirmBox.type==="resetCoins") resetCoins();
+                  else if (confirmBox.type==="resetGems") resetGems();
+                  else if (confirmBox.type==="resetCosmetics") resetCosmetics();
                   setConfirmBox(null);
                 }}>
-                {confirmBox.type==="reset"||confirmBox.type==="questReset" ? "RESET" : "DELETE"}
+                {["reset","questReset","resetCoins","resetGems","resetCosmetics"].includes(confirmBox.type) ? "RESET" : "DELETE"}
               </button>
             </div>
           </div>
@@ -3068,6 +3135,20 @@ export default function App() {
                 </div>
                 <Switch on={S.pomodoroEnabled} onToggle={()=>setSetting("pomodoroEnabled",!S.pomodoroEnabled)}/>
               </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🎰 Casino</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Spin games (coins still earn when off)</div>
+                </div>
+                <Switch on={S.casinoEnabled} onToggle={()=>setSetting("casinoEnabled",!S.casinoEnabled)}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🛍 Shop</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Owned cosmetics stay wearable when off</div>
+                </div>
+                <Switch on={S.shopEnabled} onToggle={()=>setSetting("shopEnabled",!S.shopEnabled)}/>
+              </div>
             </div>
 
             {/* CHARACTER */}
@@ -3139,7 +3220,7 @@ export default function App() {
                     Nothing yet. Win 💎 in the Casino, then unlock auras, pets, capes, and blades in the Shop — they&rsquo;ll appear here to equip.
                   </div>;
                 }
-                const groups = [["aura","AURAS"],["pet","PETS"],["cape","CAPES"],["weapon","BLADES"]];
+                const groups = [["aura","AURAS"],["pet","PETS"],["cape","CAPES"]];
                 return groups.map(([type,label])=>{
                   const items = owned.filter(it=>it.type===type);
                   if (!items.length) return null;
@@ -3156,7 +3237,7 @@ export default function App() {
                               border:equipped?`2px solid ${RARITY[it.rarity].color}`:`1px solid ${LINE}`,
                               borderRadius:14,padding:"9px 8px",cursor:"pointer",minWidth:62}}>
                               <div style={{height:30,display:"flex",alignItems:"center"}}>
-                                <ShopPreview item={it} auraColor={cosmetics.auraColor||"#ffd11a"}/>
+                                <ShopPreview item={it}/>
                               </div>
                               <div style={{fontSize:8.5,fontWeight:800,color:equipped?"#fff":DIM,textAlign:"center",lineHeight:1.1}}>{it.name}</div>
                             </button>
@@ -3167,28 +3248,57 @@ export default function App() {
                   );
                 });
               })()}
-              {/* Aura color picker, shown when an aura is equipped */}
-              {cosmetics.aura && (data.wallet.owned||[]).includes(cosmetics.aura) && (
-                <div style={{marginTop:14}}>
-                  <div style={{fontSize:9,fontWeight:800,color:FAINT,letterSpacing:1,marginBottom:7}}>AURA COLOR</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    {AURA_COLORS.map(col=>(
-                      <button key={col} onClick={()=>setAuraColor(col)}
-                        style={{width:30,height:30,borderRadius:"50%",background:col,cursor:"pointer",
-                          border:(cosmetics.auraColor||"#ffd11a")===col?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",padding:0}}/>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* DANGER ZONE */}
             <div style={{...C.glass,border:`1.5px solid ${BAD}55`}}>
               <div style={{...C.label,color:BAD}}>DANGER ZONE</div>
-              <button style={{...C.btnSm,width:"100%",padding:"14px",color:BAD}}
+              <button style={{...C.btnSm,width:"100%",padding:"14px",color:BAD,marginBottom:8}}
                 onClick={()=>setConfirmBox({type:"reset"})}>
                 ↺ RESET STATS (KEEPS QUESTS & HISTORY)
               </button>
+              <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#fcd34d",marginBottom:8}}
+                onClick={()=>setConfirmBox({type:"resetCoins"})}>
+                ↺ RESET COINS (GOLD)
+              </button>
+              <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#67e8f9",marginBottom:8}}
+                onClick={()=>setConfirmBox({type:"resetGems"})}>
+                ↺ RESET GEMS
+              </button>
+              <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#f472b6"}}
+                onClick={()=>setConfirmBox({type:"resetCosmetics"})}>
+                ↺ RESET COSMETICS (UNEQUIPS & CLEARS OWNED)
+              </button>
+            </div>
+
+            {/* DEVELOPER MODE */}
+            <div style={{...C.glass,border:"1.5px solid #a855f755"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#c084fc"}}>🛠 Developer Mode</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Set coins & gems directly (for testing)</div>
+                </div>
+                <Switch on={S.devMode} onToggle={()=>setSetting("devMode",!S.devMode)} color="#a855f7"/>
+              </div>
+              {S.devMode && (
+                <div style={{marginTop:14}}>
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    <input id="devCoins" type="number" placeholder={`Coins (now ${coins})`} style={{...C.input,flex:1}}/>
+                    <button style={{...C.btnSm,padding:"0 16px"}} onClick={()=>{
+                      const el=document.getElementById("devCoins"); const v=parseInt(el.value);
+                      if(!isNaN(v)) devSetCurrency(v, null); el.value="";
+                    }}>SET 🪙</button>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <input id="devGems" type="number" placeholder={`Gems (now ${gems})`} style={{...C.input,flex:1}}/>
+                    <button style={{...C.btnSm,padding:"0 16px"}} onClick={()=>{
+                      const el=document.getElementById("devGems"); const v=parseInt(el.value);
+                      if(!isNaN(v)) devSetCurrency(null, v); el.value="";
+                    }}>SET 💎</button>
+                  </div>
+                  <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:8}}>Tip: give yourself gems, then buy items to verify they wear correctly.</div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -3240,8 +3350,8 @@ export default function App() {
               )}
             </div>
 
-            {/* The active game */}
-            {spinsAvail > 0 && coins >= SPIN_COST && (
+            {/* The active game — stays mounted through the whole round (fixes blank-game bug) */}
+            {((spinsAvail > 0 && coins >= SPIN_COST) || spinState!=="ready") && (
               <div style={{...C.glass,textAlign:"center",padding:"20px 16px"}}>
                 <div style={{fontSize:11,fontWeight:900,letterSpacing:2,color:T.accent,marginBottom:4}}>
                   {spinGame==="slot"?"🎰 SLOT MACHINE":spinGame==="wheel"?"🎡 PRIZE WHEEL":"🃏 BLACKJACK"}
@@ -3253,11 +3363,17 @@ export default function App() {
                 {spinGame==="blackjack" && <Blackjack state={spinState} onSettle={settleSpin}/>}
 
                 {spinState==="ready" && (
-                  <button style={{...C.btn,width:"100%",padding:"15px",fontSize:15,marginTop:18,
-                    background:"linear-gradient(135deg,#7c3aed,#db2777)",color:"#fff"}}
-                    onClick={beginPlay}>
-                    {spinGame==="blackjack" ? `DEAL · ${SPIN_COST} 🪙` : `PULL · ${SPIN_COST} 🪙`}
-                  </button>
+                  (spinsAvail > 0 && coins >= SPIN_COST) ? (
+                    <button style={{...C.btn,width:"100%",padding:"15px",fontSize:15,marginTop:18,
+                      background:"linear-gradient(135deg,#7c3aed,#db2777)",color:"#fff"}}
+                      onClick={beginPlay}>
+                      {spinGame==="blackjack" ? `DEAL · ${SPIN_COST} 🪙` : `PULL · ${SPIN_COST} 🪙`}
+                    </button>
+                  ) : (
+                    <div style={{fontSize:12,color:FAINT,fontWeight:700,marginTop:18}}>
+                      {spinsAvail===0 ? "Complete more quests to unlock a spin" : `Need ${SPIN_COST} coins`}
+                    </div>
+                  )
                 )}
                 {(spinState==="spinning" || spinState==="playing") && (
                   <div style={{fontSize:12,color:DIM,fontWeight:800,marginTop:18,letterSpacing:1}}>
@@ -3275,8 +3391,8 @@ export default function App() {
                         PLAY AGAIN ({spinsAvail} LEFT)
                       </button>
                     ) : (
-                      <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:10}} onClick={()=>setView("shop")}>
-                        SPEND YOUR 💎 IN THE SHOP →
+                      <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:10}} onClick={()=>{ setSpinState("ready"); setView("shop"); }}>
+                        {gems>0 ? "SPEND YOUR 💎 IN THE SHOP →" : "DONE"}
                       </button>
                     )}
                   </div>
@@ -3314,19 +3430,6 @@ export default function App() {
                   color:shopFilter===v?"#1c1430":DIM}}>{l}</button>
               ))}
             </div>
-            {/* Aura color picker (shows when an aura is owned+equipped) */}
-            {cosmetics.aura && (data.wallet.owned||[]).includes(cosmetics.aura) && (
-              <div style={{...C.glass,padding:"13px 15px"}}>
-                <div style={C.label}>AURA COLOR</div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {AURA_COLORS.map(col=>(
-                    <button key={col} onClick={()=>setAuraColor(col)}
-                      style={{width:30,height:30,borderRadius:"50%",background:col,cursor:"pointer",
-                        border:(cosmetics.auraColor||"#ffd11a")===col?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",padding:0}}/>
-                  ))}
-                </div>
-              </div>
-            )}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {SHOP.filter(it=>shopFilter==="all"||it.type===shopFilter).map(item=>{
                 const owned = (data.wallet.owned||[]).includes(item.id);
@@ -3342,7 +3445,7 @@ export default function App() {
                     opacity:gated&&!owned?0.6:1,boxShadow:owned?`0 0 16px ${r.color}33`:"none"}}>
                     <div style={{position:"absolute",top:8,right:9,fontSize:7.5,fontWeight:900,color:r.color,letterSpacing:.5}}>{r.label}</div>
                     <div style={{height:46,display:"flex",alignItems:"center",justifyContent:"center",marginTop:4,marginBottom:6}}>
-                      <ShopPreview item={item} auraColor={cosmetics.auraColor||"#ffd11a"}/>
+                      <ShopPreview item={item}/>
                     </div>
                     <div style={{fontSize:12,fontWeight:800,color:"#fff",textAlign:"center",lineHeight:1.2,minHeight:29}}>{item.name}</div>
                     <div style={{marginTop:8,textAlign:"center"}}>
