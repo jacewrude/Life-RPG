@@ -2094,11 +2094,11 @@ export default function App() {
   const navItems = [
     { v:"dashboard", icon:"⛰", label:"HOME" },
     ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
-    ...(S.kanbanEnabled   ? [{ v:"board", icon:"▦", label:"BOARD" }] : []),
-    ...(S.pomodoroEnabled ? [{ v:"focus", icon:"◔", label:"FOCUS" }] : []),
+    ...(S.kanbanEnabled   ? [{ v:"board", icon:"📋", label:"BOARD" }] : []),
+    ...(S.pomodoroEnabled ? [{ v:"focus", icon:"⏱️", label:"FOCUS" }] : []),
     ...(S.casinoEnabled ? [{ v:"casino", icon:"🎰", label:"CASINO" }] : []),
     ...(S.shopEnabled ? [{ v:"shop", icon:"🛍", label:"SHOP" }] : []),
-    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"◆", label:"STATS" }] : []),
+    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"📊", label:"STATS" }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks");
@@ -3183,21 +3183,21 @@ export default function App() {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>◆ Stats</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>📊 Stats</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Radar, bars & ascension path</div>
                 </div>
                 <Switch on={S.statsEnabled!==false} onToggle={()=>setSetting("statsEnabled",!(S.statsEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>▦ Board</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>📋 Board</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Reminders hub & kanban</div>
                 </div>
                 <Switch on={S.kanbanEnabled} onToggle={()=>setSetting("kanbanEnabled",!S.kanbanEnabled)}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>◔ Focus</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⏱️ Focus</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Pomodoro timer</div>
                 </div>
                 <Switch on={S.pomodoroEnabled} onToggle={()=>setSetting("pomodoroEnabled",!S.pomodoroEnabled)}/>
