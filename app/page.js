@@ -709,57 +709,16 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   const cz = character || DEFAULT_CHARACTER;
   const eq = previewAllGear ? DEFAULT_EQUIPPED : (cz.equipped || DEFAULT_EQUIPPED);
   const s = scale;
-  const W = 32, H = 34;
+  const W = 24, H = 24;
   const has = (slot, lvlNeeded) => level >= lvlNeeded && eq[slot] !== false;
   const els = [];
   let k = 0;
   const R = (x,y,w,h,fill,rx) => els.push(
     <rect key={k++} x={x*s} y={y*s} width={w*s} height={h*s} fill={fill} rx={(rx!==undefined?rx:0.35)*s} />
   );
-  const E = (cx,cy,rx,ry,fill) => els.push(
-    <ellipse key={k++} cx={cx*s} cy={cy*s} rx={rx*s} ry={ry*s} fill={fill} />
-  );
-  const P = (pts,fill,stroke,sw) => els.push(
-    <polygon key={k++} points={pts.map(p=>`${p[0]*s},${p[1]*s}`).join(" ")} fill={fill}
-      stroke={stroke||"none"} strokeWidth={stroke?(sw||0.3)*s:0} strokeLinejoin="round" />
-  );
-  // Heavy dark outline behind a part (the chunky black-border look)
-  const OUTLINE = "#171019";
-  const OL = (x,y,w,h,rx,t=0.55) => els.push(
-    <rect key={k++} x={(x-t)*s} y={(y-t)*s} width={(w+t*2)*s} height={(h+t*2)*s} fill={OUTLINE} rx={((rx!==undefined?rx:0.35)+t)*s} />
-  );
-  const OE = (cx,cy,rx,ry,t=0.55) => els.push(
-    <ellipse key={k++} cx={cx*s} cy={cy*s} rx={(rx+t)*s} ry={(ry+t)*s} fill={OUTLINE} />
-  );
-  // Metal plate: outline + base + bright top highlight + dark bottom shade (recolorable)
-  const PLATE = (x,y,w,h,base,rx=0.6) => {
-    OL(x,y,w,h,rx);
-    R(x,y,w,h,base,rx);
-    R(x,y,w,h*0.34,shade(base,42),rx);          // top highlight band
-    R(x,y+h*0.66,w,h*0.34,shade(base,-40),rx);  // bottom shadow band
-  };
-  // Premium-knight outline helpers (thicker for the heroic look)
-  const OL_COL = "#120d18";
-  const TT = 0.85; // thick outline
-  const OR = (x,y,w,h,rx,t=TT) => els.push(
-    <rect key={k++} x={(x-t)*s} y={(y-t)*s} width={(w+t*2)*s} height={(h+t*2)*s} fill={OL_COL} rx={((rx!==undefined?rx:0.35)+t)*s} />
-  );
-  const OEt = (cx,cy,rx,ry,t=TT) => els.push(
-    <ellipse key={k++} cx={cx*s} cy={cy*s} rx={(rx+t)*s} ry={(ry+t)*s} fill={OL_COL} />
-  );
-  const OP = (pts,t=TT) => {
-    const cx = pts.reduce((a,p)=>a+p[0],0)/pts.length, cy = pts.reduce((a,p)=>a+p[1],0)/pts.length;
-    const grown = pts.map(p=>{const dx=p[0]-cx,dy=p[1]-cy,d=Math.hypot(dx,dy)||1;return [p[0]+dx/d*t,p[1]+dy/d*t];});
-    P(grown, OL_COL);
-  };
 
   const skin = cz.skin, hair = cz.hair;
   const shirt = cz.shirt, pants = cz.pants;
-
-  // ── Signature gold halo ──
-  els.push(<ellipse key={k++} cx={16*s} cy={2.2*s} rx={4.6*s} ry={1.5*s} fill="none" stroke="#3a2c00" strokeWidth={1.3*s}/>);
-  els.push(<ellipse key={k++} cx={16*s} cy={2.2*s} rx={4.6*s} ry={1.5*s} fill="none" stroke="#ffc01e" strokeWidth={0.8*s}/>);
-  els.push(<ellipse key={k++} cx={16*s} cy={2.05*s} rx={4.6*s} ry={1.5*s} fill="none" stroke="#ffe07a" strokeWidth={0.3*s}/>);
 
   // ── Purchased cosmetics (from the shop) ──
   const cos = cosmetics || {};
@@ -767,59 +726,67 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   const auraC = cosItem("aura"), capeC = cosItem("cape"), weaponC = cosItem("weapon");
   const auraColor = (auraC && auraC.color) || "#f5b827";
 
-  // Cosmetic aura (drawn behind everything) — 32-grid, centered on the body (16,16)
+  // Cosmetic aura (drawn behind everything) — shape determined by purchase
   if (auraC) {
     const shape = auraC.auraShape;
-    const CX=16, CY=16;
     if (shape === "saiyan") {
-      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={15*s} fill={auraColor} opacity="0.18" />);
-      els.push(<path key={k++} d={`M ${7*s} ${27*s} Q ${4*s} ${13*s} ${9.5*s} ${5*s} Q ${9.5*s} ${15*s} ${12*s} ${12*s} Q ${10.5*s} ${4*s} ${16*s} ${0.5*s} Q ${21.5*s} ${4*s} ${20*s} ${12*s} Q ${22.5*s} ${15*s} ${22.5*s} ${5*s} Q ${28*s} ${13*s} ${25*s} ${27*s} Z`} fill={auraColor} opacity="0.5" style={{animation: idle?"breathe 1.4s ease-in-out infinite":"none"}}/>);
-      els.push(<path key={k++} d={`M ${9.5*s} ${27*s} Q ${8*s} ${16*s} ${12*s} ${9.5*s} Q ${13.5*s} ${16*s} ${16*s} ${12*s} Q ${18.5*s} ${16*s} ${20*s} ${9.5*s} Q ${24*s} ${16*s} ${22.5*s} ${27*s} Z`} fill={shade(auraColor,60)} opacity="0.55"/>);
+      // upward flame licks + glow
+      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill={auraColor} opacity="0.18" />);
+      els.push(<path key={k++} d={`M ${5*s} ${20*s} Q ${3*s} ${10*s} ${7*s} ${4*s} Q ${7*s} ${11*s} ${9*s} ${9*s} Q ${8*s} ${3*s} ${12*s} ${0.5*s} Q ${16*s} ${3*s} ${15*s} ${9*s} Q ${17*s} ${11*s} ${17*s} ${4*s} Q ${21*s} ${10*s} ${19*s} ${20*s} Z`} fill={auraColor} opacity="0.55" style={{animation: idle?"breathe 1.4s ease-in-out infinite":"none"}}/>);
+      els.push(<path key={k++} d={`M ${7*s} ${20*s} Q ${6*s} ${12*s} ${9*s} ${7*s} Q ${10*s} ${12*s} ${12*s} ${9*s} Q ${14*s} ${12*s} ${15*s} ${7*s} Q ${18*s} ${12*s} ${17*s} ${20*s} Z`} fill={shade(auraColor,60)} opacity="0.6"/>);
     } else if (shape === "cloud") {
+      // Dark Omen — a brooding storm mass with a jagged underside + inner shadow + lightning glow
       const dk = shade(auraColor,-45), mid = shade(auraColor,-10), lt = shade(auraColor,35);
-      els.push(<circle key={k++} cx={CX*s} cy={12*s} r={15*s} fill={auraColor} opacity="0.13"/>);
-      [[8.5,8,4.5],[13,5.7,5.6],[19.5,6.1,5.3],[23.5,9.5,4.3],[11.7,9.6,4.8],[17.6,9.9,5]].forEach(([x,y,r])=>
+      els.push(<circle key={k++} cx={12*s} cy={9*s} r={12*s} fill={auraColor} opacity="0.13"/>);
+      // billowing top lobes
+      [[6.5,6,3.4],[10,4.3,4.2],[14.5,4.6,4],[17.6,7,3.2],[8.8,7.2,3.6],[13.2,7.4,3.8]].forEach(([x,y,r])=>
         els.push(<circle key={k++} cx={x*s} cy={y*s} r={r*s} fill={mid} opacity="0.6"/>));
-      els.push(<circle key={k++} cx={13*s} cy={5.7*s} r={2.9*s} fill={lt} opacity="0.5"/>);
-      els.push(<polyline key={k++} points={`${16*s},${12*s} ${14*s},${17*s} ${16.5*s},${17*s} ${14.5*s},${23*s}`} fill="none" stroke={shade(auraColor,80)} strokeWidth={0.65*s} opacity="0.8" style={{animation: idle?"sparkle 1.1s ease-in-out infinite":"none"}}/>);
+      // dark underbelly
+      els.push(<path key={k++} d={`M ${4*s} ${9*s} Q ${6*s} ${12.5*s} ${8*s} ${9.5*s} Q ${10*s} ${13*s} ${12*s} ${9.5*s} Q ${14*s} ${13*s} ${16*s} ${9.5*s} Q ${18*s} ${12.5*s} ${20*s} ${9*s} L ${20*s} ${6*s} L ${4*s} ${6*s} Z`} fill={dk} opacity="0.7"/>);
+      // top highlight
+      els.push(<circle key={k++} cx={10*s} cy={4.3*s} r={2.2*s} fill={lt} opacity="0.5"/>);
+      // lightning flicker beneath
+      els.push(<polyline key={k++} points={`${12*s},${9*s} ${10.6*s},${13*s} ${12.4*s},${13*s} ${10.8*s},${17*s}`} fill="none" stroke={shade(auraColor,80)} strokeWidth={0.5*s} opacity="0.8" style={{animation: idle?"sparkle 1.1s ease-in-out infinite":"none"}}/>);
     } else if (shape === "electric") {
-      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={15.5*s} fill={auraColor} opacity="0.12"/>);
-      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={5*s} fill={auraColor} opacity="0.22" style={{animation: idle?"sparkle 0.9s ease-in-out infinite":"none"}}/>);
+      // Static Storm — radiating lightning bolts around an energized core
+      els.push(<circle key={k++} cx={12*s} cy={12*s} r={12*s} fill={auraColor} opacity="0.12"/>);
+      els.push(<circle key={k++} cx={12*s} cy={11*s} r={4*s} fill={auraColor} opacity="0.22" style={{animation: idle?"sparkle 0.9s ease-in-out infinite":"none"}}/>);
       const bolt = (deg) => {
         const a = deg*Math.PI/180, c=Math.cos(a), sn=Math.sin(a);
-        const px=(r)=>(CX+r*c), py=(r)=>(CY+r*sn);
+        const px=(r)=>(12+r*c)*s, py=(r)=>(11+r*sn)*s;
+        // zig-zag bolt from r=4 out to r=12, kinked at the midpoint perpendicular
         const perpc = Math.cos(a+Math.PI/2), perps = Math.sin(a+Math.PI/2);
-        const mx = (CX + 10*c + 2*perpc), my = (CY + 10*sn + 2*perps);
-        return `${px(5)*s},${py(5)*s} ${mx*s},${my*s} ${px(15)*s},${py(15)*s}`;
+        const mx = (12 + 8*c + 1.6*perpc)*s, my = (11 + 8*sn + 1.6*perps)*s;
+        return `${px(4)},${py(4)} ${mx},${my} ${px(12)},${py(12)}`;
       };
       [25,90,160,210,300,340].forEach(deg=>
-        els.push(<polyline key={k++} points={bolt(deg)} fill="none" stroke={shade(auraColor,85)} strokeWidth={0.7*s} strokeLinejoin="round" opacity="0.9"/>));
+        els.push(<polyline key={k++} points={bolt(deg)} fill="none" stroke={shade(auraColor,85)} strokeWidth={0.55*s} strokeLinejoin="round" opacity="0.9"/>));
     } else if (shape === "halo") {
-      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={15*s} fill={auraColor} opacity="0.16"/>);
-      els.push(<ellipse key={k++} cx={CX*s} cy={2.0*s} rx={5*s} ry={1.6*s} fill="none" stroke={auraColor} strokeWidth={1.0*s} style={{filter:`drop-shadow(0 0 ${0.7*s}px ${auraColor})`}}/>);
+      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill={auraColor} opacity="0.16"/>);
+      els.push(<ellipse key={k++} cx={12*s} cy={1.2*s} rx={4*s} ry={1.3*s} fill="none" stroke={auraColor} strokeWidth={0.8*s} style={{filter:`drop-shadow(0 0 ${0.6*s}px ${auraColor})`}}/>);
     } else if (shape === "orbit") {
-      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={6*s} fill={auraColor} opacity="0.2"/>);
-      els.push(<ellipse key={k++} cx={CX*s} cy={CY*s} rx={13.5*s} ry={8*s} fill="none" stroke={auraColor} strokeWidth={0.4*s} opacity="0.4"/>);
+      // Orbiting Sparks — comet-like orbs with trailing tails on an elliptical ring
+      els.push(<circle key={k++} cx={12*s} cy={11*s} r={4.5*s} fill={auraColor} opacity="0.2"/>);
+      els.push(<ellipse key={k++} cx={12*s} cy={11*s} rx={10*s} ry={6*s} fill="none" stroke={auraColor} strokeWidth={0.3*s} opacity="0.4"/>);
       [10,130,250].forEach((deg)=>{
-        const a=deg*Math.PI/180, ox=(CX+13.5*Math.cos(a)), oy=(CY+8*Math.sin(a));
+        const a=deg*Math.PI/180, ox=(12+10*Math.cos(a)), oy=(11+6*Math.sin(a));
+        // tail (a few fading dots back along the ellipse)
         for (let t=1;t<=3;t++){
           const at=(deg-t*14)*Math.PI/180;
-          els.push(<circle key={k++} cx={(CX+13.5*Math.cos(at))*s} cy={(CY+8*Math.sin(at))*s} r={(0.7-t*0.13)*s} fill={shade(auraColor,55)} opacity={0.5-t*0.12}/>);
+          els.push(<circle key={k++} cx={(12+10*Math.cos(at))*s} cy={(11+6*Math.sin(at))*s} r={(0.5-t*0.1)*s} fill={shade(auraColor,55)} opacity={0.5-t*0.12}/>);
         }
-        els.push(<circle key={k++} cx={ox*s} cy={oy*s} r={1.6*s} fill={shade(auraColor,70)} opacity="0.95" style={{filter:`drop-shadow(0 0 ${0.6*s}px ${auraColor})`}}/>);
+        els.push(<circle key={k++} cx={ox*s} cy={oy*s} r={1.2*s} fill={shade(auraColor,70)} opacity="0.95" style={{filter:`drop-shadow(0 0 ${0.5*s}px ${auraColor})`}}/>);
       });
     }
   }
-  // Cape (behind the torso) — 32-grid
+  // Cape (behind the torso)
   if (capeC) {
-    OL(10.8,13.5,10.4,12.5,1.4);
-    R(10.8,13.5,10.4,12.5,capeC.color,1.4);
-    R(10.8,13.5,10.4,1.6,shade(capeC.color,28),0.8);
-    R(10.8,23,10.4,3,shade(capeC.color,-30),1.0);
+    R(8.2,10.4,7.6,9.2,capeC.color,1.4);
+    R(8.2,10.4,7.6,1.2,shade(capeC.color,28),0.8);
   }
 
   if (has("aura",11)) {
-    els.push(<circle key={k++} cx={16*s} cy={16*s} r={14*s} fill="url(#auraGrad)" />);
+    els.push(<circle key={k++} cx={12*s} cy={11*s} r={10.5*s} fill="url(#auraGrad)" />);
   }
   if (has("wings",13)) {
     R(2.2,9,3.6,1.6,"#fdf3d8",0.8); R(1.2,10.4,4.6,1.8,"#fbe9b8",0.9);
@@ -828,131 +795,132 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(18.4,12.2,5.0,1.8,"#fdf3d8",0.9); R(18.8,14,3.6,1.5,"#f3da9b",0.8);
   }
 
-  // ── Premium heroic Knight: visual tier (0..8) drives dramatic gear jumps ──
+  R(9,16,2.2,4.4,pants,0.5);
+  R(12.8,16,2.2,4.4,pants,0.5);
+  R(9,16,5.9,1.2,pants,0.4);
+  if (has("boots",2)) {
+    R(8.4,19.8,3.4,1.9,"#42291a",0.6); R(8.4,20.6,3.4,1.1,shade("#42291a",-18),0.5);
+    R(12.3,19.8,3.4,1.9,"#42291a",0.6); R(12.3,20.6,3.4,1.1,shade("#42291a",-18),0.5);
+  } else {
+    R(9,19.8,2.2,1.4,skin,0.6); R(12.8,19.8,2.2,1.4,skin,0.6);
+  }
+
   const fem = cz.body === "f";
+  const steel = has("armor",7), leather = !steel && has("armor",5);
+  let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
+  if (fem) {
+    R(9.1,10.8,5.8,5.4,torsoColor,1.1);
+    R(8.8,14.6,6.4,1.6,torsoColor,0.8);
+    R(9.1,15.2,5.8,1.0,shade(torsoColor,-26),0.5);
+  } else {
+    R(8.7,10.8,6.6,5.4,torsoColor,0.9);
+    R(8.7,15.2,6.6,1.0,shade(torsoColor,-26),0.5);
+  }
+  if (steel) {
+    R(8.7,10.8,2.4,1.0,shade(torsoColor,38),0.5);
+    R(10.9,13.0,2.2,1.1,"#22304a",0.4);
+    R(8.0,10.8,1.3,2.2,"#b8c4d2",0.6);
+    R(14.7,10.8,1.3,2.2,"#b8c4d2",0.6);
+  }
+  if (leather) {
+    R(8.7,12.6,6.6,0.9,"#3f2415",0.3);
+    R(10.0,11.4,0.7,0.7,"#caa05a",0.35);
+    R(13.3,11.4,0.7,0.7,"#caa05a",0.35);
+  }
+  if (has("trim",9)) {
+    R(8.7,10.8,6.6,0.7,"#f1b32b",0.35);
+    R(8.7,15.4,6.6,0.8,"#f1b32b",0.35);
+  }
+
+  const armColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : skin);
+  R(7.6,11.2,1.3,4.0,armColor,0.6);
+  R(15.1,11.2,1.3,4.0,armColor,0.6);
+  R(7.6,14.9,1.3,1.2,skin,0.6);
+  R(15.1,14.9,1.3,1.2,skin,0.6);
+
+  R(8.2,3.8,7.6,7.2,skin,1.6);
+  R(8.2,10.0,7.6,1.0,shade(skin,-18),0.8);
+  const helm = has("helm",8) && !has("crown",12);
   const hs = cz.hairstyle || "classic";
-  const C = 16;
-  // map 15 levels onto 9 visual tiers
-  const TIER_BY_LEVEL = [0,0,1,2,2,3,3,4,4,5,5,6,7,7,8];
-  const tier = previewAllGear ? 8 : (TIER_BY_LEVEL[Math.max(0,Math.min(14,level))] || 0);
+  if (!helm && hs !== "bald") {
+    if (hs === "classic") {
+      R(8.0,2.9,8.0,2.2,hair,1.0);
+      R(8.0,4.6,1.3,1.9,hair,0.5);
+      R(14.7,4.6,1.3,1.9,hair,0.5);
+      R(11.2,4.8,1.6,0.9,hair,0.4);
+    } else if (hs === "long") {
+      R(8.0,2.9,8.0,2.2,hair,1.0);
+      R(7.7,4.4,1.6,6.8,hair,0.8);
+      R(14.7,4.4,1.6,6.8,hair,0.8);
+      R(11.2,4.8,1.6,0.9,hair,0.4);
+    } else if (hs === "fro") {
+      R(7.2,1.2,9.6,5.2,hair,2.6);
+      R(7.0,3.4,1.6,2.6,hair,1.0);
+      R(15.4,3.4,1.6,2.6,hair,1.0);
+    } else if (hs === "braids") {
+      R(8.0,2.9,8.0,2.2,hair,1.0);
+      R(7.8,4.4,1.2,6.4,hair,0.6);
+      R(15.0,4.4,1.2,6.4,hair,0.6);
+      R(7.8,7.2,1.2,0.7,"#caa05a",0.3);
+      R(15.0,7.2,1.2,0.7,"#caa05a",0.3);
+      R(7.8,9.4,1.2,0.7,"#caa05a",0.3);
+      R(15.0,9.4,1.2,0.7,"#caa05a",0.3);
+    } else if (hs === "buzz") {
+      R(8.2,3.2,7.6,1.3,hair,0.9);
+    }
+  }
+  R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
+  R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
+  R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
+  R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
+  R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
 
-  const armorByTier = ["#9a8f80","#8a8378","#7e8794","#8f9aa8","#9fb0c1","#b9c4d2","#c9d4e2","#d8e2ef","#eef3fb"];
-  const metalTrim   = ["#6b5a3a","#6b5a3a","#7a6a44","#caa05a","#f1b32b","#f5c542","#ffd966","#fef08a","#ffffff"];
-  const armor = armorByTier[tier], trimC = metalTrim[tier];
-  const hasPlate  = tier>=3;
-  const hasShield = tier>=3;
-  const hasHelmT  = tier>=4 && tier<8 && !has("crown",12);
-  const hasCrownT = tier>=8 || has("crown",12);
-  const hasSwordT = tier>=2 || has("sword",3);
-  const hasAuraT  = tier>=5 || has("aura",11);
-  const tabard = ["#3a3550","#3a3550","#6b3a1f","#7a2f2f","#7a2f2f","#3a3f6b","#3a3f6b","#2f5a6b","#caa05a"][tier];
-
-  // built-in holy aura (separate from purchased cosmetic aura, which drew earlier)
-  if (hasAuraT) {
-    const ac = tier>=8 ? "#fff2b0" : "#ffe07a";
-    els.push(<circle key={k++} cx={C*s} cy={17*s} r={15*s} fill={ac} opacity="0.15" style={{animation: idle?"glowPulse 2.4s ease-in-out infinite":"none"}}/>);
-    for (let i=0;i<10;i++){ const a=i/10*Math.PI*2; els.push(<circle key={k++} cx={(C+12*Math.cos(a))*s} cy={(17+12*Math.sin(a))*s} r={0.55*s} fill={ac} opacity="0.55"/>); }
+  if (helm) {
+    R(8.0,2.6,8.0,3.0,"#aab6c2",1.0);
+    R(8.0,5.0,8.0,0.8,shade("#aab6c2",-24),0.4);
+    R(11.0,0.9,2.0,2.2,"#d6452e",0.6);
+  }
+  if (has("crown",12)) {
+    R(8.8,1.7,6.4,1.7,"#f1b32b",0.4);
+    R(8.8,0.8,1.1,1.2,"#fcd34d",0.3);
+    R(11.45,0.6,1.1,1.4,"#fcd34d",0.3);
+    R(14.1,0.8,1.1,1.2,"#fcd34d",0.3);
+    R(10.2,2.1,0.8,0.8,"#dc2626",0.4);
+    R(13.0,2.1,0.8,0.8,"#2563eb",0.4);
   }
 
-  // ===== LEGS (bulky, wide heroic stance) =====
-  const legColor = tier>=4 ? shade(armor,-30) : (tier>=1 ? "#3a3550" : "#4a4458");
-  OR(9.2,23,3.4,6.2,1.1); R(9.2,23,3.4,6.2,legColor,1.1); R(9.2,23,3.4,2.0,shade(legColor,26),1.1);
-  OR(19.4,23,3.4,6.2,1.1); R(19.4,23,3.4,6.2,legColor,1.1); R(19.4,23,3.4,2.0,shade(legColor,26),1.1);
-  if (has("boots",2) || tier>=2) {
-    OR(8.4,28.6,4.6,2.8,0.9); R(8.4,28.6,4.6,2.8,"#3a2517",0.9); R(8.4,30,4.6,1.4,shade("#3a2517",-16),0.7);
-    OR(19.0,28.6,4.6,2.8,0.9); R(19.0,28.6,4.6,2.8,"#3a2517",0.9); R(19.0,30,4.6,1.4,shade("#3a2517",-16),0.7);
-  } else {
-    R(9.2,29,3.4,1.8,skin,0.8); R(19.4,29,3.4,1.8,skin,0.8);
+  if (has("shield",6)) {
+    R(4.6,11.6,3.2,4.6,"#6e655a",1.1);
+    R(4.6,11.6,3.2,1.0,shade("#6e655a",24),0.6);
+    R(5.7,13.0,1.0,1.8,"#f1b32b",0.5);
   }
-
-  // ===== TABARD (tier color drape under torso) =====
-  if (tier>=2) P([[14.3,22],[17.7,22],[17.0,28.5],[16,29.6],[15,28.5]], tabard);
-
-  // ===== TORSO (broad armored trapezoid) =====
-  const torsoBase = tier>=1 ? armor : "#8a7a64";
-  const sh = fem ? 6.0 : 6.6, wa = fem ? 4.4 : 5.0;
-  OP([[C-sh,14.5],[C+sh,14.5],[C+wa,23],[C-wa,23]]);
-  P([[C-sh,14.5],[C+sh,14.5],[C+wa,23],[C-wa,23]], torsoBase);
-  P([[C-sh+0.4,14.9],[C+sh-0.4,14.9],[C+wa,18],[C-wa,18]], shade(torsoBase,30));
-  P([[C-wa+0.3,21],[C+wa-0.3,21],[C+wa-0.5,22.7],[C-wa+0.5,22.7]], shade(torsoBase,-32));
-  if (tier>=2) { R(15.3,15.4,1.4,6.0,shade(torsoBase,-50),0.2); R(12.6,17.6,6.8,1.4,shade(torsoBase,-50),0.2); }
-  R(C-sh,14.5,sh*2,0.8,trimC,0.3);
-  R(11.4,21.6,9.2,1.6,"#4a2f1a",0.4); E(C,22.4,1.1,1.0,trimC);
-
-  // ===== PAULDRONS + ARMS =====
-  if (hasPlate) {
-    for (const px of [10.0,22.0]) { OEt(px,15.6,2.9,2.4); E(px,15.6,2.9,2.4,shade(armor,8)); E(px,14.6,2.5,1.3,shade(armor,34)); R(px-1.6,16.4,3.2,1.2,shade(armor,-18),0.5); }
-    for (const ax of [8.0,21.2]) { OR(ax,16.8,2.8,4.6,1.1); R(ax,16.8,2.8,4.6,armor,1.1); R(ax,16.8,2.8,1.5,shade(armor,30),1.1); OR(ax-0.1,21.0,3.0,3.0,1.0); R(ax-0.1,21.0,3.0,3.0,shade(armor,-8),1.0); }
-    E(9.4,24.0,1.1,1.1,skin); E(22.6,24.0,1.1,1.1,skin);
-  } else {
-    const sleeve = shade(torsoBase,-6);
-    for (const ax of [8.8,20.4]) { OR(ax,16.4,2.4,5.2,1.1); R(ax,16.4,2.4,5.2,sleeve,1.1); R(ax,16.4,2.4,1.4,shade(sleeve,26),1.1); }
-    E(10.0,22.4,1.1,1.1,skin); E(22.0,22.4,1.1,1.1,skin);
-  }
-
-  // ===== HEAD (big chibi) =====
-  OEt(16,9.2,5.4,5.2);
-  E(16,9.2,5.4,5.2,skin);
-  P([[11.2,11.0],[20.8,11.0],[19.2,13.6],[16,14.6],[12.8,13.6]], skin);
-  E(16,9.2,5.3,5.1,skin);
-
-  // ===== FACE =====
-  if (!hasHelmT) {
-    E(14.0,9.5,1.05,1.25,"#ffffff"); E(18.0,9.5,1.05,1.25,"#ffffff");
-    E(14.2,9.7,0.66,0.88,"#241a14"); E(17.8,9.7,0.66,0.88,"#241a14");
-    R(12.9,8.0,2.0,0.6,shade(hair,-10),0.25); R(17.1,8.0,2.0,0.6,shade(hair,-10),0.25);
-    R(15.55,10.4,0.9,1.2,shade(skin,-12),0.3);
-    R(14.9,12.2,2.2,0.5,shade(skin,-20),0.25);
-  }
-
-  // ===== HAIR (styles) =====
-  if (!hasHelmT && !hasCrownT && hs!=="bald") {
-    if (hs==="fro") { OEt(16,7.6,5.6,3.4); E(16,7.6,5.6,3.4,hair); E(11.0,9.0,1.7,2.1,hair); E(21.0,9.0,1.7,2.1,hair); }
-    else if (hs==="buzz") { E(16,7.2,5.4,2.0,hair); P([[10.7,8.0],[16,5.4],[21.3,8.0],[21.3,8.8],[16,6.6],[10.7,8.8]], hair); }
-    else if (hs==="long") { E(16,7.0,5.4,2.8,hair); P([[10.6,7.8],[11.8,5.6],[16,4.4],[20.2,5.6],[21.4,8.0],[19.4,7.0],[16,6.6],[12.6,7.0]], hair); R(10.6,8.0,1.2,5.4,hair,0.6); R(21.2,8.0,1.2,5.4,hair,0.6); }
-    else if (hs==="braids") { E(16,7.0,5.4,2.7,hair); P([[10.6,7.8],[16,4.4],[21.4,7.8],[21.4,8.6],[16,6.6],[10.6,8.6]], hair); R(10.5,8.0,1.1,5.0,hair,0.5); R(21.4,8.0,1.1,5.0,hair,0.5); R(10.5,9.6,1.1,0.6,trimC,0.3); R(21.4,9.6,1.1,0.6,trimC,0.3); }
-    else { E(16,7.0,5.4,2.8,hair); P([[10.6,7.8],[11.8,5.6],[16,4.4],[20.2,5.6],[21.4,8.0],[19.4,7.0],[16,6.6],[12.6,7.0]], hair); P([[15.8,5.6],[19.0,6.0],[19.8,7.4],[16.4,6.6]], shade(hair,20)); R(10.7,8.0,1.1,2.2,hair,0.4); R(21.2,8.0,1.1,2.2,hair,0.4); }
-  }
-
-  // ===== HELMET (tiers 4-7) =====
-  if (hasHelmT) {
-    OEt(16,8.6,5.6,5.0); E(16,8.6,5.6,5.0,armor); E(16,7.3,5.0,2.6,shade(armor,32));
-    R(10.6,9.0,10.8,3.0,shade(armor,-40),1.0);
-    R(15.3,7.0,1.4,5.0,shade(armor,-55),0.2); R(12.6,9.0,6.8,1.2,shade(armor,-55),0.2);
-    P([[16,2.4],[14.6,4.6],[17.4,4.6]], trimC);
-    R(15.0,3.4,2.0,2.2,"#c0392b",0.4);
-  }
-  // ===== CROWN (tier 8 / crown unlock) =====
-  if (hasCrownT) {
-    E(16,7.4,5.3,2.6,hair);
-    P([[10.8,8.2],[16,4.8],[21.2,8.2],[21.2,9.0],[16,6.6],[10.8,9.0]], hair);
-    OP([[11.4,5.6],[12.8,3.4],[14.0,5.2],[16,2.8],[18,5.2],[19.2,3.4],[20.6,5.6],[20.6,7.0],[11.4,7.0]], 0.7);
-    P([[11.4,5.6],[12.8,3.4],[14.0,5.2],[16,2.8],[18,5.2],[19.2,3.4],[20.6,5.6],[20.6,7.0],[11.4,7.0]], "#f5c542");
-    E(12.8,3.4,0.5,0.5,"#dc2626"); E(16,2.8,0.55,0.55,"#2563eb"); E(19.2,3.4,0.5,0.5,"#16a34a");
-    R(11.4,6.4,9.2,0.9,shade("#f5c542",-24),0.3);
-  }
-
-  // ===== SHIELD (tiers 3+) =====
-  if (hasShield) {
-    OEt(6.6,21.0,3.0,3.8); E(6.6,21.0,3.0,3.8,shade(armor,6)); E(6.6,19.2,2.5,1.6,shade(armor,30));
-    R(5.9,19.0,1.4,4.0,trimC,0.4); R(4.8,20.6,3.6,1.1,trimC,0.4);
-  }
-  // ===== SWORD (tiers 2+) =====
-  if (hasSwordT) {
+  if (has("sword",3)) {
+    const ench = level >= 10, iron = level >= 4;
     const wc = weaponC ? weaponC.color : null;
-    const blade = wc || (tier>=5 ? "#bfe0ff" : "#e7edf3");
-    if (tier>=5) els.push(<circle key={k++} cx={24.5*s} cy={16*s} r={3.6*s} fill={blade} opacity="0.18"/>);
-    OR(23.7,10.5,1.7,10.5,0.3,0.55);
-    R(23.7,10.5,1.7,10.5,blade,0.3); R(24.3,10.5,0.5,10.5,shade(blade,45),0.2); R(23.7,10.5,1.7,1.8,"#ffffff",0.3);
-    OR(22.6,20.6,3.9,1.1,0.4); R(22.6,20.6,3.9,1.1,trimC,0.4);
-    R(23.9,21.6,1.1,2.6,"#4a2f1a",0.4); E(24.45,24.4,0.7,0.7,trimC);
+    if (ench) {
+      R(16.4,6.2,0.6,8.0, wc||"#cfe7ff",0.3);
+      R(17.0,6.2,0.7,8.0, wc?shade(wc,30):"#9fd0ff",0.3);
+      R(16.0,13.9,2.8,0.9,"#7c5cd6",0.4);
+      R(16.9,14.7,0.9,1.9,"#2a1f4a",0.4);
+      els.push(<circle key={k++} cx={17.3*s} cy={9.6*s} r={2.6*s} fill={wc||"#9fd0ff"} opacity="0.16"/>);
+    } else if (iron) {
+      R(16.5,7.6,0.6,6.4, wc||"#eef2f6",0.3);
+      R(17.1,7.6,0.7,6.4, wc?shade(wc,28):"#c4cfdb",0.3);
+      R(16.0,13.9,2.8,0.9,"#5b6573",0.4);
+      R(16.9,14.7,0.9,1.7,"#3f2d1d",0.4);
+      R(16.8,16.3,1.1,0.9,"#caa05a",0.5);
+    } else {
+      R(16.7,8.8,1.0,5.2, wc||"#b07d2e",0.4);
+      R(16.0,13.9,2.6,0.9,"#5a3a1a",0.4);
+      R(16.9,14.7,0.9,1.7,"#2e2017",0.4);
+    }
   }
 
   // Pet companion (hand-drawn, idle beside the champion)
   if (pet) {
     const petItem = SHOP.find(it=>it.id===pet);
     if (petItem && petItem.art) {
-      drawPet(els, petItem.art, petItem.color, 26, 24, s, () => k++);
+      drawPet(els, petItem.art, petItem.color, 19.5, 17.5, s, () => k++);
     }
   }
 
