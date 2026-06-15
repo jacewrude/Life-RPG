@@ -705,20 +705,111 @@ function drawPet(els, art, color, cx, cy, s, nk) {
 }
 
 
-function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=false, cosmetics=null, pet=null }) {
+// ══════════════════════════════════════════════════════════════════════════════
+// SPRITE SYSTEM (layered, animated PNG sprite sheets in /public/sprites)
+// ──────────────────────────────────────────────────────────────────────────────
+// Spec you match when adding sprites:
+//   • 128×128 px per frame, single horizontal row, frames left-to-right
+//   • one file per animation, suffixed -idle / -walk / -celebrate
+//   • the loader auto-counts frames from sheet width ÷ 128
+// Drop a PNG in and that layer lights up automatically. Missing files are skipped,
+// and if the BASE body sprite is absent the app falls back to the drawn character.
+// ──────────────────────────────────────────────────────────────────────────────
+const SPRITE = {
+  enabled: true,            // ON — using a full-character sprite
+  frame: null,              // full-character mode (single image, not a frame sheet)
+  fps: 6,
+  root: "/sprites",
+  idleBob: true,            // gentle up/down bob so the static sprite feels alive
+};
+// FULL-CHARACTER MODE: pick one complete sprite based on the character's tier.
+// Add more PNGs to /public/sprites/full/ and extend this list. The app shows the
+// best match for the current level; if its file 404s, it falls back to the drawn character.
+// Higher minLevel entries take priority (checked top first after sort).
+const SPRITE_TIERS = [
+  // file (in /sprites/full/)        minLevel
+  { src: "knight-crown.png",  min: 12 },
+  { src: "knight-steel.png",  min: 1  },  // your first sprite — shown from level 1 up for now
+];
+function pickSpriteTier(level) {
+  const sorted = [...SPRITE_TIERS].sort((a,b)=>b.min-a.min);
+  return sorted.find(t => level >= t.min) || null;
+}
+function SpriteCharacter({ level, scale=7, idle=false, onFallback }) {
+  const [failed, setFailed] = useState(false);
+  const tier = pickSpriteTier(level);
+  const px = 32 * scale;
+  useEffect(()=>{
+    if (!tier) { onFallback && onFallback(); return; }
+    let alive = true;
+    const img = new Image();
+    img.onerror = () => { if (alive) { setFailed(true); onFallback && onFallback(); } };
+    img.src = `${SPRITE.root}/full/${tier.src}`;
+    return ()=>{ alive=false; };
+  }, [tier && tier.src]);
+  if (!tier || failed) return null;
+  return (
+    <div style={{
+      width:px, height:px, display:"block",
+      backgroundImage:`url(${SPRITE.root}/full/${tier.src})`,
+      backgroundSize:"contain", backgroundRepeat:"no-repeat", backgroundPosition:"center",
+      imageRendering:"pixelated",
+      animation: (idle && SPRITE.idleBob) ? "spriteBob 2.6s ease-in-out infinite" : "none",
+    }}/>
+  );
+}
+function PixelCharacter(props) {
+  // Sprite mode: show the real pixel-art sprite; fall back to the drawn vector
+  // character automatically if the sprite file isn't available.
+  const [spriteFailed, setSpriteFailed] = useState(false);
+  const { previewAllGear } = props;
+  if (SPRITE.enabled && !spriteFailed && !previewAllGear) {
+    return <SpriteCharacter {...props} onFallback={()=>setSpriteFailed(true)} />;
+  }
+  return <DrawnCharacter {...props} />;
+}
+
+function DrawnCharacter({ level, character, scale=7, previewAllGear=false, idle=false, cosmetics=null, pet=null }) {
   const cz = character || DEFAULT_CHARACTER;
   const eq = previewAllGear ? DEFAULT_EQUIPPED : (cz.equipped || DEFAULT_EQUIPPED);
   const s = scale;
-  const W = 24, H = 24;
+  const W = 32, H = 32;
   const has = (slot, lvlNeeded) => level >= lvlNeeded && eq[slot] !== false;
   const els = [];
   let k = 0;
   const R = (x,y,w,h,fill,rx) => els.push(
     <rect key={k++} x={x*s} y={y*s} width={w*s} height={h*s} fill={fill} rx={(rx!==undefined?rx:0.35)*s} />
   );
+  const E = (cx,cy,rx,ry,fill) => els.push(
+    <ellipse key={k++} cx={cx*s} cy={cy*s} rx={rx*s} ry={ry*s} fill={fill} />
+  );
+  const P = (pts,fill,stroke,sw) => els.push(
+    <polygon key={k++} points={pts.map(p=>`${p[0]*s},${p[1]*s}`).join(" ")} fill={fill}
+      stroke={stroke||"none"} strokeWidth={stroke?(sw||0.3)*s:0} strokeLinejoin="round" />
+  );
+  // Heavy dark outline behind a part (the chunky black-border look)
+  const OUTLINE = "#171019";
+  const OL = (x,y,w,h,rx,t=0.55) => els.push(
+    <rect key={k++} x={(x-t)*s} y={(y-t)*s} width={(w+t*2)*s} height={(h+t*2)*s} fill={OUTLINE} rx={((rx!==undefined?rx:0.35)+t)*s} />
+  );
+  const OE = (cx,cy,rx,ry,t=0.55) => els.push(
+    <ellipse key={k++} cx={cx*s} cy={cy*s} rx={(rx+t)*s} ry={(ry+t)*s} fill={OUTLINE} />
+  );
+  // Metal plate: outline + base + bright top highlight + dark bottom shade (recolorable)
+  const PLATE = (x,y,w,h,base,rx=0.6) => {
+    OL(x,y,w,h,rx);
+    R(x,y,w,h,base,rx);
+    R(x,y,w,h*0.34,shade(base,42),rx);          // top highlight band
+    R(x,y+h*0.66,w,h*0.34,shade(base,-40),rx);  // bottom shadow band
+  };
 
   const skin = cz.skin, hair = cz.hair;
   const shirt = cz.shirt, pants = cz.pants;
+
+  // ── Signature gold halo ──
+  els.push(<ellipse key={k++} cx={16*s} cy={2.2*s} rx={4.6*s} ry={1.5*s} fill="none" stroke="#3a2c00" strokeWidth={1.3*s}/>);
+  els.push(<ellipse key={k++} cx={16*s} cy={2.2*s} rx={4.6*s} ry={1.5*s} fill="none" stroke="#ffc01e" strokeWidth={0.8*s}/>);
+  els.push(<ellipse key={k++} cx={16*s} cy={2.05*s} rx={4.6*s} ry={1.5*s} fill="none" stroke="#ffe07a" strokeWidth={0.3*s}/>);
 
   // ── Purchased cosmetics (from the shop) ──
   const cos = cosmetics || {};
@@ -726,67 +817,59 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   const auraC = cosItem("aura"), capeC = cosItem("cape"), weaponC = cosItem("weapon");
   const auraColor = (auraC && auraC.color) || "#f5b827";
 
-  // Cosmetic aura (drawn behind everything) — shape determined by purchase
+  // Cosmetic aura (drawn behind everything) — 32-grid, centered on the body (16,16)
   if (auraC) {
     const shape = auraC.auraShape;
+    const CX=16, CY=16;
     if (shape === "saiyan") {
-      // upward flame licks + glow
-      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill={auraColor} opacity="0.18" />);
-      els.push(<path key={k++} d={`M ${5*s} ${20*s} Q ${3*s} ${10*s} ${7*s} ${4*s} Q ${7*s} ${11*s} ${9*s} ${9*s} Q ${8*s} ${3*s} ${12*s} ${0.5*s} Q ${16*s} ${3*s} ${15*s} ${9*s} Q ${17*s} ${11*s} ${17*s} ${4*s} Q ${21*s} ${10*s} ${19*s} ${20*s} Z`} fill={auraColor} opacity="0.55" style={{animation: idle?"breathe 1.4s ease-in-out infinite":"none"}}/>);
-      els.push(<path key={k++} d={`M ${7*s} ${20*s} Q ${6*s} ${12*s} ${9*s} ${7*s} Q ${10*s} ${12*s} ${12*s} ${9*s} Q ${14*s} ${12*s} ${15*s} ${7*s} Q ${18*s} ${12*s} ${17*s} ${20*s} Z`} fill={shade(auraColor,60)} opacity="0.6"/>);
+      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={15*s} fill={auraColor} opacity="0.18" />);
+      els.push(<path key={k++} d={`M ${7*s} ${27*s} Q ${4*s} ${13*s} ${9.5*s} ${5*s} Q ${9.5*s} ${15*s} ${12*s} ${12*s} Q ${10.5*s} ${4*s} ${16*s} ${0.5*s} Q ${21.5*s} ${4*s} ${20*s} ${12*s} Q ${22.5*s} ${15*s} ${22.5*s} ${5*s} Q ${28*s} ${13*s} ${25*s} ${27*s} Z`} fill={auraColor} opacity="0.5" style={{animation: idle?"breathe 1.4s ease-in-out infinite":"none"}}/>);
+      els.push(<path key={k++} d={`M ${9.5*s} ${27*s} Q ${8*s} ${16*s} ${12*s} ${9.5*s} Q ${13.5*s} ${16*s} ${16*s} ${12*s} Q ${18.5*s} ${16*s} ${20*s} ${9.5*s} Q ${24*s} ${16*s} ${22.5*s} ${27*s} Z`} fill={shade(auraColor,60)} opacity="0.55"/>);
     } else if (shape === "cloud") {
-      // Dark Omen — a brooding storm mass with a jagged underside + inner shadow + lightning glow
       const dk = shade(auraColor,-45), mid = shade(auraColor,-10), lt = shade(auraColor,35);
-      els.push(<circle key={k++} cx={12*s} cy={9*s} r={12*s} fill={auraColor} opacity="0.13"/>);
-      // billowing top lobes
-      [[6.5,6,3.4],[10,4.3,4.2],[14.5,4.6,4],[17.6,7,3.2],[8.8,7.2,3.6],[13.2,7.4,3.8]].forEach(([x,y,r])=>
+      els.push(<circle key={k++} cx={CX*s} cy={12*s} r={15*s} fill={auraColor} opacity="0.13"/>);
+      [[8.5,8,4.5],[13,5.7,5.6],[19.5,6.1,5.3],[23.5,9.5,4.3],[11.7,9.6,4.8],[17.6,9.9,5]].forEach(([x,y,r])=>
         els.push(<circle key={k++} cx={x*s} cy={y*s} r={r*s} fill={mid} opacity="0.6"/>));
-      // dark underbelly
-      els.push(<path key={k++} d={`M ${4*s} ${9*s} Q ${6*s} ${12.5*s} ${8*s} ${9.5*s} Q ${10*s} ${13*s} ${12*s} ${9.5*s} Q ${14*s} ${13*s} ${16*s} ${9.5*s} Q ${18*s} ${12.5*s} ${20*s} ${9*s} L ${20*s} ${6*s} L ${4*s} ${6*s} Z`} fill={dk} opacity="0.7"/>);
-      // top highlight
-      els.push(<circle key={k++} cx={10*s} cy={4.3*s} r={2.2*s} fill={lt} opacity="0.5"/>);
-      // lightning flicker beneath
-      els.push(<polyline key={k++} points={`${12*s},${9*s} ${10.6*s},${13*s} ${12.4*s},${13*s} ${10.8*s},${17*s}`} fill="none" stroke={shade(auraColor,80)} strokeWidth={0.5*s} opacity="0.8" style={{animation: idle?"sparkle 1.1s ease-in-out infinite":"none"}}/>);
+      els.push(<circle key={k++} cx={13*s} cy={5.7*s} r={2.9*s} fill={lt} opacity="0.5"/>);
+      els.push(<polyline key={k++} points={`${16*s},${12*s} ${14*s},${17*s} ${16.5*s},${17*s} ${14.5*s},${23*s}`} fill="none" stroke={shade(auraColor,80)} strokeWidth={0.65*s} opacity="0.8" style={{animation: idle?"sparkle 1.1s ease-in-out infinite":"none"}}/>);
     } else if (shape === "electric") {
-      // Static Storm — radiating lightning bolts around an energized core
-      els.push(<circle key={k++} cx={12*s} cy={12*s} r={12*s} fill={auraColor} opacity="0.12"/>);
-      els.push(<circle key={k++} cx={12*s} cy={11*s} r={4*s} fill={auraColor} opacity="0.22" style={{animation: idle?"sparkle 0.9s ease-in-out infinite":"none"}}/>);
+      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={15.5*s} fill={auraColor} opacity="0.12"/>);
+      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={5*s} fill={auraColor} opacity="0.22" style={{animation: idle?"sparkle 0.9s ease-in-out infinite":"none"}}/>);
       const bolt = (deg) => {
         const a = deg*Math.PI/180, c=Math.cos(a), sn=Math.sin(a);
-        const px=(r)=>(12+r*c)*s, py=(r)=>(11+r*sn)*s;
-        // zig-zag bolt from r=4 out to r=12, kinked at the midpoint perpendicular
+        const px=(r)=>(CX+r*c), py=(r)=>(CY+r*sn);
         const perpc = Math.cos(a+Math.PI/2), perps = Math.sin(a+Math.PI/2);
-        const mx = (12 + 8*c + 1.6*perpc)*s, my = (11 + 8*sn + 1.6*perps)*s;
-        return `${px(4)},${py(4)} ${mx},${my} ${px(12)},${py(12)}`;
+        const mx = (CX + 10*c + 2*perpc), my = (CY + 10*sn + 2*perps);
+        return `${px(5)*s},${py(5)*s} ${mx*s},${my*s} ${px(15)*s},${py(15)*s}`;
       };
       [25,90,160,210,300,340].forEach(deg=>
-        els.push(<polyline key={k++} points={bolt(deg)} fill="none" stroke={shade(auraColor,85)} strokeWidth={0.55*s} strokeLinejoin="round" opacity="0.9"/>));
+        els.push(<polyline key={k++} points={bolt(deg)} fill="none" stroke={shade(auraColor,85)} strokeWidth={0.7*s} strokeLinejoin="round" opacity="0.9"/>));
     } else if (shape === "halo") {
-      els.push(<circle key={k++} cx={12*s} cy={12*s} r={11*s} fill={auraColor} opacity="0.16"/>);
-      els.push(<ellipse key={k++} cx={12*s} cy={1.2*s} rx={4*s} ry={1.3*s} fill="none" stroke={auraColor} strokeWidth={0.8*s} style={{filter:`drop-shadow(0 0 ${0.6*s}px ${auraColor})`}}/>);
+      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={15*s} fill={auraColor} opacity="0.16"/>);
+      els.push(<ellipse key={k++} cx={CX*s} cy={2.0*s} rx={5*s} ry={1.6*s} fill="none" stroke={auraColor} strokeWidth={1.0*s} style={{filter:`drop-shadow(0 0 ${0.7*s}px ${auraColor})`}}/>);
     } else if (shape === "orbit") {
-      // Orbiting Sparks — comet-like orbs with trailing tails on an elliptical ring
-      els.push(<circle key={k++} cx={12*s} cy={11*s} r={4.5*s} fill={auraColor} opacity="0.2"/>);
-      els.push(<ellipse key={k++} cx={12*s} cy={11*s} rx={10*s} ry={6*s} fill="none" stroke={auraColor} strokeWidth={0.3*s} opacity="0.4"/>);
+      els.push(<circle key={k++} cx={CX*s} cy={CY*s} r={6*s} fill={auraColor} opacity="0.2"/>);
+      els.push(<ellipse key={k++} cx={CX*s} cy={CY*s} rx={13.5*s} ry={8*s} fill="none" stroke={auraColor} strokeWidth={0.4*s} opacity="0.4"/>);
       [10,130,250].forEach((deg)=>{
-        const a=deg*Math.PI/180, ox=(12+10*Math.cos(a)), oy=(11+6*Math.sin(a));
-        // tail (a few fading dots back along the ellipse)
+        const a=deg*Math.PI/180, ox=(CX+13.5*Math.cos(a)), oy=(CY+8*Math.sin(a));
         for (let t=1;t<=3;t++){
           const at=(deg-t*14)*Math.PI/180;
-          els.push(<circle key={k++} cx={(12+10*Math.cos(at))*s} cy={(11+6*Math.sin(at))*s} r={(0.5-t*0.1)*s} fill={shade(auraColor,55)} opacity={0.5-t*0.12}/>);
+          els.push(<circle key={k++} cx={(CX+13.5*Math.cos(at))*s} cy={(CY+8*Math.sin(at))*s} r={(0.7-t*0.13)*s} fill={shade(auraColor,55)} opacity={0.5-t*0.12}/>);
         }
-        els.push(<circle key={k++} cx={ox*s} cy={oy*s} r={1.2*s} fill={shade(auraColor,70)} opacity="0.95" style={{filter:`drop-shadow(0 0 ${0.5*s}px ${auraColor})`}}/>);
+        els.push(<circle key={k++} cx={ox*s} cy={oy*s} r={1.6*s} fill={shade(auraColor,70)} opacity="0.95" style={{filter:`drop-shadow(0 0 ${0.6*s}px ${auraColor})`}}/>);
       });
     }
   }
-  // Cape (behind the torso)
+  // Cape (behind the torso) — 32-grid
   if (capeC) {
-    R(8.2,10.4,7.6,9.2,capeC.color,1.4);
-    R(8.2,10.4,7.6,1.2,shade(capeC.color,28),0.8);
+    OL(10.8,13.5,10.4,12.5,1.4);
+    R(10.8,13.5,10.4,12.5,capeC.color,1.4);
+    R(10.8,13.5,10.4,1.6,shade(capeC.color,28),0.8);
+    R(10.8,23,10.4,3,shade(capeC.color,-30),1.0);
   }
 
   if (has("aura",11)) {
-    els.push(<circle key={k++} cx={12*s} cy={11*s} r={10.5*s} fill="url(#auraGrad)" />);
+    els.push(<circle key={k++} cx={16*s} cy={16*s} r={14*s} fill="url(#auraGrad)" />);
   }
   if (has("wings",13)) {
     R(2.2,9,3.6,1.6,"#fdf3d8",0.8); R(1.2,10.4,4.6,1.8,"#fbe9b8",0.9);
@@ -795,132 +878,152 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(18.4,12.2,5.0,1.8,"#fdf3d8",0.9); R(18.8,14,3.6,1.5,"#f3da9b",0.8);
   }
 
-  R(9,16,2.2,4.4,pants,0.5);
-  R(12.8,16,2.2,4.4,pants,0.5);
-  R(9,16,5.9,1.2,pants,0.4);
-  if (has("boots",2)) {
-    R(8.4,19.8,3.4,1.9,"#42291a",0.6); R(8.4,20.6,3.4,1.1,shade("#42291a",-18),0.5);
-    R(12.3,19.8,3.4,1.9,"#42291a",0.6); R(12.3,20.6,3.4,1.1,shade("#42291a",-18),0.5);
-  } else {
-    R(9,19.8,2.2,1.4,skin,0.6); R(12.8,19.8,2.2,1.4,skin,0.6);
-  }
-
   const fem = cz.body === "f";
   const steel = has("armor",7), leather = !steel && has("armor",5);
-  let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
-  if (fem) {
-    R(9.1,10.8,5.8,5.4,torsoColor,1.1);
-    R(8.8,14.6,6.4,1.6,torsoColor,0.8);
-    R(9.1,15.2,5.8,1.0,shade(torsoColor,-26),0.5);
-  } else {
-    R(8.7,10.8,6.6,5.4,torsoColor,0.9);
-    R(8.7,15.2,6.6,1.0,shade(torsoColor,-26),0.5);
-  }
-  if (steel) {
-    R(8.7,10.8,2.4,1.0,shade(torsoColor,38),0.5);
-    R(10.9,13.0,2.2,1.1,"#22304a",0.4);
-    R(8.0,10.8,1.3,2.2,"#b8c4d2",0.6);
-    R(14.7,10.8,1.3,2.2,"#b8c4d2",0.6);
-  }
-  if (leather) {
-    R(8.7,12.6,6.6,0.9,"#3f2415",0.3);
-    R(10.0,11.4,0.7,0.7,"#caa05a",0.35);
-    R(13.3,11.4,0.7,0.7,"#caa05a",0.35);
-  }
-  if (has("trim",9)) {
-    R(8.7,10.8,6.6,0.7,"#f1b32b",0.35);
-    R(8.7,15.4,6.6,0.8,"#f1b32b",0.35);
-  }
-
-  const armColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : skin);
-  R(7.6,11.2,1.3,4.0,armColor,0.6);
-  R(15.1,11.2,1.3,4.0,armColor,0.6);
-  R(7.6,14.9,1.3,1.2,skin,0.6);
-  R(15.1,14.9,1.3,1.2,skin,0.6);
-
-  R(8.2,3.8,7.6,7.2,skin,1.6);
-  R(8.2,10.0,7.6,1.0,shade(skin,-18),0.8);
   const helm = has("helm",8) && !has("crown",12);
   const hs = cz.hairstyle || "classic";
+  const cxC = 16;
+
+  // ===== LEGS (heroic stance, apart) =====
+  OL(9.6,21,3.0,6.2,1.0); R(9.6,21,3.0,6.2,pants,1.0); R(9.6,21,3.0,2.0,shade(pants,28),1.0);
+  OL(19.4,21,3.0,6.2,1.0); R(19.4,21,3.0,6.2,pants,1.0); R(19.4,21,3.0,2.0,shade(pants,28),1.0);
+  R(10,21,12,2.2,pants,0.8);
+  if (has("boots",2)) {
+    OL(8.8,26.4,4.0,2.4,0.7); R(8.8,26.4,4.0,2.4,"#42291a",0.7); R(8.8,27.5,4.0,1.3,shade("#42291a",-18),0.6);
+    OL(19.2,26.4,4.0,2.4,0.7); R(19.2,26.4,4.0,2.4,"#42291a",0.7); R(19.2,27.5,4.0,1.3,shade("#42291a",-18),0.6);
+  } else {
+    R(9.6,26.4,3.0,1.8,skin,0.7); R(19.4,26.4,3.0,1.8,skin,0.7);
+  }
+
+  // ===== TORSO (tapered: broad shoulders -> narrow waist; top raised to meet head) =====
+  let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
+  const tShoulderHalf = fem ? 5.4 : 5.8, tWaistHalf = fem ? 4.2 : 4.6;
+  P([[cxC-tShoulderHalf-0.4,13.3],[cxC+tShoulderHalf+0.4,13.3],[cxC+tWaistHalf+0.4,21.6],[cxC-tWaistHalf-0.4,21.6]], OUTLINE);
+  P([[cxC-tShoulderHalf,13.7],[cxC+tShoulderHalf,13.7],[cxC+tWaistHalf,21.3],[cxC-tWaistHalf,21.3]], torsoColor);
+  P([[cxC-tShoulderHalf+0.4,13.9],[cxC+tShoulderHalf-0.4,13.9],[cxC+tWaistHalf,16.6],[cxC-tWaistHalf,16.6]], shade(torsoColor,32));
+  P([[cxC-tWaistHalf+0.3,19.8],[cxC+tWaistHalf-0.3,19.8],[cxC+tWaistHalf-0.6,21.2],[cxC-tWaistHalf+0.6,21.2]], shade(torsoColor,-34));
+  if (steel) {
+    R(15.3,14.4,1.4,5.4,"#1d2740",0.2);
+    R(13.0,16.6,6.0,1.4,"#1d2740",0.2);
+  }
+  if (leather) {
+    R(11.5,16.4,9.0,1.1,"#3f2415",0.3);
+    R(13.4,14.6,0.9,0.9,"#caa05a",0.35); R(17.7,14.6,0.9,0.9,"#caa05a",0.35);
+  }
+  if (has("trim",9)) { R(cxC-tShoulderHalf,13.7,tShoulderHalf*2,0.9,"#f1b32b",0.35); }
+
+  // ===== NECK (short sliver; head sits on shoulders) =====
+  R(14.6,12.0,2.8,1.6,skin,0.5); R(14.6,12.7,2.8,0.9,shade(skin,-20),0.4);
+
+  // ===== SHOULDERS / PAULDRONS (steel only) =====
+  if (steel) {
+    OE(10.4,14.6,2.4,2.0); E(10.4,14.6,2.4,2.0,"#b3bfca"); E(10.4,13.9,2.0,1.1,"#cdd6e0");
+    OE(21.6,14.6,2.4,2.0); E(21.6,14.6,2.4,2.0,"#b3bfca"); E(21.6,13.9,2.0,1.1,"#cdd6e0");
+  }
+
+  // ===== ARMS =====
+  const armColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : skin);
+  OL(8.2,15.6,2.6,4.4,1.0); R(8.2,15.6,2.6,4.4,armColor,1.0); R(8.2,15.6,2.6,1.4,shade(armColor,30),1.0);
+  OL(21.2,15.6,2.6,4.4,1.0); R(21.2,15.6,2.6,4.4,armColor,1.0); R(21.2,15.6,2.6,1.4,shade(armColor,30),1.0);
+  OL(7.9,19.4,2.8,2.8,0.9); R(7.9,19.4,2.8,2.8,steel?"#aeb9c5":skin,0.9);
+  OL(21.3,19.4,2.8,2.8,0.9); R(21.3,19.4,2.8,2.8,steel?"#aeb9c5":skin,0.9);
+  E(9.3,22.2,1.0,1.0,skin); E(22.7,22.2,1.0,1.0,skin);
+
+  // ===== HEAD (big, low, soft jaw; sits on shoulders) =====
+  OE(16,8.6,4.5,4.4);
+  E(16,8.6,4.5,4.4,skin);
+  P([[12.2,10.4],[19.8,10.4],[18.6,12.2],[16,12.9],[13.4,12.2]], skin);
+  E(16,8.6,4.4,4.3,skin);
+
+  // ===== FACE (only when no helm) =====
+  if (!helm) {
+    E(14.5,8.8,0.82,1.0,"#ffffff"); E(17.5,8.8,0.82,1.0,"#ffffff");
+    E(14.65,8.95,0.52,0.7,"#241a14"); E(17.35,8.95,0.52,0.7,"#241a14");
+    R(13.7,7.6,1.5,0.5,shade(hair,-10),0.25); R(16.8,7.6,1.5,0.5,shade(hair,-10),0.25);
+    R(15.75,9.7,0.5,0.95,shade(skin,-12),0.25);
+    R(15.2,11.1,1.6,0.4,shade(skin,-20),0.2);
+    E(13.8,10.3,0.55,0.4,shade(skin,6)); E(18.2,10.3,0.55,0.4,shade(skin,6));
+  }
+
+  // ===== HAIR (styles) — positioned on the lower, rounder head =====
   if (!helm && hs !== "bald") {
-    if (hs === "classic") {
-      R(8.0,2.9,8.0,2.2,hair,1.0);
-      R(8.0,4.6,1.3,1.9,hair,0.5);
-      R(14.7,4.6,1.3,1.9,hair,0.5);
-      R(11.2,4.8,1.6,0.9,hair,0.4);
-    } else if (hs === "long") {
-      R(8.0,2.9,8.0,2.2,hair,1.0);
-      R(7.7,4.4,1.6,6.8,hair,0.8);
-      R(14.7,4.4,1.6,6.8,hair,0.8);
-      R(11.2,4.8,1.6,0.9,hair,0.4);
-    } else if (hs === "fro") {
-      R(7.2,1.2,9.6,5.2,hair,2.6);
-      R(7.0,3.4,1.6,2.6,hair,1.0);
-      R(15.4,3.4,1.6,2.6,hair,1.0);
-    } else if (hs === "braids") {
-      R(8.0,2.9,8.0,2.2,hair,1.0);
-      R(7.8,4.4,1.2,6.4,hair,0.6);
-      R(15.0,4.4,1.2,6.4,hair,0.6);
-      R(7.8,7.2,1.2,0.7,"#caa05a",0.3);
-      R(15.0,7.2,1.2,0.7,"#caa05a",0.3);
-      R(7.8,9.4,1.2,0.7,"#caa05a",0.3);
-      R(15.0,9.4,1.2,0.7,"#caa05a",0.3);
+    if (hs === "fro") {
+      OE(16,6.2,4.9,3.2); E(16,6.2,4.9,3.2,hair);
+      E(11.7,7.8,1.5,1.9,hair); E(20.3,7.8,1.5,1.9,hair);
     } else if (hs === "buzz") {
-      R(8.2,3.2,7.6,1.3,hair,0.9);
+      E(16,6.4,4.3,1.9,hair);
+      P([[11.8,7.0],[16,5.0],[20.2,7.0],[20.2,7.7],[16,6.0],[11.8,7.7]], hair);
+    } else if (hs === "long") {
+      E(16,6.4,4.5,2.4,hair);
+      P([[11.6,7.0],[12.6,5.2],[16,4.2],[19.6,5.2],[20.4,7.2],[18.8,6.4],[16,6.0],[13.2,6.4]], hair);
+      R(11.6,7.2,1.3,5.0,hair,0.6); R(19.1,7.2,1.3,5.0,hair,0.6);
+    } else if (hs === "braids") {
+      E(16,6.4,4.5,2.3,hair);
+      P([[11.6,7.0],[16,4.2],[20.4,7.0],[20.4,7.7],[16,6.0],[11.6,7.7]], hair);
+      R(11.5,7.2,1.1,4.6,hair,0.5); R(19.4,7.2,1.1,4.6,hair,0.5);
+      R(11.5,8.6,1.1,0.6,"#caa05a",0.3); R(19.4,8.6,1.1,0.6,"#caa05a",0.3);
+      R(11.5,10.2,1.1,0.6,"#caa05a",0.3); R(19.4,10.2,1.1,0.6,"#caa05a",0.3);
+    } else { // classic
+      E(16,6.4,4.5,2.4,hair);
+      P([[11.6,7.0],[12.6,5.2],[16,4.2],[19.6,5.2],[20.4,7.2],[18.8,6.4],[16,6.0],[13.2,6.4]], hair);
+      P([[15.8,5.2],[18.6,5.6],[19.2,6.8],[16.4,6.2]], shade(hair,20));
+      R(11.9,7.2,0.95,1.8,hair,0.4); R(20.15,7.2,0.95,1.8,hair,0.4);
     }
   }
-  R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
-  R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
-  R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
-  R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
-  R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
 
+  // ===== HELMET =====
   if (helm) {
-    R(8.0,2.6,8.0,3.0,"#aab6c2",1.0);
-    R(8.0,5.0,8.0,0.8,shade("#aab6c2",-24),0.4);
-    R(11.0,0.9,2.0,2.2,"#d6452e",0.6);
+    OE(16,8.0,4.6,4.3);
+    E(16,8.0,4.6,4.3,"#aab6c2");
+    E(16,6.9,4.1,2.2,"#cdd6e0");
+    R(11.4,8.2,9.2,2.6,"#3a4250",1.0);
+    R(15.3,6.6,1.4,4.0,"#1b2230",0.2);
+    R(13.0,8.2,6.0,1.1,"#1b2230",0.2);
+    R(15.0,3.0,2.0,2.0,"#d6452e",0.5);
+    R(15.0,2.3,2.0,1.0,"#e85b41",0.4);
   }
   if (has("crown",12)) {
-    R(8.8,1.7,6.4,1.7,"#f1b32b",0.4);
-    R(8.8,0.8,1.1,1.2,"#fcd34d",0.3);
-    R(11.45,0.6,1.1,1.4,"#fcd34d",0.3);
-    R(14.1,0.8,1.1,1.2,"#fcd34d",0.3);
-    R(10.2,2.1,0.8,0.8,"#dc2626",0.4);
-    R(13.0,2.1,0.8,0.8,"#2563eb",0.4);
+    R(12.4,3.6,7.2,1.9,"#f1b32b",0.4);
+    R(12.4,2.4,1.3,1.5,"#fcd34d",0.3);
+    R(15.35,2.1,1.3,1.7,"#fcd34d",0.3);
+    R(18.3,2.4,1.3,1.5,"#fcd34d",0.3);
+    R(13.9,4.1,1.0,1.0,"#dc2626",0.4); R(17.1,4.1,1.0,1.0,"#2563eb",0.4);
   }
 
+  // belt
+  R(11.4,20.0,9.2,1.4,"#5a3a1a",0.4);
+  E(16,20.7,1.0,0.9,"#f0b429");
+
+  // ===== SHIELD (left arm) =====
   if (has("shield",6)) {
-    R(4.6,11.6,3.2,4.6,"#6e655a",1.1);
-    R(4.6,11.6,3.2,1.0,shade("#6e655a",24),0.6);
-    R(5.7,13.0,1.0,1.8,"#f1b32b",0.5);
+    OE(7.2,20.5,2.6,3.2); E(7.2,20.5,2.6,3.2,"#6e655a");
+    E(7.2,19.0,2.2,1.4,shade("#6e655a",26));
+    R(6.5,18.8,1.4,3.4,"#f1b32b",0.4);
+    R(5.6,20.2,3.2,1.0,"#f1b32b",0.4);
   }
+
+  // ===== SWORD (winged glowing) in right hand =====
   if (has("sword",3)) {
-    const ench = level >= 10, iron = level >= 4;
+    const ench = level >= 10;
     const wc = weaponC ? weaponC.color : null;
-    if (ench) {
-      R(16.4,6.2,0.6,8.0, wc||"#cfe7ff",0.3);
-      R(17.0,6.2,0.7,8.0, wc?shade(wc,30):"#9fd0ff",0.3);
-      R(16.0,13.9,2.8,0.9,"#7c5cd6",0.4);
-      R(16.9,14.7,0.9,1.9,"#2a1f4a",0.4);
-      els.push(<circle key={k++} cx={17.3*s} cy={9.6*s} r={2.6*s} fill={wc||"#9fd0ff"} opacity="0.16"/>);
-    } else if (iron) {
-      R(16.5,7.6,0.6,6.4, wc||"#eef2f6",0.3);
-      R(17.1,7.6,0.7,6.4, wc?shade(wc,28):"#c4cfdb",0.3);
-      R(16.0,13.9,2.8,0.9,"#5b6573",0.4);
-      R(16.9,14.7,0.9,1.7,"#3f2d1d",0.4);
-      R(16.8,16.3,1.1,0.9,"#caa05a",0.5);
-    } else {
-      R(16.7,8.8,1.0,5.2, wc||"#b07d2e",0.4);
-      R(16.0,13.9,2.6,0.9,"#5a3a1a",0.4);
-      R(16.9,14.7,0.9,1.7,"#2e2017",0.4);
-    }
+    const blade = wc || (ench ? "#bfe0ff" : level>=4 ? "#e7edf3" : "#cdb083");
+    // angel wings at hilt
+    P([[24.0,20.6],[21.4,19.8],[22.6,21.0],[20.8,21.0],[22.4,22.0],[20.9,22.4],[23.0,22.6]],"#fdfdff","#1c2230",0.18);
+    OL(22.8,11.0,1.5,9.6,0.3,0.4);
+    if (ench) els.push(<circle key={k++} cx={23.5*s} cy={15*s} r={3.4*s} fill={blade} opacity="0.18"/>);
+    R(22.8,11.0,1.5,9.6,blade,0.3);
+    R(23.3,11.0,0.5,9.6,shade(blade,45),0.2);
+    R(22.8,11.0,1.5,1.6,"#ffffff",0.3);
+    OL(21.9,20.4,3.3,1.0,0.4); R(21.9,20.4,3.3,1.0,"#f0b429",0.4);
+    R(23.0,21.4,1.0,2.2,"#5a3a1a",0.4);
+    R(23.0,23.4,1.0,0.7,"#caa05a",0.4);
   }
 
   // Pet companion (hand-drawn, idle beside the champion)
   if (pet) {
     const petItem = SHOP.find(it=>it.id===pet);
     if (petItem && petItem.art) {
-      drawPet(els, petItem.art, petItem.color, 19.5, 17.5, s, () => k++);
+      drawPet(els, petItem.art, petItem.color, 26, 24, s, () => k++);
     }
   }
 
@@ -2208,6 +2311,7 @@ export default function App() {
         @keyframes sparkle { 0%,100%{opacity:.4;transform:scale(.9)} 50%{opacity:1;transform:scale(1.15)} }
         @keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
         @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+        @keyframes spriteBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4%)} }
         @keyframes burstFly { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--dx),var(--dy)) scale(.3);opacity:0} }
         @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 15%{opacity:1;transform:translate(-50%,-12px) scale(1.15)} 100%{transform:translate(-50%,-52px) scale(1);opacity:0} }
         @keyframes ringPop { 0%{transform:scale(.4);opacity:.9} 100%{transform:scale(2.4);opacity:0} }
