@@ -266,7 +266,7 @@ const INIT_CATEGORIES = [
 const mkTask = (id, name, catId, importance, days, targetReps=1) => ({
   id, name, catId, importance, targetReps,
   points: calcPoints(importance), decayRate: calcDecay(importance),
-  days, completions:{},
+  days, freq:"daily", weeklyTarget:1, completions:{},
 });
 const INIT_TASKS = [
   mkTask("t1","Apply to jobs","career",9,[1,2,3,4,5]),
@@ -347,6 +347,42 @@ function weekDateKeys() {
   const dow = (now.getDay() + 6) % 7; // Mon=0
   const mon = new Date(now); mon.setDate(now.getDate() - dow);
   return Array.from({length:7}, (_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return dateKey(d); });
+}
+// Mon→Sun date keys for the week containing a given date
+function weekKeysFor(dateStr) {
+  const d = dateStr ? new Date(dateStr+"T00:00:00") : new Date();
+  const dow = (d.getDay() + 6) % 7;
+  const mon = new Date(d); mon.setDate(d.getDate() - dow);
+  return Array.from({length:7}, (_,i)=>{ const x=new Date(mon); x.setDate(mon.getDate()+i); return dateKey(x); });
+}
+const isWeekly = (task) => task && task.freq === "weekly";
+// How many times a weekly habit has been logged in the week containing dateStr
+function weeklyDone(task, dateStr) {
+  const keys = weekKeysFor(dateStr);
+  return keys.reduce((s,dk)=> s + (getReps(task, dk) > 0 ? 1 : 0), 0);
+}
+const weeklyTargetOf = (task) => Math.max(1, task.weeklyTarget || 1);
+// Weekly completion fraction (capped at 1) for the week containing dateStr
+function weeklyFrac(task, dateStr) {
+  return Math.min(1, weeklyDone(task, dateStr) / weeklyTargetOf(task));
+}
+const weeklyMet = (task, dateStr) => weeklyDone(task, dateStr) >= weeklyTargetOf(task);
+// Unified "is this task active/relevant on this date?" — daily uses schedule, weekly is always active that week
+function taskActiveOn(task, dateStr) {
+  return isWeekly(task) ? true : isScheduledOn(task, dateStr);
+}
+// Weekly streak: consecutive prior weeks (excluding current in-progress) the target was met
+function weeklyStreak(task) {
+  let s = 0;
+  const cur = new Date();
+  // step back to previous full week
+  cur.setDate(cur.getDate() - 7);
+  for (let i=0;i<104;i++){
+    const k = dateKey(cur);
+    if (weeklyMet(task, k)) s++; else break;
+    cur.setDate(cur.getDate()-7);
+  }
+  return s;
 }
 
 // ── RATING / LEVEL ────────────────────────────────────────────────────────────
@@ -445,6 +481,8 @@ function migrate(d) {
     tasks: (d.tasks||[]).map((t,i)=>({
       ...t,
       order: typeof t.order === "number" ? t.order : i,
+      freq: t.freq === "weekly" ? "weekly" : "daily",
+      weeklyTarget: Math.max(1, t.weeklyTarget || 1),
       createdAt: t.createdAt || Object.keys(t.completions||{}).sort()[0] || dateKey(),
     })),
     customTitles: d.customTitles || {},
@@ -1417,6 +1455,7 @@ function ShopPreview({ item }) {
 export default function App() {
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
+  const [forecastDate, setForecastDate] = useState(null);
   const [editTask, setEditTask] = useState(null);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
@@ -1427,7 +1466,7 @@ export default function App() {
   const [editingTitleLvl, setEditingTitleLvl] = useState(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [currentDay, setCurrentDay] = useState(dateKey());
-  const [newTask, setNewTask] = useState({name:"",catId:"career",importance:5,targetReps:1,days:[1,2,3,4,5]});
+  const [newTask, setNewTask] = useState({name:"",catId:"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
@@ -1570,6 +1609,41 @@ export default function App() {
   const addRep = (tid, dk) => {
     const d = dk || currentDay;
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
+
+    // ── WEEKLY HABIT: each tap logs one completion for the day; value & coins
+    //    are sliced so meeting the weekly target equals a full quest's worth. ──
+    if (isWeekly(task)) {
+      const already = getReps(task, d) > 0;
+      if (already) { clearDay(tid, d); return; } // tap again to un-log that day
+      const wt = weeklyTargetOf(task);
+      const doneBefore = weeklyDone(task, d);
+      const slice = task.points / wt;                 // points per weekly rep
+      const willCount = doneBefore < wt;              // only first wt logs add value
+      const cats = data.categories.map(c => c.id !== task.catId ? c
+        : {...c, value: Math.min(c.maxValue, c.value + (willCount ? slice : 0))});
+      const tasks = data.tasks.map(t => {
+        if (t.id !== tid) return t;
+        const comps = {...(t.completions||{})}; comps[d] = 1;
+        return {...t, completions: comps};
+      });
+      update({...data, categories:cats, tasks});
+      // coins: pay per log, but only up to weeklyTarget logs in the week
+      const key = `${tid}|${d}`;
+      setData(cur=>{
+        if ((cur.wallet.coinsByTaskDay||{})[key]) return cur;
+        if (doneBefore >= wt) return cur;             // weekly coin cap reached
+        const coins = coinsForTask(task);
+        const ledger = {...(cur.wallet.coinsByTaskDay||{})}; ledger[key] = coins;
+        const n={...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)+coins, coinsByTaskDay:ledger}};
+        persistRaw(n); return n;
+      });
+      const cat = data.categories.find(c=>c.id===task.catId);
+      const nowDone = doneBefore + 1;
+      if (nowDone >= wt) toast$(`✓ ${task.name} — WEEK COMPLETE!`, cat?.color || "#34d399");
+      else toast$(`${nowDone}/${wt} this week · ${task.name}`, cat?.color || "#34d399");
+      return;
+    }
+
     const target = task.targetReps || 1;
     const prevReps = getReps(task, d);
     const newReps = prevReps + 1;
@@ -1609,6 +1683,25 @@ export default function App() {
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
     const reps = getReps(task, d);
     if (reps === 0) return;
+
+    if (isWeekly(task)) {
+      const wt = weeklyTargetOf(task);
+      const doneBefore = weeklyDone(task, d);          // includes this day
+      const slice = task.points / wt;
+      // only remove value if this log was one of the counted (≤ wt) ones
+      const wasCounted = doneBefore <= wt;
+      const cats = data.categories.map(c => c.id !== task.catId ? c
+        : {...c, value: Math.max(0, c.value - (wasCounted ? slice : 0))});
+      const tasks = data.tasks.map(t => {
+        if (t.id !== tid) return t;
+        const comps = {...(t.completions||{})}; delete comps[d];
+        return {...t, completions: comps};
+      });
+      update({...data, categories:cats, tasks});
+      toast$("CLEARED", "#ef4444");
+      return;
+    }
+
     const target = task.targetReps || 1;
     const earned = calcEarnedPoints(task.points, target, reps);
     const processed = d < data.lastDecayDate;
@@ -1626,6 +1719,10 @@ export default function App() {
 
   const toggleDay = (tid, dk) => {
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
+    if (isWeekly(task)) {                       // weekly: simple logged/un-logged toggle
+      if (getReps(task, dk) > 0) clearDay(tid, dk); else addRep(tid, dk);
+      return;
+    }
     if (getReps(task, dk) > 0) clearDay(tid, dk);
     else {
       const target = task.targetReps || 1;
@@ -1654,7 +1751,12 @@ export default function App() {
 
   const saveEditTask = () => {
     if (!editTask) return;
+    const isWk = editTask.freq === "weekly";
     const updated = { ...editTask,
+      freq: isWk ? "weekly" : "daily",
+      days: isWk ? [] : (editTask.days || []),
+      weeklyTarget: isWk ? Math.max(1, editTask.weeklyTarget || 3) : 1,
+      targetReps: isWk ? 1 : (editTask.targetReps || 1),
       points: calcPoints(editTask.importance ?? 5),
       decayRate: calcDecay(editTask.importance ?? 5) };
     update({...data, tasks: data.tasks.map(t=>t.id===editTask.id?updated:t)});
@@ -1664,12 +1766,17 @@ export default function App() {
   const deleteTask = (id) => update({...data, tasks:data.tasks.filter(t=>t.id!==id)});
   const addTask = () => {
     if (!newTask.name.trim()) return;
+    const isWk = newTask.freq === "weekly";
     const task = { ...newTask, id:`t${Date.now()}`,
       order: data.tasks.length, createdAt: dateKey(),
+      freq: isWk ? "weekly" : "daily",
+      days: isWk ? [] : (newTask.days || []),
+      weeklyTarget: isWk ? Math.max(1, newTask.weeklyTarget || 3) : 1,
+      targetReps: isWk ? 1 : (newTask.targetReps || 1),
       points: calcPoints(newTask.importance), decayRate: calcDecay(newTask.importance), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
-    setNewTask({name:"",catId:data.categories[0]?.id||"career",importance:5,targetReps:1,days:[1,2,3,4,5]});
-    setView("tasks"); toast$("QUEST CREATED!");
+    setNewTask({name:"",catId:data.categories[0]?.id||"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3});
+    setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
   };
 
   // ── CATEGORY ACTIONS ────────────────────────────────────────────────────────
@@ -1695,7 +1802,7 @@ export default function App() {
     if (key==="pomodoroEnabled" && !val && view==="focus") setView("dashboard");
     if (key==="casinoEnabled" && !val && view==="casino") setView("dashboard");
     if (key==="shopEnabled" && !val && view==="shop") setView("dashboard");
-    if (key==="questsEnabled" && !val && (view==="tasks"||view==="addTask"||view==="editTask")) setView("dashboard");
+    if (key==="questsEnabled" && !val && (view==="tasks"||view==="addTask"||view==="editTask"||view==="forecast")) setView("dashboard");
     if (key==="statsEnabled" && !val && view==="stats") setView("dashboard");
     update(next);
   };
@@ -2031,7 +2138,8 @@ export default function App() {
   const T = THEMES[S.theme] || THEMES.ember;
   const cz = data.character;
   const today = currentDay;
-  const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isScheduledOn(t,today));
+  const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t) && isScheduledOn(t,today));
+  const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
   const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
   const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
   const rating = getRating(data.categories);
@@ -2373,18 +2481,37 @@ export default function App() {
                   {S.showXP && ` · +${detailTask.points.toFixed(3)} / −${detailTask.decayRate.toFixed(3)}`}
                 </div>
                 <div style={{display:"flex",gap:18,marginTop:10}}>
-                  <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:17,color:"#ffc46b",fontWeight:900}}>🔥{getStreak(detailTask)}</div>
-                    <div style={{fontSize:8,color:FAINT,fontWeight:800}}>STREAK</div>
-                  </div>
-                  <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:17,color:detailColor,fontWeight:900}}>{totalCompletions(detailTask)}</div>
-                    <div style={{fontSize:8,color:FAINT,fontWeight:800}}>TOTAL</div>
-                  </div>
-                  <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:17,color:"#fff",fontWeight:900}}>LV {questLevel(detailTask)}</div>
-                    <div style={{fontSize:8,color:FAINT,fontWeight:800}}>QUEST</div>
-                  </div>
+                  {isWeekly(detailTask) ? (
+                    <>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:17,color:"#ffc46b",fontWeight:900}}>🔥{weeklyStreak(detailTask)}w</div>
+                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>WK STREAK</div>
+                      </div>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:17,color:detailColor,fontWeight:900}}>{weeklyDone(detailTask,today)}/{weeklyTargetOf(detailTask)}</div>
+                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>THIS WEEK</div>
+                      </div>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:17,color:"#fff",fontWeight:900}}>{Math.round(weeklyFrac(detailTask,today)*100)}%</div>
+                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>COMPLETE</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:17,color:"#ffc46b",fontWeight:900}}>🔥{getStreak(detailTask)}</div>
+                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>STREAK</div>
+                      </div>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:17,color:detailColor,fontWeight:900}}>{totalCompletions(detailTask)}</div>
+                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>TOTAL</div>
+                      </div>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{fontSize:17,color:"#fff",fontWeight:900}}>LV {questLevel(detailTask)}</div>
+                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>QUEST</div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -2593,6 +2720,80 @@ export default function App() {
                 if (ad!==bd) return ad-bd;
                 return (a.order??0)-(b.order??0);
               }).map(t=><QuestCard key={t.id} task={t}/>)}
+
+              {/* THIS WEEK — frequency-based habits (do X times, any days) */}
+              {weeklyHabits.length>0 && (
+                <>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"18px 2px 11px"}}>
+                    <div style={C.sectionTitle}>This Week</div>
+                    <div style={{fontSize:11,color:DIM,fontWeight:800}}>
+                      {weeklyHabits.filter(t=>weeklyMet(t,today)).length} of {weeklyHabits.length} done
+                    </div>
+                  </div>
+                  {weeklyHabits.sort((a,b)=>(a.order??0)-(b.order??0)).map(task=>{
+                    const cat = data.categories.find(c=>c.id===task.catId);
+                    const color = task.color || cat?.color || T.accent;
+                    const wt = weeklyTargetOf(task);
+                    const done = weeklyDone(task, today);
+                    const met = done >= wt;
+                    const pct = Math.min(100, (done/wt)*100);
+                    const wkeys = weekKeysFor(today);
+                    return (
+                      <div key={task.id}
+                        onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                        style={{
+                          background: S.cardStyle==="tinted"
+                            ? `linear-gradient(155deg,${color}24 0%,${color}0e 50%,${GLASS} 100%)`
+                            : `linear-gradient(155deg,${color} 0%,${shade(color,-58)} 100%)`,
+                          borderRadius:22, padding:"13px 14px", marginBottom:11, cursor:"pointer",
+                          opacity: met ? 0.72 : 1, transition:"all .25s",
+                          boxShadow: S.cardStyle==="tinted" ? "0 4px 18px rgba(0,0,0,0.3)" : `0 8px 24px ${color}40, 0 2px 8px rgba(0,0,0,0.3)`,
+                          border: S.cardStyle==="tinted" ? `1px solid ${met?`${color}66`:`${color}33`}` : "none",
+                        }}>
+                        <div style={{display:"flex",alignItems:"center",gap:12}}>
+                          {/* tap-to-log ring (logs today) */}
+                          <button onClick={(e)=>{ e.stopPropagation(); addRep(task.id, today); }}
+                            style={{width:54,height:54,borderRadius:"50%",flexShrink:0,border:"none",cursor:"pointer",position:"relative",
+                              background:"rgba(0,0,0,0.18)",padding:0}}>
+                            <svg width="54" height="54" style={{position:"absolute",inset:0}}>
+                              <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="5"/>
+                              <circle cx="27" cy="27" r="22" fill="none" stroke={S.cardStyle==="tinted"?color:"#fff"} strokeWidth="5" strokeLinecap="round"
+                                strokeDasharray={2*Math.PI*22} strokeDashoffset={2*Math.PI*22*(1-pct/100)}
+                                transform="rotate(-90 27 27)" style={{transition:"stroke-dashoffset .4s ease"}}/>
+                            </svg>
+                            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                              fontSize:met?20:13,fontWeight:900,color:"#fff"}}>
+                              {met ? "✓" : `${done}/${wt}`}
+                            </div>
+                          </button>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:15.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                              textShadow:S.cardStyle==="tinted"?"none":"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
+                            <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",fontWeight:800,marginTop:3}}>
+                              {met ? "WEEK COMPLETE ✓" : `${wt-done} more this week`}
+                              {weeklyStreak(task)>=1 && <span style={{color:"#ffd76b"}}> · 🔥{weeklyStreak(task)}w</span>}
+                            </div>
+                            {/* week dots */}
+                            <div style={{display:"flex",gap:5,marginTop:8}}>
+                              {wkeys.map((dk,i)=>{
+                                const logged = getReps(task,dk)>0;
+                                const isT = dk===today;
+                                return <div key={dk} style={{flex:1,height:7,borderRadius:4,
+                                  background: logged ? (S.cardStyle==="tinted"?color:"#fff") : "rgba(0,0,0,0.28)",
+                                  boxShadow: isT ? "0 0 0 1.5px rgba(255,255,255,0.9)" : "none"}}/>;
+                              })}
+                            </div>
+                          </div>
+                          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{cat?.icon}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{fontSize:9,color:FAINT,textAlign:"center",fontWeight:700,marginTop:-2,marginBottom:4}}>
+                    TAP THE RING TO LOG ONE · DO THESE ANY DAYS YOU LIKE
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -2608,7 +2809,10 @@ export default function App() {
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
               <div style={C.sectionTitle}>All Quests</div>
-              <button style={{...C.btn,padding:"10px 16px",fontSize:11.5}} onClick={()=>setView("addTask")}>+ NEW QUEST</button>
+              <div style={{display:"flex",gap:8}}>
+                <button style={{...C.btnSm,padding:"10px 14px",fontSize:11.5}} onClick={()=>{ setForecastDate(dateKey()); setView("forecast"); }}>📅 FORECAST</button>
+                <button style={{...C.btn,padding:"10px 16px",fontSize:11.5}} onClick={()=>setView("addTask")}>+ NEW</button>
+              </div>
             </div>
             {/* Day header (HabitKit style) */}
             <div style={{display:"flex",alignItems:"flex-end",gap:10,marginBottom:8,padding:"0 13px"}}>
@@ -2643,24 +2847,37 @@ export default function App() {
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{task.name}</div>
                     <div style={{fontSize:9,color:DIM,fontWeight:700,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                      {(task.days||[]).length===7 ? "Every day" : (task.days||[]).map(d=>DAYS[d].slice(0,2)).join(" ")}
-                      {streak>=2 && <span style={{color:"#ffc46b"}}> · 🔥{streak}</span>}
+                      {isWeekly(task)
+                        ? <span><span style={{color,fontWeight:900}}>{weeklyDone(task,today)}/{weeklyTargetOf(task)} this week</span> · weekly</span>
+                        : ((task.days||[]).length===7 ? "Every day" : (task.days||[]).map(d=>DAYS[d].slice(0,2)).join(" "))}
+                      {!isWeekly(task) && streak>=2 && <span style={{color:"#ffc46b"}}> · 🔥{streak}</span>}
+                      {isWeekly(task) && weeklyStreak(task)>=1 && <span style={{color:"#ffc46b"}}> · 🔥{weeklyStreak(task)}w</span>}
                     </div>
                   </div>
                   <div style={{display:"flex",gap:4,flexShrink:0}}>
                     {wk7.map(dk=>{
-                      const sched = isScheduledOn(task, dk);
-                      const done = isCompletedOn(task, dk);
-                      const partial = !done && getReps(task, dk) > 0;
+                      const wk = isWeekly(task);
+                      const sched = wk ? true : isScheduledOn(task, dk);
+                      const done = wk ? (getReps(task,dk)>0) : isCompletedOn(task, dk);
+                      const partial = !wk && !done && getReps(task, dk) > 0;
                       const isT = dk===todayK;
+                      const future = dk > todayK;
+                      // Strong, legible states:
+                      //  done = solid color · scheduled (not done) = bright tinted w/ outline · rest day = dim flat
+                      let bg, brd;
+                      if (done) { bg = color; brd = "none"; }
+                      else if (partial) { bg = `${color}77`; brd = `1.5px solid ${color}`; }
+                      else if (sched) { bg = `${color}3a`; brd = `1.5px solid ${color}aa`; }
+                      else { bg = "rgba(255,255,255,0.05)"; brd = "1.5px solid rgba(255,255,255,0.08)"; }
                       return (
                         <button key={dk}
                           onClick={e=>{ e.stopPropagation(); if (dk<=todayK) toggleDay(task.id, dk); }}
                           style={{
                             width:22,height:22,borderRadius:7,padding:0,cursor:dk<=todayK?"pointer":"default",
-                            background: done ? color : partial ? `${color}55` : sched ? `${color}1e` : "rgba(255,255,255,0.06)",
-                            border: isT ? "1.5px solid rgba(255,255,255,0.9)" : "none",
-                            boxShadow: done ? `0 0 7px ${color}66` : "none",
+                            background: bg, border: brd, boxSizing:"border-box",
+                            opacity: future && !sched ? 0.5 : future ? 0.8 : 1,
+                            boxShadow: done ? `0 0 8px ${color}88` : "none",
+                            outline: isT ? "2px solid #ffffff" : "none", outlineOffset: isT ? "1px" : 0,
                           }}/>
                       );
                     })}
@@ -2729,20 +2946,41 @@ export default function App() {
                 <div style={{marginTop:16}}>
                   <ImportanceBlock value={t.importance??5} onChange={v=>set({importance:v})}/>
                 </div>
-                <div style={{...C.label,marginTop:16}}>TIMES PER DAY: <span style={{color:"#fff"}}>{t.targetReps||1}</span></div>
-                <input type="range" min="1" max="10" step="1" value={t.targetReps||1}
-                  onChange={e=>set({targetReps:parseInt(e.target.value)})}
-                  style={{width:"100%",accentColor:"#ffffff"}}/>
-                <div style={{...C.label,marginTop:16}}>SCHEDULED DAYS</div>
-                <div style={{display:"flex",gap:6,justifyContent:"space-between"}}>
-                  {DAYS.map((d,i)=>(
-                    <button key={d} style={C.dayBtn((t.days||[]).includes(i))}
-                      onClick={()=>{
-                        const days = (t.days||[]).includes(i) ? t.days.filter(x=>x!==i) : [...(t.days||[]),i];
-                        set({days});
-                      }}>{d.slice(0,2).toUpperCase()}</button>
-                  ))}
+                <div style={{...C.label,marginTop:16}}>FREQUENCY</div>
+                <div style={{display:"flex",gap:8,marginBottom:4}}>
+                  <button style={C.chip((t.freq||"daily")==="daily")} onClick={()=>set({freq:"daily"})}>SCHEDULED DAYS</button>
+                  <button style={C.chip(t.freq==="weekly")} onClick={()=>set({freq:"weekly"})}>X PER WEEK</button>
                 </div>
+                <div style={{fontSize:9.5,color:FAINT,marginBottom:8,fontWeight:700,lineHeight:1.4}}>
+                  {t.freq==="weekly"
+                    ? "Do it any days you like — hit your weekly target to reach 100%."
+                    : "Pick the exact days this quest is due each week."}
+                </div>
+                {t.freq==="weekly" ? (
+                  <>
+                    <div style={{...C.label,marginTop:8}}>TIMES PER WEEK: <span style={{color:"#fff"}}>{t.weeklyTarget||3}</span></div>
+                    <input type="range" min="1" max="7" step="1" value={t.weeklyTarget||3}
+                      onChange={e=>set({weeklyTarget:parseInt(e.target.value)})}
+                      style={{width:"100%",accentColor:"#ffffff"}}/>
+                  </>
+                ) : (
+                  <>
+                    <div style={{...C.label,marginTop:8}}>TIMES PER DAY: <span style={{color:"#fff"}}>{t.targetReps||1}</span></div>
+                    <input type="range" min="1" max="10" step="1" value={t.targetReps||1}
+                      onChange={e=>set({targetReps:parseInt(e.target.value)})}
+                      style={{width:"100%",accentColor:"#ffffff"}}/>
+                    <div style={{...C.label,marginTop:16}}>SCHEDULED DAYS</div>
+                    <div style={{display:"flex",gap:6,justifyContent:"space-between"}}>
+                      {DAYS.map((d,i)=>(
+                        <button key={d} style={C.dayBtn((t.days||[]).includes(i))}
+                          onClick={()=>{
+                            const days = (t.days||[]).includes(i) ? t.days.filter(x=>x!==i) : [...(t.days||[]),i];
+                            set({days});
+                          }}>{d.slice(0,2).toUpperCase()}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 <div style={{display:"flex",gap:8,marginTop:20}}>
                   <button style={{...C.btnSm,flex:1,padding:"14px"}} onClick={()=>{isEdit?setEditTask(null):null; setView("tasks");}}>CANCEL</button>
                   {isEdit && (
@@ -3115,6 +3353,126 @@ export default function App() {
         )}
 
         {/* ══ SETTINGS ══ */}
+        {view==="forecast" && (()=>{
+          const sel = forecastDate || dateKey();
+          const todayK = dateKey();
+          // week strip around selected date (Mon→Sun)
+          const strip = weekKeysFor(sel);
+          const selD = new Date(sel+"T00:00:00");
+          const isPast = sel < todayK, isToday = sel===todayK;
+          // daily tasks scheduled on the selected day
+          const dueDaily = data.tasks
+            .filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t) && isScheduledOn(t,sel))
+            .sort((a,b)=>(a.order??0)-(b.order??0));
+          const weeklies = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
+          const shiftWeek = (n)=>{ const d=new Date(sel+"T00:00:00"); d.setDate(d.getDate()+n*7); setForecastDate(dateKey(d)); };
+          const monthLabel = `${MONTHS[selD.getMonth()]} ${selD.getDate()}, ${selD.getFullYear()}`;
+          return (
+            <div style={{padding:"14px 16px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={C.sectionTitle}>Forecast</div>
+                <button style={{...C.btnSm,padding:"10px 14px"}} onClick={()=>setView("tasks")}>‹ QUESTS</button>
+              </div>
+
+              {/* Week strip */}
+              <div style={{...C.glass,padding:"14px 12px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <button onClick={()=>shiftWeek(-1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 14px",cursor:"pointer",fontSize:15,fontWeight:800}}>‹</button>
+                  <div style={{fontSize:12.5,fontWeight:800,color:"#fff"}}>{monthLabel}</div>
+                  <button onClick={()=>shiftWeek(1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 14px",cursor:"pointer",fontSize:15,fontWeight:800}}>›</button>
+                </div>
+                <div style={{display:"flex",gap:5}}>
+                  {strip.map(dk=>{
+                    const d=new Date(dk+"T00:00:00");
+                    const on = dk===sel, isT = dk===todayK;
+                    const count = data.tasks.filter(t=>t.catId && !isWeekly(t) && isScheduledOn(t,dk)).length;
+                    return (
+                      <button key={dk} onClick={()=>setForecastDate(dk)} style={{
+                        flex:1,borderRadius:14,border:on?"2px solid #fff":isT?"1.5px solid rgba(255,255,255,0.5)":`1px solid ${LINE}`,
+                        background:on?"rgba(255,255,255,0.18)":"rgba(0,0,0,0.2)",cursor:"pointer",padding:"8px 0",
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                        <div style={{fontSize:8.5,fontWeight:800,color:on?"#fff":DIM}}>{DAYS[d.getDay()].slice(0,2).toUpperCase()}</div>
+                        <div style={{fontSize:15,fontWeight:900,color:on?"#fff":"#fff"}}>{d.getDate()}</div>
+                        <div style={{height:5,width:5,borderRadius:"50%",background:count>0?(on?"#fff":T.accent):"transparent"}}/>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"6px 2px 11px"}}>
+                <div style={C.sectionTitle}>
+                  {isToday?"Today":isPast?"That day":"Coming up"} · {DAYS[selD.getDay()]}
+                </div>
+                <div style={{fontSize:11,color:DIM,fontWeight:800}}>{dueDaily.length} scheduled</div>
+              </div>
+
+              {dueDaily.length===0 && (
+                <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>Nothing scheduled this day.</div>
+              )}
+              {dueDaily.map(task=>{
+                const cat = data.categories.find(c=>c.id===task.catId);
+                const color = task.color || cat?.color || T.accent;
+                const done = isCompletedOn(task, sel);
+                const reps = getReps(task, sel);
+                const target = task.targetReps||1;
+                const canLog = sel<=todayK;
+                return (
+                  <div key={task.id} style={{
+                    background: S.cardStyle==="tinted"
+                      ? `linear-gradient(155deg,${color}24 0%,${color}0e 50%,${GLASS} 100%)`
+                      : `linear-gradient(155deg,${color} 0%,${shade(color,-58)} 100%)`,
+                    borderRadius:20, padding:"12px 14px", marginBottom:10,
+                    opacity: done?0.7:1,
+                    boxShadow: S.cardStyle==="tinted" ? "0 4px 16px rgba(0,0,0,0.3)" : `0 6px 20px ${color}40`,
+                    border: S.cardStyle==="tinted" ? `1px solid ${color}33` : "none",
+                    display:"flex",alignItems:"center",gap:12}}>
+                    {canLog ? (
+                      <HoldRing color={S.cardStyle==="tinted"?color:"#ffffff"} checkColor={S.cardStyle==="tinted"?"#fff":color}
+                        trackColor="rgba(255,255,255,0.3)" reps={reps} target={target}
+                        onComplete={()=>addRep(task.id, sel)} onShortTap={()=>toast$("HOLD TO COMPLETE")} size={46}/>
+                    ) : (
+                      <div style={{width:46,height:46,borderRadius:"50%",flexShrink:0,border:"2px dashed rgba(255,255,255,0.4)",
+                        display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"rgba(255,255,255,0.6)"}}>🔮</div>
+                    )}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                        textDecoration:done?"line-through":"none"}}>{task.name}</div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",fontWeight:800,marginTop:3}}>
+                        {cat?.icon} {cat?.name} {target>1?`· ${reps}/${target}`:""} {!canLog?"· upcoming":""}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Weekly habits reminder for the selected week */}
+              {weeklies.length>0 && (
+                <>
+                  <div style={{...C.sectionTitle,margin:"16px 2px 10px",fontSize:13}}>That week's habits</div>
+                  {weeklies.map(task=>{
+                    const cat = data.categories.find(c=>c.id===task.catId);
+                    const color = task.color || cat?.color || T.accent;
+                    const wt = weeklyTargetOf(task);
+                    const done = weeklyDone(task, sel);
+                    return (
+                      <div key={task.id} style={{...C.glass,padding:"10px 13px",marginBottom:8,display:"flex",alignItems:"center",gap:11}}>
+                        <div style={{width:34,height:34,borderRadius:11,flexShrink:0,background:`${color}33`,
+                          display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>{cat?.icon}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13.5,fontWeight:800,color:"#fff"}}>{task.name}</div>
+                          <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>{done}/{wt} that week · weekly</div>
+                        </div>
+                        <div style={{fontSize:11,fontWeight:900,color: done>=wt?GOOD:color}}>{Math.round(Math.min(100,(done/wt)*100))}%</div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          );
+        })()}
+
         {view==="settings" && (
           <div style={{padding:"14px 16px"}}>
             <div style={{...C.sectionTitle,marginBottom:12}}>Settings</div>
