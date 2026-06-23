@@ -90,6 +90,7 @@ const DEFAULT_SETTINGS = {
   shopEnabled: true,
   questsEnabled: true,
   statsEnabled: true,
+  weeklyOnHome: true,
   devMode: false,
 };
 const DEFAULT_EQUIPPED = {
@@ -356,10 +357,11 @@ function weekKeysFor(dateStr) {
   return Array.from({length:7}, (_,i)=>{ const x=new Date(mon); x.setDate(mon.getDate()+i); return dateKey(x); });
 }
 const isWeekly = (task) => task && task.freq === "weekly";
-// How many times a weekly habit has been logged in the week containing dateStr
+// Total times a weekly habit has been logged across the week containing dateStr
+// (sums reps per day, so you can log several in a single day toward a big target)
 function weeklyDone(task, dateStr) {
   const keys = weekKeysFor(dateStr);
-  return keys.reduce((s,dk)=> s + (getReps(task, dk) > 0 ? 1 : 0), 0);
+  return keys.reduce((s,dk)=> s + (getReps(task, dk) || 0), 0);
 }
 const weeklyTargetOf = (task) => Math.max(1, task.weeklyTarget || 1);
 // Weekly completion fraction (capped at 1) for the week containing dateStr
@@ -1610,28 +1612,30 @@ export default function App() {
     const d = dk || currentDay;
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
 
-    // ── WEEKLY HABIT: each tap logs one completion for the day; value & coins
-    //    are sliced so meeting the weekly target equals a full quest's worth. ──
+    // ── WEEKLY HABIT: each tap adds ONE completion to today (you can log many
+    //    per day toward a big weekly target). Value & coins are sliced so hitting
+    //    the weekly target equals a full quest's worth. ──
     if (isWeekly(task)) {
-      const already = getReps(task, d) > 0;
-      if (already) { clearDay(tid, d); return; } // tap again to un-log that day
       const wt = weeklyTargetOf(task);
-      const doneBefore = weeklyDone(task, d);
+      const doneBefore = weeklyDone(task, d);         // total reps this week before
       const slice = task.points / wt;                 // points per weekly rep
-      const willCount = doneBefore < wt;              // only first wt logs add value
+      const willCount = doneBefore < wt;              // only first wt reps add value
       const cats = data.categories.map(c => c.id !== task.catId ? c
         : {...c, value: Math.min(c.maxValue, c.value + (willCount ? slice : 0))});
+      const prevDayReps = getReps(task, d);
       const tasks = data.tasks.map(t => {
         if (t.id !== tid) return t;
-        const comps = {...(t.completions||{})}; comps[d] = 1;
+        const comps = {...(t.completions||{})}; comps[d] = prevDayReps + 1;
         return {...t, completions: comps};
       });
       update({...data, categories:cats, tasks});
-      // coins: pay per log, but only up to weeklyTarget logs in the week
-      const key = `${tid}|${d}`;
+      // coins: pay per rep up to the weekly target. Ledger key includes the rep
+      // index so each of the first wt reps banks once and can't be re-farmed.
+      const repIndex = doneBefore + 1;                // 1-based rep number this week
+      const key = `${tid}|wk|${weekKeysFor(d)[0]}|${repIndex}`;
       setData(cur=>{
+        if (repIndex > wt) return cur;                // weekly coin cap reached
         if ((cur.wallet.coinsByTaskDay||{})[key]) return cur;
-        if (doneBefore >= wt) return cur;             // weekly coin cap reached
         const coins = coinsForTask(task);
         const ledger = {...(cur.wallet.coinsByTaskDay||{})}; ledger[key] = coins;
         const n={...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)+coins, coinsByTaskDay:ledger}};
@@ -1639,7 +1643,8 @@ export default function App() {
       });
       const cat = data.categories.find(c=>c.id===task.catId);
       const nowDone = doneBefore + 1;
-      if (nowDone >= wt) toast$(`✓ ${task.name} — WEEK COMPLETE!`, cat?.color || "#34d399");
+      if (nowDone === wt) toast$(`✓ ${task.name} — WEEK COMPLETE!`, cat?.color || "#34d399");
+      else if (nowDone > wt) toast$(`${nowDone}/${wt} · over target! 💪`, "#f59e0b");
       else toast$(`${nowDone}/${wt} this week · ${task.name}`, cat?.color || "#34d399");
       return;
     }
@@ -1686,19 +1691,21 @@ export default function App() {
 
     if (isWeekly(task)) {
       const wt = weeklyTargetOf(task);
-      const doneBefore = weeklyDone(task, d);          // includes this day
+      const doneBefore = weeklyDone(task, d);          // total reps this week incl. today
       const slice = task.points / wt;
-      // only remove value if this log was one of the counted (≤ wt) ones
+      // the rep we're removing was "counted" toward value only if its index ≤ wt
       const wasCounted = doneBefore <= wt;
       const cats = data.categories.map(c => c.id !== task.catId ? c
         : {...c, value: Math.max(0, c.value - (wasCounted ? slice : 0))});
+      const dayReps = getReps(task, d);
       const tasks = data.tasks.map(t => {
         if (t.id !== tid) return t;
-        const comps = {...(t.completions||{})}; delete comps[d];
+        const comps = {...(t.completions||{})};
+        if (dayReps <= 1) delete comps[d]; else comps[d] = dayReps - 1;  // decrement
         return {...t, completions: comps};
       });
       update({...data, categories:cats, tasks});
-      toast$("CLEARED", "#ef4444");
+      toast$("−1", "#ef4444");
       return;
     }
 
@@ -1719,10 +1726,7 @@ export default function App() {
 
   const toggleDay = (tid, dk) => {
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
-    if (isWeekly(task)) {                       // weekly: simple logged/un-logged toggle
-      if (getReps(task, dk) > 0) clearDay(tid, dk); else addRep(tid, dk);
-      return;
-    }
+    if (isWeekly(task)) { addRep(tid, dk); return; }  // weekly: each tap adds one rep
     if (getReps(task, dk) > 0) clearDay(tid, dk);
     else {
       const target = task.targetReps || 1;
@@ -2212,6 +2216,68 @@ export default function App() {
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks");
 
   // ── QUEST CARD (ring on the LEFT; vivid or tinted; per-quest color) ─────────
+  // Weekly-habit card (used on Home and on the Quests page). Tap ring to log one.
+  const WeeklyCard = ({task}) => {
+    const cat = data.categories.find(c=>c.id===task.catId);
+    const color = task.color || cat?.color || T.accent;
+    const wt = weeklyTargetOf(task);
+    const done = weeklyDone(task, today);
+    const met = done >= wt;
+    const pct = Math.min(100, (done/wt)*100);
+    const wkeys = weekKeysFor(today);
+    const tinted = S.cardStyle==="tinted";
+    return (
+      <div onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+        style={{
+          background: tinted
+            ? `linear-gradient(155deg,${color}24 0%,${color}0e 50%,${GLASS} 100%)`
+            : `linear-gradient(155deg,${color} 0%,${shade(color,-58)} 100%)`,
+          borderRadius:22, padding:"13px 14px", marginBottom:11, cursor:"pointer",
+          opacity: met ? 0.72 : 1, transition:"all .25s",
+          boxShadow: tinted ? "0 4px 18px rgba(0,0,0,0.3)" : `0 8px 24px ${color}40, 0 2px 8px rgba(0,0,0,0.3)`,
+          border: tinted ? `1px solid ${met?`${color}66`:`${color}33`}` : "none",
+        }}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={(e)=>{ e.stopPropagation(); addRep(task.id, today); }}
+            style={{width:54,height:54,borderRadius:"50%",flexShrink:0,border:"none",cursor:"pointer",position:"relative",
+              background:"rgba(0,0,0,0.18)",padding:0}}>
+            <svg width="54" height="54" style={{position:"absolute",inset:0}}>
+              <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="5"/>
+              <circle cx="27" cy="27" r="22" fill="none" stroke={tinted?color:"#fff"} strokeWidth="5" strokeLinecap="round"
+                strokeDasharray={2*Math.PI*22} strokeDashoffset={2*Math.PI*22*(1-pct/100)}
+                transform="rotate(-90 27 27)" style={{transition:"stroke-dashoffset .4s ease"}}/>
+            </svg>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:met?20:(done>=10?12:14),fontWeight:900,color:"#fff"}}>
+              {met ? "✓" : `${done}/${wt}`}
+            </div>
+          </button>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:15.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+              textShadow:tinted?"none":"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",fontWeight:800,marginTop:3}}>
+              {met ? "WEEK COMPLETE ✓" : `${wt-done} more this week`}
+              {weeklyStreak(task)>=1 && <span style={{color:"#ffd76b"}}> · 🔥{weeklyStreak(task)}w</span>}
+            </div>
+            <div style={{display:"flex",gap:5,marginTop:8}}>
+              {wkeys.map((dk)=>{
+                const dayReps = getReps(task,dk)||0;
+                const isT = dk===today;
+                return <div key={dk} style={{flex:1,height:7,borderRadius:4,position:"relative",
+                  background: dayReps>0 ? (tinted?color:"#fff") : "rgba(0,0,0,0.28)",
+                  boxShadow: isT ? "0 0 0 1.5px rgba(255,255,255,0.9)" : "none"}}>
+                  {dayReps>1 && <span style={{position:"absolute",top:-13,left:"50%",transform:"translateX(-50%)",
+                    fontSize:8,fontWeight:900,color:tinted?color:"#fff"}}>{dayReps}</span>}
+                </div>;
+              })}
+            </div>
+          </div>
+          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{cat?.icon}</div>
+        </div>
+      </div>
+    );
+  };
+
   const QuestCard = ({task}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
     const color = task.color || cat?.color || T.accent;
@@ -2722,7 +2788,7 @@ export default function App() {
               }).map(t=><QuestCard key={t.id} task={t}/>)}
 
               {/* THIS WEEK — frequency-based habits (do X times, any days) */}
-              {weeklyHabits.length>0 && (
+              {weeklyHabits.length>0 && S.weeklyOnHome!==false && (
                 <>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"18px 2px 11px"}}>
                     <div style={C.sectionTitle}>This Week</div>
@@ -2730,65 +2796,7 @@ export default function App() {
                       {weeklyHabits.filter(t=>weeklyMet(t,today)).length} of {weeklyHabits.length} done
                     </div>
                   </div>
-                  {weeklyHabits.sort((a,b)=>(a.order??0)-(b.order??0)).map(task=>{
-                    const cat = data.categories.find(c=>c.id===task.catId);
-                    const color = task.color || cat?.color || T.accent;
-                    const wt = weeklyTargetOf(task);
-                    const done = weeklyDone(task, today);
-                    const met = done >= wt;
-                    const pct = Math.min(100, (done/wt)*100);
-                    const wkeys = weekKeysFor(today);
-                    return (
-                      <div key={task.id}
-                        onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
-                        style={{
-                          background: S.cardStyle==="tinted"
-                            ? `linear-gradient(155deg,${color}24 0%,${color}0e 50%,${GLASS} 100%)`
-                            : `linear-gradient(155deg,${color} 0%,${shade(color,-58)} 100%)`,
-                          borderRadius:22, padding:"13px 14px", marginBottom:11, cursor:"pointer",
-                          opacity: met ? 0.72 : 1, transition:"all .25s",
-                          boxShadow: S.cardStyle==="tinted" ? "0 4px 18px rgba(0,0,0,0.3)" : `0 8px 24px ${color}40, 0 2px 8px rgba(0,0,0,0.3)`,
-                          border: S.cardStyle==="tinted" ? `1px solid ${met?`${color}66`:`${color}33`}` : "none",
-                        }}>
-                        <div style={{display:"flex",alignItems:"center",gap:12}}>
-                          {/* tap-to-log ring (logs today) */}
-                          <button onClick={(e)=>{ e.stopPropagation(); addRep(task.id, today); }}
-                            style={{width:54,height:54,borderRadius:"50%",flexShrink:0,border:"none",cursor:"pointer",position:"relative",
-                              background:"rgba(0,0,0,0.18)",padding:0}}>
-                            <svg width="54" height="54" style={{position:"absolute",inset:0}}>
-                              <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="5"/>
-                              <circle cx="27" cy="27" r="22" fill="none" stroke={S.cardStyle==="tinted"?color:"#fff"} strokeWidth="5" strokeLinecap="round"
-                                strokeDasharray={2*Math.PI*22} strokeDashoffset={2*Math.PI*22*(1-pct/100)}
-                                transform="rotate(-90 27 27)" style={{transition:"stroke-dashoffset .4s ease"}}/>
-                            </svg>
-                            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-                              fontSize:met?20:13,fontWeight:900,color:"#fff"}}>
-                              {met ? "✓" : `${done}/${wt}`}
-                            </div>
-                          </button>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:15.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
-                              textShadow:S.cardStyle==="tinted"?"none":"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
-                            <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",fontWeight:800,marginTop:3}}>
-                              {met ? "WEEK COMPLETE ✓" : `${wt-done} more this week`}
-                              {weeklyStreak(task)>=1 && <span style={{color:"#ffd76b"}}> · 🔥{weeklyStreak(task)}w</span>}
-                            </div>
-                            {/* week dots */}
-                            <div style={{display:"flex",gap:5,marginTop:8}}>
-                              {wkeys.map((dk,i)=>{
-                                const logged = getReps(task,dk)>0;
-                                const isT = dk===today;
-                                return <div key={dk} style={{flex:1,height:7,borderRadius:4,
-                                  background: logged ? (S.cardStyle==="tinted"?color:"#fff") : "rgba(0,0,0,0.28)",
-                                  boxShadow: isT ? "0 0 0 1.5px rgba(255,255,255,0.9)" : "none"}}/>;
-                              })}
-                            </div>
-                          </div>
-                          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{cat?.icon}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {weeklyHabits.sort((a,b)=>(a.order??0)-(b.order??0)).map(task=><WeeklyCard key={task.id} task={task}/>)}
                   <div style={{fontSize:9,color:FAINT,textAlign:"center",fontWeight:700,marginTop:-2,marginBottom:4}}>
                     TAP THE RING TO LOG ONE · DO THESE ANY DAYS YOU LIKE
                   </div>
@@ -2803,7 +2811,10 @@ export default function App() {
           const wk7 = last7Keys();
           const todayK = dateKey();
           const sortedTasks = [...data.tasks]
-            .filter(t=>t.catId && data.categories.find(c=>c.id===t.catId))
+            .filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t))
+            .sort((a,b)=>(a.order??0)-(b.order??0));
+          const weeklyList = data.tasks
+            .filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t))
             .sort((a,b)=>(a.order??0)-(b.order??0));
           return (
           <div style={{padding:"14px 16px"}}>
@@ -2893,6 +2904,20 @@ export default function App() {
                 </div>
               );
             })}
+            {weeklyList.length>0 && (
+              <>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"20px 2px 11px"}}>
+                  <div style={C.sectionTitle}>This Week</div>
+                  <div style={{fontSize:11,color:DIM,fontWeight:800}}>
+                    {weeklyList.filter(t=>weeklyMet(t,today)).length} of {weeklyList.length} done
+                  </div>
+                </div>
+                {weeklyList.map(task=><WeeklyCard key={task.id} task={task}/>)}
+                <div style={{fontSize:9,color:FAINT,textAlign:"center",fontWeight:700,marginTop:-2,marginBottom:4}}>
+                  TAP THE RING TO LOG ONE · DO THESE ANY DAYS YOU LIKE
+                </div>
+              </>
+            )}
             {orphanTasks.length>0 && (
               <div style={{...C.glass,marginTop:12,border:"1.5px solid #ffc46b66"}}>
                 <div style={{...C.label,color:"#ffc46b"}}>NEEDS A CATEGORY</div>
@@ -2959,9 +2984,24 @@ export default function App() {
                 {t.freq==="weekly" ? (
                   <>
                     <div style={{...C.label,marginTop:8}}>TIMES PER WEEK: <span style={{color:"#fff"}}>{t.weeklyTarget||3}</span></div>
-                    <input type="range" min="1" max="7" step="1" value={t.weeklyTarget||3}
-                      onChange={e=>set({weeklyTarget:parseInt(e.target.value)})}
-                      style={{width:"100%",accentColor:"#ffffff"}}/>
+                    <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
+                      {[1,2,3,5,7,10,15,20].map(n=>(
+                        <button key={n} onClick={()=>set({weeklyTarget:n})}
+                          style={{height:34,minWidth:38,padding:"0 10px",borderRadius:13,cursor:"pointer",fontFamily:FONT,fontWeight:900,fontSize:12.5,
+                            border:(t.weeklyTarget||3)===n?"2.5px solid #fff":"2px solid rgba(255,255,255,0.2)",
+                            background:(t.weeklyTarget||3)===n?"rgba(255,255,255,0.16)":"rgba(0,0,0,0.25)",color:"#fff"}}>{n}</button>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:11,color:DIM,fontWeight:700}}>Custom:</span>
+                      <input type="number" min="1" max="999" value={t.weeklyTarget||3}
+                        onChange={e=>{ const v=parseInt(e.target.value); set({weeklyTarget: isNaN(v)?1:Math.max(1,Math.min(999,v))}); }}
+                        style={{...C.input,width:90,padding:"10px 12px",textAlign:"center"}}/>
+                      <span style={{fontSize:11,color:FAINT,fontWeight:700}}>per week</span>
+                    </div>
+                    <div style={{fontSize:9.5,color:FAINT,marginTop:8,fontWeight:700,lineHeight:1.4}}>
+                      Tap to log each one as you do it — great for goals like "20 job applications a week."
+                    </div>
                   </>
                 ) : (
                   <>
@@ -3525,6 +3565,13 @@ export default function App() {
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = difficulty words instead of decimals</div>
                 </div>
                 <Switch on={S.showXP} onToggle={()=>setSetting("showXP",!S.showXP)}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>"This Week" on home</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = weekly habits show on the Quests page instead</div>
+                </div>
+                <Switch on={S.weeklyOnHome!==false} onToggle={()=>setSetting("weeklyOnHome",!(S.weeklyOnHome!==false))}/>
               </div>
             </div>
 
