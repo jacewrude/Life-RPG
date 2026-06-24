@@ -1878,6 +1878,24 @@ export default function App() {
     update({...data, tasks: data.tasks.map(t=>({...t, order:orderMap[t.id]}))});
     try { navigator.vibrate && navigator.vibrate(8); } catch {}
   };
+  // Reorder a task relative to a visible subset (e.g. today's list, where the
+  // displayed order differs from global order). Swaps global order values with
+  // the neighbor in that subset so the move matches what the user sees.
+  const moveTaskWithin = (id, dir, visibleIds) => {
+    const idx = visibleIds.indexOf(id);
+    const nIdx = idx + dir;
+    if (idx<0 || nIdx<0 || nIdx>=visibleIds.length) return;
+    const otherId = visibleIds[nIdx];
+    const a = data.tasks.find(t=>t.id===id), b = data.tasks.find(t=>t.id===otherId);
+    if (!a || !b) return;
+    const ao = a.order??0, bo = b.order??0;
+    update({...data, tasks: data.tasks.map(t=>{
+      if (t.id===id) return {...t, order:bo};
+      if (t.id===otherId) return {...t, order:ao};
+      return t;
+    })});
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
+  };
   const resetQuest = (id) => {
     update({...data, tasks:data.tasks.map(t=>t.id===id?{...t, completions:{}, createdAt: dateKey()}:t)});
     toast$("QUEST HISTORY RESET");
@@ -2217,7 +2235,7 @@ export default function App() {
 
   // ── QUEST CARD (ring on the LEFT; vivid or tinted; per-quest color) ─────────
   // Weekly-habit card (used on Home and on the Quests page). Tap ring to log one.
-  const WeeklyCard = ({task}) => {
+  const WeeklyCard = ({task, showReorder=false, siblingIds=null}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
     const color = task.color || cat?.color || T.accent;
     const wt = weeklyTargetOf(task);
@@ -2273,12 +2291,20 @@ export default function App() {
             </div>
           </div>
           <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{cat?.icon}</div>
+          {showReorder && (
+            <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0}}>
+              <button onClick={e=>{e.stopPropagation(); (siblingIds?moveTaskWithin(task.id,-1,siblingIds):moveTask(task.id,-1));}}
+                style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:(siblingIds&&siblingIds.indexOf(task.id)===0)?"rgba(255,255,255,0.3)":"#fff",fontSize:11,cursor:"pointer",padding:"3px 7px",fontWeight:900,lineHeight:1}}>▲</button>
+              <button onClick={e=>{e.stopPropagation(); (siblingIds?moveTaskWithin(task.id,1,siblingIds):moveTask(task.id,1));}}
+                style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:(siblingIds&&siblingIds.indexOf(task.id)===siblingIds.length-1)?"rgba(255,255,255,0.3)":"#fff",fontSize:11,cursor:"pointer",padding:"3px 7px",fontWeight:900,lineHeight:1}}>▼</button>
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
-  const QuestCard = ({task}) => {
+  const QuestCard = ({task, showReorder=false, siblingIds=null}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
     const color = task.color || cat?.color || T.accent;
     const tinted = S.cardStyle === "tinted";
@@ -2290,6 +2316,10 @@ export default function App() {
     const qpct = questLevelPct(task);
     const schedToday = isScheduledOn(task, today);
     const burstLabel = S.showXP ? `+${(task.points/target).toFixed(3)}` : "✦ NICE";
+    const sibs = siblingIds || [];
+    const sIdx = sibs.indexOf(task.id);
+    const isFirst = sIdx === 0, isLast = sIdx === sibs.length-1;
+    const doMove = (dir)=> siblingIds ? moveTaskWithin(task.id, dir, siblingIds) : moveTask(task.id, dir);
     return (
       <div
         onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
@@ -2347,6 +2377,14 @@ export default function App() {
             <div style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.85)",lineHeight:1}}>LV</div>
             <div style={{fontSize:16,fontWeight:900,color:"#fff",lineHeight:1.1}}>{qlvl}</div>
           </div>
+          {showReorder && (
+            <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0}}>
+              <button onClick={e=>{e.stopPropagation(); doMove(-1);}}
+                style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:isFirst?"rgba(255,255,255,0.3)":"#fff",fontSize:11,cursor:"pointer",padding:"3px 7px",fontWeight:900,lineHeight:1}}>▲</button>
+              <button onClick={e=>{e.stopPropagation(); doMove(1);}}
+                style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:isLast?"rgba(255,255,255,0.3)":"#fff",fontSize:11,cursor:"pointer",padding:"3px 7px",fontWeight:900,lineHeight:1}}>▼</button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -2781,11 +2819,15 @@ export default function App() {
               {todayTasks.length===0 && (
                 <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>No quests scheduled today.</div>
               )}
-              {[...todayTasks].sort((a,b)=>{
-                const ad=isCompletedOn(a,today)?1:0, bd=isCompletedOn(b,today)?1:0;
-                if (ad!==bd) return ad-bd;
-                return (a.order??0)-(b.order??0);
-              }).map(t=><QuestCard key={t.id} task={t}/>)}
+              {(()=>{
+                const shown = [...todayTasks].sort((a,b)=>{
+                  const ad=isCompletedOn(a,today)?1:0, bd=isCompletedOn(b,today)?1:0;
+                  if (ad!==bd) return ad-bd;
+                  return (a.order??0)-(b.order??0);
+                });
+                const ids = shown.map(t=>t.id);
+                return shown.map(t=><QuestCard key={t.id} task={t} showReorder siblingIds={ids}/>);
+              })()}
 
               {/* THIS WEEK — frequency-based habits (do X times, any days) */}
               {weeklyHabits.length>0 && S.weeklyOnHome!==false && (
@@ -2796,7 +2838,7 @@ export default function App() {
                       {weeklyHabits.filter(t=>weeklyMet(t,today)).length} of {weeklyHabits.length} done
                     </div>
                   </div>
-                  {weeklyHabits.sort((a,b)=>(a.order??0)-(b.order??0)).map(task=><WeeklyCard key={task.id} task={task}/>)}
+                  {(()=>{ const ws=weeklyHabits.sort((a,b)=>(a.order??0)-(b.order??0)); const ids=ws.map(t=>t.id); return ws.map(task=><WeeklyCard key={task.id} task={task} showReorder siblingIds={ids}/>); })()}
                   <div style={{fontSize:9,color:FAINT,textAlign:"center",fontWeight:700,marginTop:-2,marginBottom:4}}>
                     TAP THE RING TO LOG ONE · DO THESE ANY DAYS YOU LIKE
                   </div>
@@ -2912,7 +2954,7 @@ export default function App() {
                     {weeklyList.filter(t=>weeklyMet(t,today)).length} of {weeklyList.length} done
                   </div>
                 </div>
-                {weeklyList.map(task=><WeeklyCard key={task.id} task={task}/>)}
+                {(()=>{ const ids=weeklyList.map(t=>t.id); return weeklyList.map(task=><WeeklyCard key={task.id} task={task} showReorder siblingIds={ids}/>); })()}
                 <div style={{fontSize:9,color:FAINT,textAlign:"center",fontWeight:700,marginTop:-2,marginBottom:4}}>
                   TAP THE RING TO LOG ONE · DO THESE ANY DAYS YOU LIKE
                 </div>
