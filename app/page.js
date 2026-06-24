@@ -1117,6 +1117,70 @@ function RadarChart({ categories, ghostCategories, accent }) {
 }
 
 // ── MONTH CALENDAR (glass) ────────────────────────────────────────────────────
+// ── SCROLL-WHEEL TIME PICKER (hour · minute · AM/PM) ──────────────────────────
+function TimeWheel({ value, onChange }) {
+  // value = minutes from midnight
+  const ROW = 38;                       // px per row
+  const h24 = Math.floor(value/60), min = value%60;
+  const ap = h24>=12 ? 1 : 0;           // 0=AM 1=PM
+  let h12 = h24%12; if (h12===0) h12=12;
+  const hours = Array.from({length:12},(_,i)=>i+1);     // 1..12
+  const mins = Array.from({length:60},(_,i)=>i);        // 0..59
+  const aps = ["AM","PM"];
+  const hourRef = useRef(null), minRef = useRef(null), apRef = useRef(null);
+  const settle = useRef({});
+
+  const toMinutes = (hh, mm, a) => {
+    let H = hh%12; if (a===1) H += 12;
+    return H*60 + mm;
+  };
+  // initialize scroll positions once
+  useEffect(()=>{
+    if (hourRef.current) hourRef.current.scrollTop = (h12-1)*ROW;
+    if (minRef.current) minRef.current.scrollTop = min*ROW;
+    if (apRef.current) apRef.current.scrollTop = ap*ROW;
+  }, []);
+  const onScroll = (which, ref, list) => {
+    clearTimeout(settle.current[which]);
+    settle.current[which] = setTimeout(()=>{
+      const idx = Math.max(0, Math.min(list.length-1, Math.round(ref.current.scrollTop / ROW)));
+      ref.current.scrollTo({ top: idx*ROW, behavior:"smooth" });
+      const curH = Math.round((hourRef.current?.scrollTop||0)/ROW)+1;
+      const curM = Math.round((minRef.current?.scrollTop||0)/ROW);
+      const curA = Math.round((apRef.current?.scrollTop||0)/ROW);
+      onChange(toMinutes(
+        which==="h"?idx+1:curH,
+        which==="m"?idx:curM,
+        which==="a"?idx:curA
+      ));
+    }, 120);
+  };
+  const col = (list, ref, which, fmt) => (
+    <div ref={ref} onScroll={()=>onScroll(which,ref,list)}
+      style={{height:ROW*3,overflowY:"scroll",scrollSnapType:"y mandatory",flex:1,
+        WebkitOverflowScrolling:"touch",maskImage:"linear-gradient(180deg,transparent,#000 35%,#000 65%,transparent)",
+        WebkitMaskImage:"linear-gradient(180deg,transparent,#000 35%,#000 65%,transparent)"}}>
+      <div style={{height:ROW}}/>
+      {list.map((v,i)=>(
+        <div key={i} style={{height:ROW,scrollSnapAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",
+          fontSize:18,fontWeight:900,color:"#fff"}}>{fmt(v)}</div>
+      ))}
+      <div style={{height:ROW}}/>
+    </div>
+  );
+  return (
+    <div style={{position:"relative",display:"flex",gap:6,background:"rgba(0,0,0,0.28)",borderRadius:16,padding:"6px 10px"}}>
+      {/* center selection band */}
+      <div style={{position:"absolute",left:8,right:8,top:ROW+6,height:ROW,borderRadius:10,
+        background:"rgba(255,255,255,0.10)",pointerEvents:"none"}}/>
+      {col(hours, hourRef, "h", v=>v)}
+      <div style={{display:"flex",alignItems:"center",fontSize:18,fontWeight:900,color:DIM}}>:</div>
+      {col(mins, minRef, "m", v=>String(v).padStart(2,"0"))}
+      {col(aps, apRef, "a", v=>v)}
+    </div>
+  );
+}
+
 function MonthCalendar({ task, color, viewYear, viewMonth, onPrev, onNext, onToggleDay }) {
   const first = new Date(viewYear, viewMonth, 1);
   const startDow = first.getDay();
@@ -1473,6 +1537,8 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [forecastDate, setForecastDate] = useState(null);
   const [planDate, setPlanDate] = useState(dateKey());
+  const [planMode, setPlanMode] = useState("month"); // "month" | "day"
+  const [planMonth, setPlanMonth] = useState({ y:new Date().getFullYear(), m:new Date().getMonth() });
   const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
   const [editTask, setEditTask] = useState(null);
   const [detailTaskId, setDetailTaskId] = useState(null);
@@ -2658,16 +2724,7 @@ export default function App() {
 
             {/* START TIME */}
             <div style={{...C.label,marginTop:16}}>START TIME: <span style={{color:"#fff"}}>{fmtTime(scheduleSheet.start)}</span></div>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              {[["−1h",-60],["−15m",-15],["−5m",-5]].map(([l,d])=>(
-                <button key={l} style={{...C.btnSm,flex:1,padding:"11px 0"}}
-                  onClick={()=>setScheduleSheet(s=>({...s,start:Math.max(0,Math.min(1439,s.start+d))}))}>{l}</button>
-              ))}
-              {[["+5m",5],["+15m",15],["+1h",60]].map(([l,d])=>(
-                <button key={l} style={{...C.btnSm,flex:1,padding:"11px 0"}}
-                  onClick={()=>setScheduleSheet(s=>({...s,start:Math.max(0,Math.min(1439,s.start+d))}))}>{l}</button>
-              ))}
-            </div>
+            <TimeWheel value={scheduleSheet.start} onChange={(mins)=>setScheduleSheet(s=>({...s,start:mins}))}/>
 
             {/* DURATION */}
             <div style={{...C.label,marginTop:16}}>DURATION: <span style={{color:"#fff"}}>{durLabel(scheduleSheet.dur)}</span></div>
@@ -3583,23 +3640,76 @@ export default function App() {
 
         {/* ══ SETTINGS ══ */}
         {view==="plan" && (()=>{
-          const dk = planDate;
           const todayK = dateKey();
+          // ---------- MONTH MODE ----------
+          if (planMode === "month") {
+            const { y, m } = planMonth;
+            const first = new Date(y, m, 1);
+            const startDow = first.getDay();
+            const daysInMonth = new Date(y, m+1, 0).getDate();
+            const cells = [];
+            for (let i=0;i<startDow;i++) cells.push(null);
+            for (let d=1; d<=daysInMonth; d++) cells.push(`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
+            const shiftMonth = (n)=> setPlanMonth(c=>{ let mm=c.m+n, yy=c.y; if(mm<0){mm=11;yy--;} if(mm>11){mm=0;yy++;} return {y:yy,m:mm}; });
+            return (
+              <div style={{padding:"14px 16px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={C.sectionTitle}>Plan</div>
+                  <button style={{...C.btn,padding:"9px 14px",fontSize:11.5}}
+                    onClick={()=>{ setScheduleSheet({title:"",color:T.accent,source:"custom",refId:null,start:9*60,dur:30,dk:todayK}); }}>+ TIME BLOCK</button>
+                </div>
+                <div style={C.glass}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <button onClick={()=>shiftMonth(-1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"7px 16px",cursor:"pointer",fontSize:16,fontWeight:800}}>‹</button>
+                    <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{MONTHS[m]} {y}</div>
+                    <button onClick={()=>shiftMonth(1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"7px 16px",cursor:"pointer",fontSize:16,fontWeight:800}}>›</button>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6}}>
+                    {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:9,color:FAINT,fontWeight:800}}>{d.slice(0,1)}</div>)}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+                    {cells.map((dk,i)=>{
+                      if (!dk) return <div key={`e${i}`}/>;
+                      const n = blocksForDay(dk).length;
+                      const isT = dk===todayK;
+                      const dayNum = parseInt(dk.split("-")[2],10);
+                      return (
+                        <button key={dk} onClick={()=>{ setPlanDate(dk); setPlanMode("day"); }}
+                          style={{aspectRatio:"1",borderRadius:13,border:isT?"2px solid #fff":`1px solid ${LINE}`,
+                            background: n>0 ? `linear-gradient(150deg,${T.accent}44,rgba(0,0,0,0.2))` : "rgba(255,255,255,0.05)",
+                            color:"#fff",cursor:"pointer",position:"relative",display:"flex",flexDirection:"column",
+                            alignItems:"center",justifyContent:"center",gap:2,padding:0}}>
+                          <span style={{fontSize:13,fontWeight: isT?900:700}}>{dayNum}</span>
+                          {n>0 && <div style={{display:"flex",gap:2}}>
+                            {Array.from({length:Math.min(3,n)}).map((_,j)=>(
+                              <div key={j} style={{width:4,height:4,borderRadius:"50%",background:T.accent}}/>
+                            ))}
+                          </div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{fontSize:10.5,color:DIM,textAlign:"center",fontWeight:700,marginTop:4}}>
+                  Tap a day to open its hour-by-hour schedule · dots mark days with time blocks
+                </div>
+              </div>
+            );
+          }
+          // ---------- DAY MODE (full 24h scroll) ----------
+          const dk = planDate;
           const selD = new Date(dk+"T00:00:00");
-          const HOUR_PX = 56, START_H = 5, END_H = 24;          // 5am→midnight window
+          const HOUR_PX = 58, START_H = 0, END_H = 24;          // FULL 24 hours
           const totalH = (END_H-START_H)*HOUR_PX;
           const yFor = (min)=> Math.max(0,(min-START_H*60)/60*HOUR_PX);
           const blocks = blocksForDay(dk);
           const nowMins = (()=>{ const n=new Date(); return n.getHours()*60+n.getMinutes(); })();
           const isToday = dk===todayK;
-          // tasks scheduled this day that aren't yet placed on the calendar
           const placedRefIds = new Set(blocks.filter(b=>b.refId).map(b=>b.refId));
           const dayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId)
             && (isWeekly(t) || isScheduledOn(t,dk)) && !placedRefIds.has(t.id));
           const shiftDay = (n)=>{ const d=new Date(dk+"T00:00:00"); d.setDate(d.getDate()+n); setPlanDate(dateKey(d)); };
-          const monthLabel = `${DAYS[selD.getDay()]}, ${MONTHS[selD.getMonth()]} ${selD.getDate()}`;
-          // strip
-          const strip = weekKeysFor(dk);
+          const headLabel = `${DAYS[selD.getDay()]}, ${MONTHS[selD.getMonth()]} ${selD.getDate()}`;
           const openNew = (task)=> setScheduleSheet({
             title: task?task.name:"", color: task?(task.color||data.categories.find(c=>c.id===task.catId)?.color||T.accent):T.accent,
             source: task?"task":"custom", refId: task?task.id:null, start: 9*60, dur: 30, dk,
@@ -3607,91 +3717,73 @@ export default function App() {
           return (
             <div style={{paddingBottom:20}}>
               <div style={{padding:"14px 16px 6px"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <div style={C.sectionTitle}>Plan</div>
-                  <button style={{...C.btn,padding:"9px 14px",fontSize:11.5}} onClick={()=>openNew(null)}>+ TIME BLOCK</button>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <button style={{...C.btnSm,padding:"9px 13px"}} onClick={()=>setPlanMode("month")}>‹ MONTH</button>
+                  <div style={{fontSize:14,fontWeight:900,color:"#fff"}}>{headLabel}{isToday?" · Today":""}</div>
+                  <button style={{...C.btnSm,padding:"9px 13px"}} onClick={()=>openNew(null)}>＋</button>
                 </div>
-                {/* date pager */}
-                <div style={{...C.glass,padding:"12px 12px",marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                    <button onClick={()=>shiftDay(-1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 14px",cursor:"pointer",fontSize:15,fontWeight:800}}>‹</button>
-                    <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>{monthLabel}{isToday?" · Today":""}</div>
-                    <button onClick={()=>shiftDay(1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 14px",cursor:"pointer",fontSize:15,fontWeight:800}}>›</button>
-                  </div>
-                  <div style={{display:"flex",gap:5}}>
-                    {strip.map(d=>{
-                      const dd=new Date(d+"T00:00:00"); const on=d===dk; const isT=d===todayK;
-                      const cnt=blocksForDay(d).length;
-                      return (
-                        <button key={d} onClick={()=>setPlanDate(d)} style={{
-                          flex:1,borderRadius:13,border:on?"2px solid #fff":isT?"1.5px solid rgba(255,255,255,0.5)":`1px solid ${LINE}`,
-                          background:on?"rgba(255,255,255,0.18)":"rgba(0,0,0,0.2)",cursor:"pointer",padding:"7px 0",
-                          display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                          <div style={{fontSize:8,fontWeight:800,color:on?"#fff":DIM}}>{DAYS[dd.getDay()].slice(0,2).toUpperCase()}</div>
-                          <div style={{fontSize:14,fontWeight:900,color:"#fff"}}>{dd.getDate()}</div>
-                          <div style={{height:4,width:4,borderRadius:"50%",background:cnt>0?(on?"#fff":T.accent):"transparent"}}/>
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div style={{display:"flex",gap:8,marginBottom:4}}>
+                  <button style={{...C.btnSm,flex:1,padding:"9px 0"}} onClick={()=>shiftDay(-1)}>‹ PREV</button>
+                  <button style={{...C.btnSm,flex:1,padding:"9px 0"}} onClick={()=>{ setPlanDate(todayK); }}>TODAY</button>
+                  <button style={{...C.btnSm,flex:1,padding:"9px 0"}} onClick={()=>shiftDay(1)}>NEXT ›</button>
                 </div>
               </div>
 
-              {/* CALENDAR TIMELINE */}
               <div style={{padding:"0 16px"}}>
-                <div style={{position:"relative",height:totalH,
+                {/* SCROLLABLE 24H TIMELINE */}
+                <div ref={(el)=>{ if(el && el.dataset.scrolled!=="1"){ el.dataset.scrolled="1";
+                    const earliest = blocks.length ? Math.min(...blocks.map(b=>b.start)) : (isToday? nowMins : 7*60);
+                    el.scrollTop = Math.max(0, (Math.max(0,earliest-30)/60)*HOUR_PX); } }}
+                  style={{height:"58vh",overflowY:"auto",WebkitOverflowScrolling:"touch",
                   background:GLASS,backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",
-                  border:`1px solid ${LINE}`,borderRadius:22,overflow:"hidden"}}>
-                  {/* hour rows */}
-                  {Array.from({length:END_H-START_H+1},(_,i)=>{
-                    const h=START_H+i; const y=yFor(h*60);
-                    const lab=h===24?"12 AM":h===12?"12 PM":h>12?`${h-12} PM`:`${h} AM`;
-                    return (
-                      <div key={h}>
-                        <div style={{position:"absolute",left:0,right:0,top:y,height:1,background:"rgba(255,255,255,0.10)"}}/>
-                        <div style={{position:"absolute",left:8,top:y-7,fontSize:9.5,fontWeight:700,color:FAINT}}>{lab}</div>
-                        {h<END_H && <div style={{position:"absolute",left:52,right:0,top:y+HOUR_PX/2,height:1,background:"rgba(255,255,255,0.045)"}}/>}
+                  border:`1px solid ${LINE}`,borderRadius:22}}>
+                  <div style={{position:"relative",height:totalH}}>
+                    {Array.from({length:END_H-START_H+1},(_,i)=>{
+                      const h=START_H+i; const yy=yFor(h*60);
+                      const lab=h===24?"12 AM":h===0?"12 AM":h===12?"12 PM":h>12?`${h-12} PM`:`${h} AM`;
+                      return (
+                        <div key={h}>
+                          <div style={{position:"absolute",left:0,right:0,top:yy,height:1,background:"rgba(255,255,255,0.10)"}}/>
+                          <div style={{position:"absolute",left:8,top:yy+3,fontSize:9.5,fontWeight:700,color:FAINT}}>{lab}</div>
+                          {h<END_H && <div style={{position:"absolute",left:52,right:0,top:yy+HOUR_PX/2,height:1,background:"rgba(255,255,255,0.045)"}}/>}
+                        </div>
+                      );
+                    })}
+                    <div onClick={(e)=>{
+                      const rect=e.currentTarget.getBoundingClientRect();
+                      const rel=e.clientY-rect.top;
+                      let mins=Math.round((START_H*60 + rel/HOUR_PX*60)/15)*15;
+                      mins=Math.max(0,Math.min(END_H*60-15,mins));
+                      setScheduleSheet({title:"",color:T.accent,source:"custom",refId:null,start:mins,dur:30,dk});
+                    }} style={{position:"absolute",left:52,right:0,top:0,bottom:0,cursor:"copy"}}/>
+                    {blocks.map(b=>{
+                      const yy=yFor(b.start), h=Math.max(20, b.dur/60*HOUR_PX-3);
+                      return (
+                        <div key={b.id} onClick={(e)=>{ e.stopPropagation(); setScheduleSheet({...b, dk}); }}
+                          style={{position:"absolute",left:56,right:8,top:yy+1,height:h,
+                            background:`linear-gradient(135deg,${b.color},${shade(b.color,-40)})`,
+                            borderRadius:12,padding:"5px 10px",cursor:"pointer",overflow:"hidden",
+                            boxShadow:`0 3px 12px ${b.color}55`,borderLeft:`4px solid ${shade(b.color,45)}`}}>
+                          <div style={{fontSize:12,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.2}}>{b.title}</div>
+                          {h>32 && <div style={{fontSize:9.5,fontWeight:700,color:"rgba(255,255,255,0.9)",marginTop:1}}>{fmtTime(b.start)} – {fmtTime(Math.min(1439,b.start+b.dur))}</div>}
+                        </div>
+                      );
+                    })}
+                    {isToday && (
+                      <div style={{position:"absolute",left:52,right:0,top:yFor(nowMins),height:2,background:"#ff5a5a",zIndex:5}}>
+                        <div style={{position:"absolute",left:-4,top:-3,width:8,height:8,borderRadius:"50%",background:"#ff5a5a"}}/>
                       </div>
-                    );
-                  })}
-                  {/* tappable empty area to add a block at that time */}
-                  <div onClick={(e)=>{
-                    const rect=e.currentTarget.getBoundingClientRect();
-                    const rel=e.clientY-rect.top;
-                    let mins=Math.round((START_H*60 + rel/HOUR_PX*60)/15)*15;
-                    mins=Math.max(START_H*60,Math.min(END_H*60-15,mins));
-                    setScheduleSheet({title:"",color:T.accent,source:"custom",refId:null,start:mins,dur:30,dk});
-                  }} style={{position:"absolute",left:52,right:0,top:0,bottom:0,cursor:"copy"}}/>
-                  {/* blocks */}
-                  {blocks.map(b=>{
-                    const y=yFor(b.start), h=Math.max(20, b.dur/60*HOUR_PX-3);
-                    return (
-                      <div key={b.id} onClick={(e)=>{ e.stopPropagation(); setScheduleSheet({...b, dk}); }}
-                        style={{position:"absolute",left:56,right:8,top:y+1,height:h,
-                          background:`linear-gradient(135deg,${b.color},${shade(b.color,-40)})`,
-                          borderRadius:12,padding:"5px 10px",cursor:"pointer",overflow:"hidden",
-                          boxShadow:`0 3px 12px ${b.color}55`,borderLeft:`4px solid ${shade(b.color,45)}`}}>
-                        <div style={{fontSize:12,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.2}}>{b.title}</div>
-                        {h>32 && <div style={{fontSize:9.5,fontWeight:700,color:"rgba(255,255,255,0.9)",marginTop:1}}>{fmtTime(b.start)} – {fmtTime(Math.min(1439,b.start+b.dur))}</div>}
-                      </div>
-                    );
-                  })}
-                  {/* now line */}
-                  {isToday && nowMins>=START_H*60 && nowMins<=END_H*60 && (
-                    <div style={{position:"absolute",left:52,right:0,top:yFor(nowMins),height:2,background:"#ff5a5a",zIndex:5}}>
-                      <div style={{position:"absolute",left:-4,top:-3,width:8,height:8,borderRadius:"50%",background:"#ff5a5a"}}/>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                {/* UNSCHEDULED TASKS TRAY */}
                 <div style={{margin:"14px 2px 10px"}}>
                   <div style={{...C.sectionTitle,fontSize:14}}>Tasks for this day</div>
                   <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:3}}>Tap one to drop it on the calendar with a time.</div>
                 </div>
                 {dayTasks.length===0 && (
                   <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:12.5,fontWeight:600}}>
-                    All scheduled tasks are on the calendar. Use “+ Time Block” for anything else.
+                    All scheduled tasks are on the calendar. Use the ＋ button for anything else.
                   </div>
                 )}
                 <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
