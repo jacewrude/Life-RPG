@@ -91,6 +91,7 @@ const DEFAULT_SETTINGS = {
   questsEnabled: true,
   statsEnabled: true,
   weeklyOnHome: true,
+  planEnabled: true,
   devMode: false,
 };
 const DEFAULT_EQUIPPED = {
@@ -296,12 +297,24 @@ const INIT = {
   customTitles: {},
   kanban: { todo:[], doing:[], done:[] },
   lists: [],
+  schedule: {},
   pomodoro: { ...DEFAULT_POMO },
   wallet: { ...DEFAULT_WALLET },
   lastDecayDate: null,
 };
 
 // ── DATE / COMPLETION HELPERS ─────────────────────────────────────────────────
+// minutes-from-midnight → "9:05 AM"
+function fmtTime(mins) {
+  let h = Math.floor(mins/60), m = mins%60;
+  const ap = h>=12 ? "PM" : "AM";
+  let hh = h%12; if (hh===0) hh=12;
+  return `${hh}:${String(m).padStart(2,"0")} ${ap}`;
+}
+// "9:05 AM"-style end label given start+dur
+const fmtRange = (start, dur) => `${fmtTime(start)} – ${fmtTime(Math.min(1439, start+dur))}`;
+const durLabel = (d) => d>=60 ? `${Math.floor(d/60)}h${d%60?` ${d%60}m`:""}` : `${d}m`;
+
 function dateKey(date) {
   const d = date || new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -490,6 +503,7 @@ function migrate(d) {
     customTitles: d.customTitles || {},
     kanban: (d.kanban && Array.isArray(d.kanban.todo)) ? d.kanban : { todo:[], doing:[], done:[] },
     lists: Array.isArray(d.lists) ? d.lists : [],
+    schedule: (d.schedule && typeof d.schedule === "object") ? d.schedule : {},
     pomodoro: { ...DEFAULT_POMO, ...(d.pomodoro||{}), sessionsByDay: { ...((d.pomodoro||{}).sessionsByDay||{}) } },
     wallet: { ...DEFAULT_WALLET, ...(d.wallet||{}),
       coinsByTaskDay: { ...((d.wallet||{}).coinsByTaskDay||{}) },
@@ -1458,6 +1472,8 @@ export default function App() {
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
   const [forecastDate, setForecastDate] = useState(null);
+  const [planDate, setPlanDate] = useState(dateKey());
+  const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
   const [editTask, setEditTask] = useState(null);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
@@ -1803,6 +1819,7 @@ export default function App() {
   const setSetting = (key, val) => {
     const next = {...data, settings:{...data.settings, [key]:val}};
     if (key==="kanbanEnabled" && !val && view==="board") setView("dashboard");
+    if (key==="planEnabled" && !val && view==="plan") setView("dashboard");
     if (key==="pomodoroEnabled" && !val && view==="focus") setView("dashboard");
     if (key==="casinoEnabled" && !val && view==="casino") setView("dashboard");
     if (key==="shopEnabled" && !val && view==="shop") setView("dashboard");
@@ -1896,6 +1913,33 @@ export default function App() {
     })});
     try { navigator.vibrate && navigator.vibrate(8); } catch {}
   };
+  // ── PLAN / SCHEDULE (time blocks on the calendar) ───────────────────────────
+  const blocksForDay = (dk) => ((data.schedule||{})[dk] || []).slice().sort((a,b)=>a.start-b.start);
+  const saveScheduleBlock = (dk, block) => {
+    setData(cur=>{
+      const sched = {...(cur.schedule||{})};
+      const list = (sched[dk]||[]).slice();
+      if (block.id) {
+        const i = list.findIndex(b=>b.id===block.id);
+        if (i>=0) list[i] = block; else list.push(block);
+      } else {
+        list.push({...block, id:`s${Date.now()}`});
+      }
+      sched[dk] = list;
+      const n = {...cur, schedule:sched};
+      persistRaw(n); return n;
+    });
+    try { navigator.vibrate && navigator.vibrate(10); } catch {}
+  };
+  const removeScheduleBlock = (dk, id) => {
+    setData(cur=>{
+      const sched = {...(cur.schedule||{})};
+      sched[dk] = (sched[dk]||[]).filter(b=>b.id!==id);
+      const n = {...cur, schedule:sched};
+      persistRaw(n); return n;
+    });
+  };
+
   const resetQuest = (id) => {
     update({...data, tasks:data.tasks.map(t=>t.id===id?{...t, completions:{}, createdAt: dateKey()}:t)});
     toast$("QUEST HISTORY RESET");
@@ -2224,6 +2268,7 @@ export default function App() {
   const navItems = [
     { v:"dashboard", icon:"⛰", label:"HOME" },
     ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
+    ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
     ...(S.kanbanEnabled   ? [{ v:"board", icon:"📋", label:"BOARD" }] : []),
     ...(S.pomodoroEnabled ? [{ v:"focus", icon:"⏱️", label:"FOCUS" }] : []),
     ...(S.casinoEnabled ? [{ v:"casino", icon:"🎰", label:"CASINO" }] : []),
@@ -2231,7 +2276,7 @@ export default function App() {
     ...(S.statsEnabled !== false ? [{ v:"stats", icon:"📊", label:"STATS" }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
-  const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks");
+  const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks");
 
   // ── QUEST CARD (ring on the LEFT; vivid or tinted; per-quest color) ─────────
   // Weekly-habit card (used on Home and on the Quests page). Tap ring to log one.
@@ -2565,6 +2610,101 @@ export default function App() {
           fontSize:13.5,fontWeight:700,color:"#fff",boxShadow:"0 12px 36px rgba(0,0,0,0.5)",pointerEvents:"none",
           maxWidth:200,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
           {drag.text}
+        </div>
+      )}
+
+      {/* SCHEDULE (TIME BLOCK) SHEET */}
+      {scheduleSheet && (
+        <div style={C.modal} onClick={()=>setScheduleSheet(null)}>
+          <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:42,height:5,background:"rgba(255,255,255,0.3)",borderRadius:3,margin:"0 auto 16px"}}/>
+            <div style={{fontSize:17,fontWeight:900,color:"#fff",marginBottom:14}}>
+              {scheduleSheet.id ? "Edit time block" : "Schedule a time block"}
+            </div>
+            {scheduleSheet.source!=="task" && (
+              <>
+                <div style={C.label}>TITLE</div>
+                <input style={C.input} value={scheduleSheet.title} placeholder="e.g. Deep work"
+                  onChange={e=>setScheduleSheet({...scheduleSheet, title:e.target.value})}/>
+                <div style={{...C.label,marginTop:14}}>COLOR</div>
+                <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:4}}>
+                  {CAT_COLORS.map(col=>(
+                    <button key={col} onClick={()=>setScheduleSheet({...scheduleSheet,color:col})}
+                      style={{width:30,height:30,borderRadius:"50%",background:col,cursor:"pointer",
+                        border:scheduleSheet.color===col?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",padding:0}}/>
+                  ))}
+                </div>
+              </>
+            )}
+            {scheduleSheet.source==="task" && (
+              <div style={{display:"flex",alignItems:"center",gap:10,background:`linear-gradient(135deg,${scheduleSheet.color}cc,${shade(scheduleSheet.color,-45)})`,
+                borderRadius:14,padding:"11px 14px",marginBottom:6}}>
+                <span style={{fontSize:14,fontWeight:900,color:"#fff"}}>{scheduleSheet.title}</span>
+              </div>
+            )}
+
+            {/* DATE */}
+            <div style={{...C.label,marginTop:16}}>DATE</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button style={{...C.btnSm,padding:"11px 16px"}}
+                onClick={()=>setScheduleSheet(s=>{ const d=new Date(s.dk+"T00:00:00"); d.setDate(d.getDate()-1); return {...s,dk:dateKey(d)}; })}>‹</button>
+              <div style={{flex:1,textAlign:"center",fontSize:13,fontWeight:900,color:"#fff"}}>
+                {(()=>{ const d=new Date(scheduleSheet.dk+"T00:00:00"); return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()].slice(0,3)} ${d.getDate()}`; })()}
+                {scheduleSheet.dk===dateKey() && <span style={{color:T.accent}}> · Today</span>}
+              </div>
+              <button style={{...C.btnSm,padding:"11px 16px"}}
+                onClick={()=>setScheduleSheet(s=>{ const d=new Date(s.dk+"T00:00:00"); d.setDate(d.getDate()+1); return {...s,dk:dateKey(d)}; })}>›</button>
+            </div>
+
+            {/* START TIME */}
+            <div style={{...C.label,marginTop:16}}>START TIME: <span style={{color:"#fff"}}>{fmtTime(scheduleSheet.start)}</span></div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {[["−1h",-60],["−15m",-15],["−5m",-5]].map(([l,d])=>(
+                <button key={l} style={{...C.btnSm,flex:1,padding:"11px 0"}}
+                  onClick={()=>setScheduleSheet(s=>({...s,start:Math.max(0,Math.min(1439,s.start+d))}))}>{l}</button>
+              ))}
+              {[["+5m",5],["+15m",15],["+1h",60]].map(([l,d])=>(
+                <button key={l} style={{...C.btnSm,flex:1,padding:"11px 0"}}
+                  onClick={()=>setScheduleSheet(s=>({...s,start:Math.max(0,Math.min(1439,s.start+d))}))}>{l}</button>
+              ))}
+            </div>
+
+            {/* DURATION */}
+            <div style={{...C.label,marginTop:16}}>DURATION: <span style={{color:"#fff"}}>{durLabel(scheduleSheet.dur)}</span></div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+              {[15,30,45,60,90,120].map(m=>(
+                <button key={m} onClick={()=>setScheduleSheet(s=>({...s,dur:m}))}
+                  style={{flex:"1 0 28%",padding:"10px 0",borderRadius:12,cursor:"pointer",fontFamily:FONT,fontWeight:900,fontSize:12,
+                    border:scheduleSheet.dur===m?"2.5px solid #fff":"2px solid rgba(255,255,255,0.2)",
+                    background:scheduleSheet.dur===m?"rgba(255,255,255,0.16)":"rgba(0,0,0,0.25)",color:"#fff"}}>{durLabel(m)}</button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button style={{...C.btnSm,flex:1,padding:"10px 0"}} onClick={()=>setScheduleSheet(s=>({...s,dur:Math.max(5,s.dur-5)}))}>−5m</button>
+              <div style={{flex:1,textAlign:"center",fontSize:13,fontWeight:900,color:"#fff"}}>{fmtTime(scheduleSheet.start)} – {fmtTime(Math.min(1439,scheduleSheet.start+scheduleSheet.dur))}</div>
+              <button style={{...C.btnSm,flex:1,padding:"10px 0"}} onClick={()=>setScheduleSheet(s=>({...s,dur:Math.min(720,s.dur+5)}))}>+5m</button>
+            </div>
+
+            <div style={{display:"flex",gap:8,marginTop:20}}>
+              {scheduleSheet.id && (
+                <button style={{...C.btnSm,flex:1,padding:"14px",color:BAD}}
+                  onClick={()=>{ removeScheduleBlock(scheduleSheet.dk, scheduleSheet.id); setScheduleSheet(null); toast$("BLOCK REMOVED","#ef4444"); }}>DELETE</button>
+              )}
+              <button style={{...C.btnSm,flex:1,padding:"14px"}} onClick={()=>setScheduleSheet(null)}>CANCEL</button>
+              <button style={{...C.btn,flex:1,padding:"14px"}}
+                onClick={()=>{
+                  const s=scheduleSheet;
+                  if (s.source!=="task" && !s.title.trim()) { toast$("ADD A TITLE","#ffc46b"); return; }
+                  saveScheduleBlock(s.dk, {
+                    id:s.id, title:s.source==="task"?s.title:s.title.trim(), color:s.color,
+                    start:s.start, dur:s.dur, source:s.source, refId:s.refId||null,
+                  });
+                  setPlanDate(s.dk);
+                  setScheduleSheet(null);
+                  toast$(s.id?"BLOCK UPDATED ✓":"ADDED TO CALENDAR ✓");
+                }}>{scheduleSheet.id?"SAVE":"ADD"}</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3140,6 +3280,13 @@ export default function App() {
                         paddingRight:20,
                       }}>
                       {card.text}
+                      {col==="todo" && (
+                        <button
+                          onPointerDown={e=>e.stopPropagation()}
+                          onClick={e=>{e.stopPropagation(); setScheduleSheet({title:card.text,color:color,source:"board",refId:card.id,start:9*60,dur:30,dk:planDate}); }}
+                          title="Add to calendar"
+                          style={{position:"absolute",bottom:2,right:3,background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:"#fff",fontSize:11,cursor:"pointer",padding:"2px 6px"}}>🗓</button>
+                      )}
                       <button
                         onPointerDown={e=>e.stopPropagation()}
                         onClick={e=>{e.stopPropagation(); boardDelete(col, card.id);}}
@@ -3435,6 +3582,139 @@ export default function App() {
         )}
 
         {/* ══ SETTINGS ══ */}
+        {view==="plan" && (()=>{
+          const dk = planDate;
+          const todayK = dateKey();
+          const selD = new Date(dk+"T00:00:00");
+          const HOUR_PX = 56, START_H = 5, END_H = 24;          // 5am→midnight window
+          const totalH = (END_H-START_H)*HOUR_PX;
+          const yFor = (min)=> Math.max(0,(min-START_H*60)/60*HOUR_PX);
+          const blocks = blocksForDay(dk);
+          const nowMins = (()=>{ const n=new Date(); return n.getHours()*60+n.getMinutes(); })();
+          const isToday = dk===todayK;
+          // tasks scheduled this day that aren't yet placed on the calendar
+          const placedRefIds = new Set(blocks.filter(b=>b.refId).map(b=>b.refId));
+          const dayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId)
+            && (isWeekly(t) || isScheduledOn(t,dk)) && !placedRefIds.has(t.id));
+          const shiftDay = (n)=>{ const d=new Date(dk+"T00:00:00"); d.setDate(d.getDate()+n); setPlanDate(dateKey(d)); };
+          const monthLabel = `${DAYS[selD.getDay()]}, ${MONTHS[selD.getMonth()]} ${selD.getDate()}`;
+          // strip
+          const strip = weekKeysFor(dk);
+          const openNew = (task)=> setScheduleSheet({
+            title: task?task.name:"", color: task?(task.color||data.categories.find(c=>c.id===task.catId)?.color||T.accent):T.accent,
+            source: task?"task":"custom", refId: task?task.id:null, start: 9*60, dur: 30, dk,
+          });
+          return (
+            <div style={{paddingBottom:20}}>
+              <div style={{padding:"14px 16px 6px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <div style={C.sectionTitle}>Plan</div>
+                  <button style={{...C.btn,padding:"9px 14px",fontSize:11.5}} onClick={()=>openNew(null)}>+ TIME BLOCK</button>
+                </div>
+                {/* date pager */}
+                <div style={{...C.glass,padding:"12px 12px",marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <button onClick={()=>shiftDay(-1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 14px",cursor:"pointer",fontSize:15,fontWeight:800}}>‹</button>
+                    <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>{monthLabel}{isToday?" · Today":""}</div>
+                    <button onClick={()=>shiftDay(1)} style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:12,color:"#fff",padding:"6px 14px",cursor:"pointer",fontSize:15,fontWeight:800}}>›</button>
+                  </div>
+                  <div style={{display:"flex",gap:5}}>
+                    {strip.map(d=>{
+                      const dd=new Date(d+"T00:00:00"); const on=d===dk; const isT=d===todayK;
+                      const cnt=blocksForDay(d).length;
+                      return (
+                        <button key={d} onClick={()=>setPlanDate(d)} style={{
+                          flex:1,borderRadius:13,border:on?"2px solid #fff":isT?"1.5px solid rgba(255,255,255,0.5)":`1px solid ${LINE}`,
+                          background:on?"rgba(255,255,255,0.18)":"rgba(0,0,0,0.2)",cursor:"pointer",padding:"7px 0",
+                          display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                          <div style={{fontSize:8,fontWeight:800,color:on?"#fff":DIM}}>{DAYS[dd.getDay()].slice(0,2).toUpperCase()}</div>
+                          <div style={{fontSize:14,fontWeight:900,color:"#fff"}}>{dd.getDate()}</div>
+                          <div style={{height:4,width:4,borderRadius:"50%",background:cnt>0?(on?"#fff":T.accent):"transparent"}}/>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* CALENDAR TIMELINE */}
+              <div style={{padding:"0 16px"}}>
+                <div style={{position:"relative",height:totalH,
+                  background:GLASS,backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",
+                  border:`1px solid ${LINE}`,borderRadius:22,overflow:"hidden"}}>
+                  {/* hour rows */}
+                  {Array.from({length:END_H-START_H+1},(_,i)=>{
+                    const h=START_H+i; const y=yFor(h*60);
+                    const lab=h===24?"12 AM":h===12?"12 PM":h>12?`${h-12} PM`:`${h} AM`;
+                    return (
+                      <div key={h}>
+                        <div style={{position:"absolute",left:0,right:0,top:y,height:1,background:"rgba(255,255,255,0.10)"}}/>
+                        <div style={{position:"absolute",left:8,top:y-7,fontSize:9.5,fontWeight:700,color:FAINT}}>{lab}</div>
+                        {h<END_H && <div style={{position:"absolute",left:52,right:0,top:y+HOUR_PX/2,height:1,background:"rgba(255,255,255,0.045)"}}/>}
+                      </div>
+                    );
+                  })}
+                  {/* tappable empty area to add a block at that time */}
+                  <div onClick={(e)=>{
+                    const rect=e.currentTarget.getBoundingClientRect();
+                    const rel=e.clientY-rect.top;
+                    let mins=Math.round((START_H*60 + rel/HOUR_PX*60)/15)*15;
+                    mins=Math.max(START_H*60,Math.min(END_H*60-15,mins));
+                    setScheduleSheet({title:"",color:T.accent,source:"custom",refId:null,start:mins,dur:30,dk});
+                  }} style={{position:"absolute",left:52,right:0,top:0,bottom:0,cursor:"copy"}}/>
+                  {/* blocks */}
+                  {blocks.map(b=>{
+                    const y=yFor(b.start), h=Math.max(20, b.dur/60*HOUR_PX-3);
+                    return (
+                      <div key={b.id} onClick={(e)=>{ e.stopPropagation(); setScheduleSheet({...b, dk}); }}
+                        style={{position:"absolute",left:56,right:8,top:y+1,height:h,
+                          background:`linear-gradient(135deg,${b.color},${shade(b.color,-40)})`,
+                          borderRadius:12,padding:"5px 10px",cursor:"pointer",overflow:"hidden",
+                          boxShadow:`0 3px 12px ${b.color}55`,borderLeft:`4px solid ${shade(b.color,45)}`}}>
+                        <div style={{fontSize:12,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.2}}>{b.title}</div>
+                        {h>32 && <div style={{fontSize:9.5,fontWeight:700,color:"rgba(255,255,255,0.9)",marginTop:1}}>{fmtTime(b.start)} – {fmtTime(Math.min(1439,b.start+b.dur))}</div>}
+                      </div>
+                    );
+                  })}
+                  {/* now line */}
+                  {isToday && nowMins>=START_H*60 && nowMins<=END_H*60 && (
+                    <div style={{position:"absolute",left:52,right:0,top:yFor(nowMins),height:2,background:"#ff5a5a",zIndex:5}}>
+                      <div style={{position:"absolute",left:-4,top:-3,width:8,height:8,borderRadius:"50%",background:"#ff5a5a"}}/>
+                    </div>
+                  )}
+                </div>
+
+                {/* UNSCHEDULED TASKS TRAY */}
+                <div style={{margin:"14px 2px 10px"}}>
+                  <div style={{...C.sectionTitle,fontSize:14}}>Tasks for this day</div>
+                  <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:3}}>Tap one to drop it on the calendar with a time.</div>
+                </div>
+                {dayTasks.length===0 && (
+                  <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:12.5,fontWeight:600}}>
+                    All scheduled tasks are on the calendar. Use “+ Time Block” for anything else.
+                  </div>
+                )}
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {dayTasks.map(task=>{
+                    const cat=data.categories.find(c=>c.id===task.catId);
+                    const color=task.color||cat?.color||T.accent;
+                    return (
+                      <button key={task.id} onClick={()=>openNew(task)} style={{
+                        display:"flex",alignItems:"center",gap:8,background:`linear-gradient(135deg,${color}cc,${shade(color,-45)})`,
+                        border:"none",borderRadius:14,padding:"10px 13px",cursor:"pointer",fontFamily:FONT,
+                        boxShadow:`0 4px 14px ${color}44`}}>
+                        <span style={{fontSize:14}}>{cat?.icon}</span>
+                        <span style={{fontSize:12.5,fontWeight:800,color:"#fff"}}>{task.name}</span>
+                        <span style={{fontSize:14,color:"rgba(255,255,255,0.85)",fontWeight:900}}>＋</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {view==="forecast" && (()=>{
           const sel = forecastDate || dateKey();
           const todayK = dateKey();
@@ -3634,6 +3914,13 @@ export default function App() {
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Radar, bars & ascension path</div>
                 </div>
                 <Switch on={S.statsEnabled!==false} onToggle={()=>setSetting("statsEnabled",!(S.statsEnabled!==false))}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🗓 Plan</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Time-block calendar for your day</div>
+                </div>
+                <Switch on={S.planEnabled!==false} onToggle={()=>setSetting("planEnabled",!(S.planEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
