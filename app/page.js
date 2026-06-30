@@ -66,6 +66,12 @@ const THEMES = {
     m1:"#571423", m2:"#380c18", m3:"#20060e",
     accent:"#ff8f5e",
   },
+  forge: {
+    name:"Forge", swatch:"#ec5e23",
+    sky:["#070609","#161219","#2a1c10"], sun:"#ff7a2e", stars:false, ember:true,
+    m1:"#3a2415", m2:"#241711", m3:"#120b09",
+    accent:"#ff7a2e",
+  },
 };
 const THEME_KEYS = Object.keys(THEMES);
 // Shared glass / text tokens (constant across skies for guaranteed contrast)
@@ -1290,8 +1296,19 @@ function Scene({ T, height=150 }) {
     <svg width="100%" height={height} viewBox={`0 0 430 ${height}`} preserveAspectRatio="xMidYMax slice"
       style={{display:"block",position:"absolute",bottom:0,left:0,right:0,pointerEvents:"none"}}>
       {stars}
-      <circle cx="330" cy={height*0.28} r="30" fill={T.sun} opacity="0.95"/>
-      <circle cx="330" cy={height*0.28} r="48" fill={T.sun} opacity="0.18"/>
+      {T.ember ? (
+        <>
+          <circle cx="330" cy={height*0.28} r="70" fill={T.sun} opacity="0.10"/>
+          <circle cx="330" cy={height*0.28} r="48" fill={T.sun} opacity="0.22"/>
+          <circle cx="330" cy={height*0.28} r="28" fill={T.sun} opacity="0.95"/>
+          <circle cx="330" cy={height*0.28} r="16" fill="#ffe2a8" opacity="0.9"/>
+        </>
+      ) : (
+        <>
+          <circle cx="330" cy={height*0.28} r="30" fill={T.sun} opacity="0.95"/>
+          <circle cx="330" cy={height*0.28} r="48" fill={T.sun} opacity="0.18"/>
+        </>
+      )}
       {/* far ridge */}
       <polygon fill={T.m1} opacity="0.85" points={`0,${height} 0,${height*0.62} 55,${height*0.38} 110,${height*0.58} 170,${height*0.30} 235,${height*0.56} 300,${height*0.36} 365,${height*0.60} 430,${height*0.42} 430,${height}`}/>
       {/* mid ridge */}
