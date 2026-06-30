@@ -2260,8 +2260,68 @@ export default function App() {
   };
 
   if (!data) return (
-    <div style={{background:"linear-gradient(180deg,#2a1654,#8a2f63,#f2723f)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:20,letterSpacing:3,fontFamily:"ui-rounded,'SF Pro Rounded',Nunito,-apple-system,sans-serif"}}>
-      LOADING...
+    <div style={{
+      background:"radial-gradient(ellipse at 50% 34%, #2d2634 0%, #161219 46%, #070609 100%)",
+      minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+      fontFamily:"ui-rounded,'SF Pro Rounded',Nunito,-apple-system,sans-serif",position:"relative",overflow:"hidden"}}>
+      <style>{`
+        @keyframes emberPulse { 0%,100%{opacity:.55;filter:drop-shadow(0 0 6px #ff6a1e)} 50%{opacity:1;filter:drop-shadow(0 0 16px #ff7a2e)} }
+        @keyframes forgeGlow { 0%,100%{opacity:.30;transform:scale(1)} 50%{opacity:.5;transform:scale(1.06)} }
+        @keyframes sparkRise { 0%{transform:translateY(0);opacity:0} 20%{opacity:1} 100%{transform:translateY(-120px);opacity:0} }
+        @keyframes loadFill { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+        @keyframes helmRise { 0%{opacity:0;transform:translateY(14px)} 100%{opacity:1;transform:translateY(0)} }
+      `}</style>
+      {/* forge glow */}
+      <div style={{position:"absolute",width:520,height:460,borderRadius:"50%",
+        background:"radial-gradient(circle, #ec5e23 0%, rgba(236,94,35,0) 62%)",
+        top:"26%",animation:"forgeGlow 3.4s ease-in-out infinite",pointerEvents:"none"}}/>
+      {/* rising sparks */}
+      {[0,1,2,3,4,5].map(i=>(
+        <div key={i} style={{position:"absolute",bottom:"38%",left:`${40+i*4}%`,
+          width:3+ (i%3),height:3+(i%3),borderRadius:"50%",background:"#ffb45a",
+          animation:`sparkRise ${2.2+i*0.4}s ease-in ${i*0.5}s infinite`,opacity:0}}/>
+      ))}
+      {/* helm */}
+      <div style={{animation:"helmRise .8s ease both",position:"relative",zIndex:2}}>
+        <svg width="172" height="172" viewBox="0 0 1024 1024">
+          <defs>
+            <linearGradient id="ls_steel" x1="0.2" y1="0" x2="0.5" y2="1">
+              <stop offset="0%" stopColor="#9eaab9"/><stop offset="40%" stopColor="#5c6672"/><stop offset="100%" stopColor="#262a31"/>
+            </linearGradient>
+            <linearGradient id="ls_dark" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#4a525e"/><stop offset="100%" stopColor="#1b1e24"/>
+            </linearGradient>
+            <radialGradient id="ls_eye" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#ffe7a0"/><stop offset="55%" stopColor="#ff7a1e"/><stop offset="100%" stopColor="#b51d00"/>
+            </radialGradient>
+          </defs>
+          <path d="M512 235 C 392 235 330 300 322 408 C 318 470 326 560 352 636 C 372 694 430 740 512 740 C 594 740 652 694 672 636 C 698 560 706 470 702 408 C 694 300 632 235 512 235 Z" fill="url(#ls_dark)"/>
+          <path d="M512 262 C 408 262 356 318 349 412 C 345 470 353 552 376 622 C 393 672 444 712 512 712 C 580 712 631 672 648 622 C 671 552 679 470 675 412 C 668 318 616 262 512 262 Z" fill="url(#ls_steel)"/>
+          <path d="M360 432 C 430 392 594 392 664 432 L 648 470 C 586 440 438 440 376 470 Z" fill="#20242b" opacity="0.9"/>
+          <rect x="503" y="300" width="18" height="412" fill="#23272e" opacity="0.85"/>
+          <rect x="508" y="300" width="5" height="412" fill="#a9b4c2" opacity="0.4"/>
+          <path d="M398 470 L 486 506 L 486 542 L 396 512 Z" fill="#0c0e12"/>
+          <path d="M626 470 L 538 506 L 538 542 L 628 512 Z" fill="#0c0e12"/>
+          <g style={{animation:"emberPulse 1.8s ease-in-out infinite",transformOrigin:"center"}}>
+            <ellipse cx="446" cy="510" rx="40" ry="15" fill="url(#ls_eye)"/>
+            <ellipse cx="578" cy="510" rx="40" ry="15" fill="url(#ls_eye)"/>
+          </g>
+          {[0,1,2,3,4].map(i=>(<rect key={i} x={452+i*24} y="588" width="9" height={70-Math.abs(2-i)*10} rx="4" fill="#15181d"/>))}
+          {[[372,430],[652,430],[386,600],[638,600]].map(([x,y],i)=>(<circle key={i} cx={x} cy={y} r="9" fill="#2a2f37"/>))}
+          <path d="M392 560 l 60 26" stroke="#cdd6e0" strokeWidth="3" opacity="0.35" fill="none"/>
+          <path d="M636 552 l -54 22" stroke="#cdd6e0" strokeWidth="3" opacity="0.30" fill="none"/>
+        </svg>
+      </div>
+      {/* title */}
+      <div style={{marginTop:20,fontSize:22,fontWeight:900,letterSpacing:6,color:"#e8e2ea",
+        textShadow:"0 2px 20px rgba(0,0,0,0.7)",zIndex:2}}>LIFE&nbsp;RPG</div>
+      <div style={{marginTop:7,fontSize:10.5,fontWeight:800,letterSpacing:3,color:"#c9743a",zIndex:2}}>FORGED IN DISCIPLINE</div>
+      {/* loading bar */}
+      <div style={{marginTop:26,width:190,height:4,borderRadius:3,background:"rgba(255,255,255,0.08)",overflow:"hidden",position:"relative",zIndex:2}}>
+        <div style={{position:"absolute",inset:0,width:"60%",borderRadius:3,
+          background:"linear-gradient(90deg,transparent,#ff7a2e,#ffb45a,#ff7a2e,transparent)",
+          animation:"loadFill 1.3s ease-in-out infinite"}}/>
+      </div>
     </div>
   );
 
