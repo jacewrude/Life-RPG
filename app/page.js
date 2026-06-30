@@ -34,43 +34,43 @@ const THEMES = {
     name:"Dawn", swatch:"#f2723f",
     sky:["#2a1654","#8a2f63","#f2723f"], sun:"#ffc46b", stars:false,
     m1:"#6b2a5e", m2:"#471d49", m3:"#2b1238",
-    accent:"#ffb13d",
+    accent:"#ffb13d", glass:"18,10,30",
   },
   midnight: {
     name:"Night", swatch:"#34418c",
     sky:["#070822","#1c1f52","#34418c"], sun:"#e8ecff", stars:true,
     m1:"#232a66", m2:"#161b4a", m3:"#0c0f33",
-    accent:"#9db4ff",
+    accent:"#9db4ff", glass:"12,14,40",
   },
   ocean: {
     name:"Ocean", swatch:"#18a0a8",
     sky:["#04263f","#0a5070","#18a0a8"], sun:"#aef0e4", stars:false,
     m1:"#0d5c7c", m2:"#07415c", m3:"#032b40",
-    accent:"#5eead4",
+    accent:"#5eead4", glass:"6,26,38",
   },
   forest: {
     name:"Forest", swatch:"#3f8f5f",
     sky:["#0c2b22","#1d5c40","#a4c25f"], sun:"#ffe9a3", stars:false,
     m1:"#2e6b4f", m2:"#1c4a37", m3:"#0e2e21",
-    accent:"#a3e635",
+    accent:"#a3e635", glass:"8,28,22",
   },
   rose: {
     name:"Rose", swatch:"#ff8e6e",
     sky:["#3b1042","#91356f","#ff8e6e"], sun:"#ffd9c2", stars:false,
     m1:"#7c2f63", m2:"#54204c", m3:"#321336",
-    accent:"#ffa9c9",
+    accent:"#ffa9c9", glass:"30,12,32",
   },
   crimson: {
     name:"Blood Moon", swatch:"#c43e2a",
     sky:["#1c0610","#5c0f1e","#c43e2a"], sun:"#ff6b4a", stars:true,
     m1:"#571423", m2:"#380c18", m3:"#20060e",
-    accent:"#ff8f5e",
+    accent:"#ff8f5e", glass:"28,8,12",
   },
   forge: {
     name:"Forge", swatch:"#ec5e23",
     sky:["#070609","#161219","#2a1c10"], sun:"#ff7a2e", stars:false, ember:true,
     m1:"#3a2415", m2:"#241711", m3:"#120b09",
-    accent:"#ff7a2e",
+    accent:"#ff7a2e", glass:"26,16,10",
   },
 };
 const THEME_KEYS = Object.keys(THEMES);
@@ -2390,6 +2390,13 @@ export default function App() {
 
   // ── STYLES (glass-on-sky system) ────────────────────────────────────────────
   const FONT = `ui-rounded,'SF Pro Rounded',Nunito,-apple-system,system-ui,sans-serif`;
+  // Theme-aware glass tints: surfaces (cards, nav, sheets, modals) pick up the
+  // active theme's hue so everything shifts together — warm-dark under Forge,
+  // cool under Night, etc.
+  const _gb = T.glass || "12,10,34";
+  const GLASS = `rgba(${_gb},0.42)`;
+  const GLASS_SOFT = `rgba(${_gb},0.30)`;
+  const GLASS_HEAVY = `rgba(${_gb},0.72)`;
   const skyGradient = `linear-gradient(180deg,${T.sky[0]} 0%,${T.sky[1]} 52%,${T.sky[2]} 100%)`;
   const C = {
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative"},
@@ -3060,8 +3067,8 @@ export default function App() {
               </div>
               {spinsAvail > 0 && (
                 <div onClick={openSpin} style={{
-                  background:"linear-gradient(135deg,#7c3aed,#db2777,#f59e0b)",borderRadius:20,padding:"14px 16px",marginBottom:11,
-                  cursor:"pointer",display:"flex",alignItems:"center",gap:12,boxShadow:"0 8px 26px rgba(219,39,119,0.45)",
+                  background:`linear-gradient(135deg,${shade(T.accent,-40)},${T.accent},${T.sun})`,borderRadius:20,padding:"14px 16px",marginBottom:11,
+                  cursor:"pointer",display:"flex",alignItems:"center",gap:12,boxShadow:`0 8px 26px ${T.accent}55`,
                   animation:"glowPulse 1.8s ease-in-out infinite"}}>
                   <div style={{fontSize:30}}>🎰</div>
                   <div style={{flex:1}}>
@@ -3360,7 +3367,7 @@ export default function App() {
                 { label:"To Do", count:data.kanban.todo.length, color:"#3b82f6", icon:"☰" },
                 { label:"In Progress", count:data.kanban.doing.length, color:"#f59e0b", icon:"◑" },
                 { label:"Done", count:data.kanban.done.length, color:"#22c55e", icon:"✓" },
-                { label:"Quests Left", count:todayTasks.length-todayDone, color:"#a855f7", icon:"⚔" },
+                { label:"Quests Left", count:todayTasks.length-todayDone, color:T.accent, icon:"⚔" },
               ].map(tile=>(
                 <div key={tile.label} style={{
                   background:`linear-gradient(150deg,${tile.color},${shade(tile.color,-55)})`,
@@ -4242,13 +4249,13 @@ export default function App() {
             </div>
 
             {/* DEVELOPER MODE */}
-            <div style={{...C.glass,border:"1.5px solid #a855f755"}}>
+            <div style={{...C.glass,border:`1.5px solid ${T.accent}55`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#c084fc"}}>🛠 Developer Mode</div>
+                  <div style={{fontSize:14,fontWeight:800,color:T.accent}}>🛠 Developer Mode</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Set coins & gems directly (for testing)</div>
                 </div>
-                <Switch on={S.devMode} onToggle={()=>setSetting("devMode",!S.devMode)} color="#a855f7"/>
+                <Switch on={S.devMode} onToggle={()=>setSetting("devMode",!S.devMode)} color={T.accent}/>
               </div>
               {S.devMode && (
                 <div style={{marginTop:14}}>
@@ -4267,7 +4274,7 @@ export default function App() {
                     }}>SET 💎</button>
                   </div>
                   <div style={{height:1,background:LINE,margin:"12px 0"}}/>
-                  <div style={{fontSize:11,fontWeight:800,color:"#c084fc",marginBottom:7}}>AVAILABLE GAMES (max 4)</div>
+                  <div style={{fontSize:11,fontWeight:800,color:T.accent,marginBottom:7}}>AVAILABLE GAMES (max 4)</div>
                   <div style={{display:"flex",gap:8}}>
                     <input id="devSpins" type="number" min="0" max="4" placeholder={`Now ${spinsAvail} available`} style={{...C.input,flex:1}}/>
                     <button style={{...C.btnSm,padding:"0 16px"}} onClick={()=>{
