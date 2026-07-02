@@ -1560,6 +1560,9 @@ export default function App() {
   const [editTask, setEditTask] = useState(null);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
+  const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
+  const [activeSinceEdit, setActiveSinceEdit] = useState(null); // date string being edited, or null
+  const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null);
   const [showLevelUp, setShowLevelUp] = useState(null);
@@ -1821,6 +1824,37 @@ export default function App() {
     });
     update({...data, categories:cats, tasks});
     toast$("CLEARED", "#ef4444");
+  };
+
+  // Weekly per-day editor: nudge a specific day's rep count up or down by ±1,
+  // adjusting the category value only for reps that fall within the weekly target.
+  const weeklyAdjustDay = (tid, dk, dir) => {
+    const task = data.tasks.find(t=>t.id===tid); if (!task || !isWeekly(task)) return;
+    const dayReps = getReps(task, dk);
+    if (dir<0 && dayReps===0) return;
+    const wt = weeklyTargetOf(task);
+    const weekTotal = weeklyDone(task, dk);
+    const slice = task.points / wt;
+    // adding: counts toward value only if we're still under target this week
+    // removing: reclaims value only if we were at/under target
+    let valDelta = 0;
+    if (dir>0 && weekTotal < wt) valDelta = slice;
+    if (dir<0 && weekTotal <= wt) valDelta = -slice;
+    const cats = data.categories.map(c => c.id !== task.catId ? c
+      : {...c, value: Math.max(0, Math.min(c.maxValue, c.value + valDelta))});
+    const tasks = data.tasks.map(t => {
+      if (t.id !== tid) return t;
+      const comps = {...(t.completions||{})};
+      const nv = dayReps + dir;
+      if (nv <= 0) delete comps[dk]; else comps[dk] = nv;
+      return {...t, completions: comps};
+    });
+    update({...data, categories:cats, tasks});
+    try { navigator.vibrate && navigator.vibrate(6); } catch {}
+  };
+  const setActiveSince = (tid, dk) => {
+    update({...data, tasks: data.tasks.map(t=> t.id===tid ? {...t, createdAt: dk} : t)});
+    toast$("ACTIVE SINCE UPDATED ✓");
   };
 
   const toggleDay = (tid, dk) => {
@@ -2219,6 +2253,22 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate(12); } catch {}
   };
 
+  // Move a board card into a list (removes it from the board).
+  const sendCardToList = (col, cardId, listId) => {
+    const card = (data.kanban[col]||[]).find(c=>c.id===cardId);
+    const list = data.lists.find(l=>l.id===listId);
+    if (!card || !list) return;
+    const newItem = { id:`li${Date.now()}`, text:card.text, done:false, children:[] };
+    update({
+      ...data,
+      kanban: {...data.kanban, [col]: data.kanban[col].filter(c=>c.id!==cardId)},
+      lists: data.lists.map(l=> l.id!==listId ? l : {...l, items:[...l.items, newItem]}),
+    });
+    setCardMenu(null);
+    toast$(`MOVED TO ${list.name.toUpperCase()}`);
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
+
   // Drag-and-drop (pointer-based so it works on iPhone)
   const COLS = ["todo","doing","done"];
   const dragStart = (e, col, card) => {
@@ -2368,6 +2418,7 @@ export default function App() {
   const ratingIfAllDone = projectRating(data.categories, data.tasks, today, "full");
   const ratingIfNoneDone = projectRating(data.categories, data.tasks, today, "decay");
   const detailTask = detailTaskId ? data.tasks.find(t=>t.id===detailTaskId) : null;
+  useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const detailCat = detailTask ? data.categories.find(c=>c.id===detailTask.catId) : null;
   const detailColor = detailTask ? (detailTask.color || detailCat?.color || "#ffffff") : "#ffffff";
   const dStats = detailTask ? questStats(detailTask) : null;
@@ -2764,6 +2815,35 @@ export default function App() {
       )}
 
       {/* SCHEDULE (TIME BLOCK) SHEET */}
+      {/* SEND BOARD CARD → LIST PICKER */}
+      {cardMenu && (
+        <div style={C.modal} onClick={()=>setCardMenu(null)}>
+          <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:42,height:5,background:"rgba(255,255,255,0.3)",borderRadius:3,margin:"0 auto 16px"}}/>
+            <div style={{fontSize:17,fontWeight:900,color:"#fff",marginBottom:4}}>Move to a list</div>
+            <div style={{fontSize:11,color:DIM,fontWeight:700,marginBottom:16}}>
+              Removes “{((data.kanban[cardMenu.col]||[]).find(c=>c.id===cardMenu.cardId)||{}).text}” from the board and adds it to the list you pick.
+            </div>
+            {data.lists.length===0 && (
+              <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:12.5,fontWeight:600}}>You don’t have any lists yet. Create one on the Board page first.</div>
+            )}
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"46vh",overflowY:"auto"}}>
+              {data.lists.map(l=>(
+                <button key={l.id} onClick={()=>sendCardToList(cardMenu.col, cardMenu.cardId, l.id)}
+                  style={{display:"flex",alignItems:"center",gap:11,background:`linear-gradient(135deg,${l.color}cc,${shade(l.color,-45)})`,
+                    border:"none",borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,textAlign:"left",
+                    boxShadow:`0 4px 14px ${l.color}44`}}>
+                  <span style={{width:12,height:12,borderRadius:"50%",background:"#fff",opacity:0.9,flexShrink:0}}/>
+                  <span style={{fontSize:14,fontWeight:800,color:"#fff",flex:1}}>{l.name}</span>
+                  <span style={{fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.8)"}}>{l.items.length} items</span>
+                </button>
+              ))}
+            </div>
+            <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:16}} onClick={()=>setCardMenu(null)}>CANCEL</button>
+          </div>
+        </div>
+      )}
+
       {scheduleSheet && (
         <div style={C.modal} onClick={()=>setScheduleSheet(null)}>
           <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
@@ -2901,9 +2981,11 @@ export default function App() {
               </div>
             </div>
             <div style={{fontSize:9,color:FAINT,fontWeight:800,textAlign:"center",marginBottom:14}}>
-              HOLD THE RING TO COMPLETE · TAP A PAST DAY BELOW TO LOG IT
+              {isWeekly(detailTask)
+                ? "HOLD THE RING TO LOG ONE FOR TODAY · EDIT ANY DAY BELOW"
+                : "HOLD THE RING TO COMPLETE · TAP A PAST DAY BELOW TO LOG IT"}
             </div>
-            {dStats && (
+            {dStats && !isWeekly(detailTask) && (
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
                 <div style={{background:"rgba(0,0,0,0.25)",borderRadius:16,padding:"11px 8px",textAlign:"center"}}>
                   <div style={{fontSize:21,fontWeight:900,color:dStats.rate>=80?GOOD:dStats.rate>=50?"#ffc46b":BAD}}>{dStats.rate}%</div>
@@ -2919,6 +3001,74 @@ export default function App() {
                 </div>
               </div>
             )}
+            {isWeekly(detailTask) ? (
+              <>
+                {/* WEEKLY PER-DAY EDITOR */}
+                <div style={{background:"rgba(0,0,0,0.22)",borderRadius:20,padding:"14px 15px",marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <button onClick={()=>setWkEditCursor(c=>{ const d=new Date(c+"T00:00:00"); d.setDate(d.getDate()-7); return dateKey(d); })}
+                      style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",padding:"6px 13px",cursor:"pointer",fontSize:14,fontWeight:800}}>‹</button>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:12.5,fontWeight:900,color:"#fff"}}>
+                        {(()=>{ const wk=weekKeysFor(wkEditCursor); const a=new Date(wk[0]+"T00:00:00"), b=new Date(wk[6]+"T00:00:00");
+                          return `${MONTHS[a.getMonth()].slice(0,3)} ${a.getDate()} – ${MONTHS[b.getMonth()].slice(0,3)} ${b.getDate()}`; })()}
+                      </div>
+                      <div style={{fontSize:9,color:FAINT,fontWeight:800,marginTop:2}}>
+                        {weeklyDone(detailTask, wkEditCursor)}/{weeklyTargetOf(detailTask)} this week
+                      </div>
+                    </div>
+                    <button onClick={()=>setWkEditCursor(c=>{ const d=new Date(c+"T00:00:00"); d.setDate(d.getDate()+7); return dateKey(d); })}
+                      style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:10,color:"#fff",padding:"6px 13px",cursor:"pointer",fontSize:14,fontWeight:800}}>›</button>
+                  </div>
+                  <div style={{display:"flex",gap:5}}>
+                    {weekKeysFor(wkEditCursor).map(dk=>{
+                      const d=new Date(dk+"T00:00:00");
+                      const reps=getReps(detailTask,dk);
+                      const isT=dk===today;
+                      const future=dk>today;
+                      return (
+                        <div key={dk} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                          <div style={{fontSize:8.5,fontWeight:800,color:isT?"#fff":FAINT}}>{DAYS[d.getDay()].slice(0,2).toUpperCase()}</div>
+                          <div style={{fontSize:8.5,fontWeight:700,color:FAINT}}>{d.getDate()}</div>
+                          <div style={{width:"100%",borderRadius:10,padding:"6px 0",textAlign:"center",
+                            background: reps>0 ? detailColor : "rgba(255,255,255,0.06)",
+                            border: isT?"1.5px solid #fff":`1px solid ${LINE}`,
+                            fontSize:14,fontWeight:900,color:"#fff",opacity:future?0.5:1}}>{reps}</div>
+                          <div style={{display:"flex",flexDirection:"column",gap:3,width:"100%"}}>
+                            <button onClick={()=>weeklyAdjustDay(detailTask.id, dk, +1)} disabled={future}
+                              style={{background:future?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.14)",border:"none",borderRadius:7,color:"#fff",cursor:future?"default":"pointer",fontSize:11,fontWeight:900,padding:"2px 0"}}>＋</button>
+                            <button onClick={()=>weeklyAdjustDay(detailTask.id, dk, -1)} disabled={reps===0}
+                              style={{background:reps===0?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.14)",border:"none",borderRadius:7,color:reps===0?"rgba(255,255,255,0.3)":"#fff",cursor:reps===0?"default":"pointer",fontSize:11,fontWeight:900,padding:"2px 0"}}>－</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{fontSize:9,color:FAINT,fontWeight:700,textAlign:"center",marginTop:10}}>
+                    TAP ＋ / － ON ANY DAY · USE ‹ › TO FIX PAST WEEKS
+                  </div>
+                </div>
+                {/* ACTIVE SINCE */}
+                <div style={{background:"rgba(0,0,0,0.22)",borderRadius:16,padding:"12px 15px",marginBottom:12,
+                  display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                  <div>
+                    <div style={{fontSize:12.5,fontWeight:800,color:"#fff"}}>Active since</div>
+                    <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:1}}>When this habit started counting</div>
+                  </div>
+                  <input type="date" value={detailTask.createdAt || today}
+                    max={today}
+                    onChange={e=>{ if(e.target.value) setActiveSince(detailTask.id, e.target.value); }}
+                    style={{background:"rgba(0,0,0,0.35)",border:`1px solid ${LINE}`,borderRadius:12,color:"#fff",
+                      padding:"9px 11px",fontFamily:FONT,fontWeight:700,fontSize:12.5,colorScheme:"dark"}}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button style={{...C.btnSm,flex:1,padding:"13px"}}
+                    onClick={()=>{ setEditTask({...detailTask}); setDetailTaskId(null); setView("editTask"); }}>✎ EDIT</button>
+                  <button style={{...C.btn,flex:1,padding:"13px"}} onClick={()=>setDetailTaskId(null)}>DONE</button>
+                </div>
+              </>
+            ) : (
+              <>
             <div style={{background:"rgba(0,0,0,0.22)",borderRadius:20,padding:"14px 15px",marginBottom:12}}>
               <MonthCalendar task={detailTask} color={detailColor}
                 viewYear={calCursor.y} viewMonth={calCursor.m}
@@ -2937,6 +3087,8 @@ export default function App() {
                 onClick={()=>setConfirmBox({type:"questReset",id:detailTask.id,name:detailTask.name})}>↺ RESET</button>
               <button style={{...C.btn,flex:1,padding:"13px"}} onClick={()=>setDetailTaskId(null)}>DONE</button>
             </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -3421,13 +3573,22 @@ export default function App() {
                         paddingRight:20,
                       }}>
                       {card.text}
-                      {col==="todo" && (
-                        <button
-                          onPointerDown={e=>e.stopPropagation()}
-                          onClick={e=>{e.stopPropagation(); setScheduleSheet({title:card.text,color:color,source:"board",refId:card.id,start:9*60,dur:30,dk:planDate}); }}
-                          title="Add to calendar"
-                          style={{position:"absolute",bottom:2,right:3,background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:"#fff",fontSize:11,cursor:"pointer",padding:"2px 6px"}}>🗓</button>
-                      )}
+                      <div style={{position:"absolute",bottom:2,right:3,display:"flex",gap:3}}>
+                        {data.lists.length>0 && (
+                          <button
+                            onPointerDown={e=>e.stopPropagation()}
+                            onClick={e=>{e.stopPropagation(); setCardMenu({col, cardId:card.id}); }}
+                            title="Move to a list"
+                            style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:"#fff",fontSize:11,cursor:"pointer",padding:"2px 6px"}}>📋</button>
+                        )}
+                        {col==="todo" && (
+                          <button
+                            onPointerDown={e=>e.stopPropagation()}
+                            onClick={e=>{e.stopPropagation(); setScheduleSheet({title:card.text,color:color,source:"board",refId:card.id,start:9*60,dur:30,dk:planDate}); }}
+                            title="Add to calendar"
+                            style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:"#fff",fontSize:11,cursor:"pointer",padding:"2px 6px"}}>🗓</button>
+                        )}
+                      </div>
                       <button
                         onPointerDown={e=>e.stopPropagation()}
                         onClick={e=>{e.stopPropagation(); boardDelete(col, card.id);}}
