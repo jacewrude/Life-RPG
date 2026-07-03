@@ -1561,6 +1561,7 @@ export default function App() {
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
+  useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const [activeSinceEdit, setActiveSinceEdit] = useState(null); // date string being edited, or null
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
@@ -2418,7 +2419,6 @@ export default function App() {
   const ratingIfAllDone = projectRating(data.categories, data.tasks, today, "full");
   const ratingIfNoneDone = projectRating(data.categories, data.tasks, today, "decay");
   const detailTask = detailTaskId ? data.tasks.find(t=>t.id===detailTaskId) : null;
-  useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const detailCat = detailTask ? data.categories.find(c=>c.id===detailTask.catId) : null;
   const detailColor = detailTask ? (detailTask.color || detailCat?.color || "#ffffff") : "#ffffff";
   const dStats = detailTask ? questStats(detailTask) : null;
