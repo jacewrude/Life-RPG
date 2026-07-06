@@ -1802,6 +1802,24 @@ export default function App() {
     else toast$(`${newReps}/${target} ${task.name}`, cat?.color);
   };
 
+  // Reverse a coin payment when a completion is undone. Symmetric with earning:
+  // uncheck removes the coins and frees the ledger key (so re-checking pays again).
+  // Safety: if the coins were already spent (balance too low), leave both the
+  // coins and the ledger key alone — the wallet never goes negative and the
+  // completed→unchecked→re-checked loop can't mint extra coins.
+  const clawbackCoins = (key) => {
+    setData(cur=>{
+      const ledger = cur.wallet.coinsByTaskDay||{};
+      const amt = ledger[key];
+      if (!amt) return cur;
+      const bal = Math.max(0, (cur.wallet.coinsEarned||0) - (cur.wallet.coinsSpent||0));
+      if (bal < amt) return cur;
+      const nl = {...ledger}; delete nl[key];
+      const n = {...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)-amt, coinsByTaskDay:nl}};
+      persistRaw(n); return n;
+    });
+  };
+
   const clearDay = (tid, dk) => {
     const d = dk || currentDay;
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
@@ -1824,6 +1842,7 @@ export default function App() {
         return {...t, completions: comps};
       });
       update({...data, categories:cats, tasks});
+      clawbackCoins(`${tid}|wk|${weekKeysFor(d)[0]}|${doneBefore}`);
       toast$("−1", "#ef4444");
       return;
     }
@@ -1840,6 +1859,7 @@ export default function App() {
       return {...t, completions: comps};
     });
     update({...data, categories:cats, tasks});
+    clawbackCoins(`${tid}|${d}`);
     toast$("CLEARED", "#ef4444");
   };
 
@@ -1867,6 +1887,23 @@ export default function App() {
       return {...t, completions: comps};
     });
     update({...data, categories:cats, tasks});
+    // coins mirror the ring: + pays (up to the weekly target, ledger-keyed), − claws back
+    const wkStart = weekKeysFor(dk)[0];
+    if (dir>0) {
+      const repIndex = weekTotal + 1;
+      if (repIndex <= wt) {
+        const key = `${tid}|wk|${wkStart}|${repIndex}`;
+        setData(cur=>{
+          if ((cur.wallet.coinsByTaskDay||{})[key]) return cur;
+          const coins = coinsForTask(task);
+          const ledger = {...(cur.wallet.coinsByTaskDay||{})}; ledger[key] = coins;
+          const n={...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)+coins, coinsByTaskDay:ledger}};
+          persistRaw(n); return n;
+        });
+      }
+    } else {
+      clawbackCoins(`${tid}|wk|${wkStart}|${weekTotal}`);
+    }
     try { navigator.vibrate && navigator.vibrate(6); } catch {}
   };
 
