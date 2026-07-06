@@ -629,6 +629,23 @@ function gemsForRarity(rarity) {
 function questStats(task) {
   const keys = Object.keys(task.completions||{}).sort();
   const start = task.createdAt || keys[0] || dateKey();
+  // Weekly habits: measure in weeks — how many weeks hit the target since start
+  if (isWeekly(task)) {
+    let expected = 0, done = 0;
+    try {
+      let cur = new Date(weekKeysFor(start)[0] + "T00:00:00");
+      const endMon = new Date(weekKeysFor(dateKey())[0] + "T00:00:00");
+      let safety = 0;
+      while (cur <= endMon && safety < 520) {
+        expected++;
+        if (weeklyMet(task, dateKey(cur))) done++;
+        cur.setDate(cur.getDate()+7);
+        safety++;
+      }
+    } catch {}
+    const rate = expected > 0 ? Math.min(100, Math.round((done/expected)*100)) : 0;
+    return { start, expected, done, rate, weekly:true };
+  }
   let expected = 0;
   try {
     const cur = new Date(start + "T00:00:00");
@@ -1562,7 +1579,6 @@ export default function App() {
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
   useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
-  const [activeSinceEdit, setActiveSinceEdit] = useState(null); // date string being edited, or null
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null);
@@ -1852,10 +1868,6 @@ export default function App() {
     });
     update({...data, categories:cats, tasks});
     try { navigator.vibrate && navigator.vibrate(6); } catch {}
-  };
-  const setActiveSince = (tid, dk) => {
-    update({...data, tasks: data.tasks.map(t=> t.id===tid ? {...t, createdAt: dk} : t)});
-    toast$("ACTIVE SINCE UPDATED ✓");
   };
 
   const toggleDay = (tid, dk) => {
@@ -2274,10 +2286,20 @@ export default function App() {
   const COLS = ["todo","doing","done"];
   const dragStart = (e, col, card) => {
     if (e.button !== undefined && e.button !== 0) return;
-    dragMeta.current = { col, card, startX:e.clientX, startY:e.clientY, active:false };
+    dragMeta.current = { col, card, startX:e.clientX, startY:e.clientY, active:false, consumed:false };
+    // long-press (~480ms) = quick-advance to next column, with haptic
+    const lp = setTimeout(()=>{
+      const m = dragMeta.current;
+      if (m && !m.active && !m.consumed) {
+        m.consumed = true;
+        try { navigator.vibrate && navigator.vibrate(18); } catch {}
+        boardAdvance(m.col, m.card.id);
+      }
+    }, 480);
     const move = (ev) => {
       const m = dragMeta.current; if (!m) return;
       const dx = ev.clientX - m.startX, dy = ev.clientY - m.startY;
+      if (Math.hypot(dx,dy) > 10) clearTimeout(lp);         // moving cancels long-press
       if (!m.active && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
         m.active = true;
         try { navigator.vibrate && navigator.vibrate(10); } catch {}
@@ -2293,6 +2315,7 @@ export default function App() {
       }
     };
     const up = (ev) => {
+      clearTimeout(lp);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
@@ -2303,9 +2326,9 @@ export default function App() {
         const rel = (ev.clientX - r.left) / r.width;
         const target = rel < 1/3 ? "todo" : rel < 2/3 ? "doing" : "done";
         boardMoveTo(m.col, m.card.id, target);
-      } else if (m && !m.active) {
+      } else if (m && !m.active && !m.consumed) {
         const dist = Math.hypot(ev.clientX - m.startX, ev.clientY - m.startY);
-        if (dist < 8) boardAdvance(m.col, m.card.id);
+        if (dist < 8) setCardMenu({ col:m.col, cardId:m.card.id, mode:"actions" }); // tap = open card sheet
       }
     };
     window.addEventListener("pointermove", move, { passive:false });
@@ -2815,34 +2838,92 @@ export default function App() {
       )}
 
       {/* SCHEDULE (TIME BLOCK) SHEET */}
-      {/* SEND BOARD CARD → LIST PICKER */}
-      {cardMenu && (
+      {/* BOARD CARD ACTION SHEET */}
+      {cardMenu && (()=>{
+        const card = (data.kanban[cardMenu.col]||[]).find(c=>c.id===cardMenu.cardId);
+        if (!card) return null;
+        const colNames = { todo:"TO DO", doing:"IN PROGRESS", done:"DONE" };
+        const colColors = { todo:"#38bdf8", doing:"#f59e0b", done:"#34d399" };
+        const inLists = cardMenu.mode==="lists";
+        return (
         <div style={C.modal} onClick={()=>setCardMenu(null)}>
           <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:42,height:5,background:"rgba(255,255,255,0.3)",borderRadius:3,margin:"0 auto 16px"}}/>
-            <div style={{fontSize:17,fontWeight:900,color:"#fff",marginBottom:4}}>Move to a list</div>
-            <div style={{fontSize:11,color:DIM,fontWeight:700,marginBottom:16}}>
-              Removes “{((data.kanban[cardMenu.col]||[]).find(c=>c.id===cardMenu.cardId)||{}).text}” from the board and adds it to the list you pick.
+            <div style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:2,lineHeight:1.35}}>{card.text}</div>
+            <div style={{fontSize:10,color:DIM,fontWeight:800,marginBottom:16}}>
+              Currently in <span style={{color:colColors[cardMenu.col]}}>{colNames[cardMenu.col]}</span>
             </div>
-            {data.lists.length===0 && (
-              <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:12.5,fontWeight:600}}>You don’t have any lists yet. Create one on the Board page first.</div>
-            )}
-            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"46vh",overflowY:"auto"}}>
-              {data.lists.map(l=>(
-                <button key={l.id} onClick={()=>sendCardToList(cardMenu.col, cardMenu.cardId, l.id)}
-                  style={{display:"flex",alignItems:"center",gap:11,background:`linear-gradient(135deg,${l.color}cc,${shade(l.color,-45)})`,
-                    border:"none",borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,textAlign:"left",
-                    boxShadow:`0 4px 14px ${l.color}44`}}>
-                  <span style={{width:12,height:12,borderRadius:"50%",background:"#fff",opacity:0.9,flexShrink:0}}/>
-                  <span style={{fontSize:14,fontWeight:800,color:"#fff",flex:1}}>{l.name}</span>
-                  <span style={{fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.8)"}}>{l.items.length} items</span>
+
+            {!inLists ? (
+              <>
+                {/* MOVE BETWEEN COLUMNS */}
+                <div style={{...C.label,marginBottom:8}}>MOVE TO</div>
+                <div style={{display:"flex",gap:8,marginBottom:14}}>
+                  {["todo","doing","done"].filter(c=>c!==cardMenu.col).map(c=>(
+                    <button key={c} onClick={()=>{ boardMoveTo(cardMenu.col, cardMenu.cardId, c); setCardMenu(null); }}
+                      style={{flex:1,padding:"13px 0",borderRadius:14,border:`1.5px solid ${colColors[c]}66`,cursor:"pointer",fontFamily:FONT,
+                        background:`linear-gradient(150deg,${colColors[c]}33,rgba(0,0,0,0.25))`,color:"#fff",fontWeight:900,fontSize:11.5}}>
+                      {colNames[c]}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ACTIONS */}
+                {cardMenu.col!=="done" && (
+                  <button onClick={()=>{ const color=colColors[cardMenu.col]; setCardMenu(null);
+                      setScheduleSheet({title:card.text,color,source:"board",refId:card.id,start:9*60,dur:30,dk:planDate}); }}
+                    style={{width:"100%",display:"flex",alignItems:"center",gap:12,background:GLASS,border:`1px solid ${LINE}`,
+                      borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,marginBottom:8,textAlign:"left"}}>
+                    <span style={{fontSize:17}}>🗓</span>
+                    <span style={{flex:1}}>
+                      <span style={{display:"block",fontSize:13.5,fontWeight:800,color:"#fff"}}>Schedule on calendar</span>
+                      <span style={{display:"block",fontSize:10,color:DIM,fontWeight:700,marginTop:1}}>Pick a date & time block on the Plan page</span>
+                    </span>
+                    <span style={{color:FAINT,fontSize:15}}>›</span>
+                  </button>
+                )}
+                {data.lists.length>0 && (
+                  <button onClick={()=>setCardMenu({...cardMenu, mode:"lists"})}
+                    style={{width:"100%",display:"flex",alignItems:"center",gap:12,background:GLASS,border:`1px solid ${LINE}`,
+                      borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,marginBottom:8,textAlign:"left"}}>
+                    <span style={{fontSize:17}}>📋</span>
+                    <span style={{flex:1}}>
+                      <span style={{display:"block",fontSize:13.5,fontWeight:800,color:"#fff"}}>Move to a list</span>
+                      <span style={{display:"block",fontSize:10,color:DIM,fontWeight:700,marginTop:1}}>Removes it from the board</span>
+                    </span>
+                    <span style={{color:FAINT,fontSize:15}}>›</span>
+                  </button>
+                )}
+                <button onClick={()=>{ boardDelete(cardMenu.col, cardMenu.cardId); setCardMenu(null); }}
+                  style={{width:"100%",display:"flex",alignItems:"center",gap:12,background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.4)",
+                    borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,marginBottom:8,textAlign:"left"}}>
+                  <span style={{fontSize:17}}>🗑</span>
+                  <span style={{fontSize:13.5,fontWeight:800,color:BAD}}>Delete card</span>
                 </button>
-              ))}
-            </div>
-            <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:16}} onClick={()=>setCardMenu(null)}>CANCEL</button>
+                <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:8}} onClick={()=>setCardMenu(null)}>CANCEL</button>
+              </>
+            ) : (
+              <>
+                <div style={{...C.label,marginBottom:8}}>PICK A LIST</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"42vh",overflowY:"auto"}}>
+                  {data.lists.map(l=>(
+                    <button key={l.id} onClick={()=>sendCardToList(cardMenu.col, cardMenu.cardId, l.id)}
+                      style={{display:"flex",alignItems:"center",gap:11,background:`linear-gradient(135deg,${l.color}cc,${shade(l.color,-45)})`,
+                        border:"none",borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,textAlign:"left",
+                        boxShadow:`0 4px 14px ${l.color}44`}}>
+                      <span style={{width:12,height:12,borderRadius:"50%",background:"#fff",opacity:0.9,flexShrink:0}}/>
+                      <span style={{fontSize:14,fontWeight:800,color:"#fff",flex:1}}>{l.name}</span>
+                      <span style={{fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.8)"}}>{l.items.length} items</span>
+                    </button>
+                  ))}
+                </div>
+                <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:12}} onClick={()=>setCardMenu({...cardMenu, mode:"actions"})}>‹ BACK</button>
+              </>
+            )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {scheduleSheet && (
         <div style={C.modal} onClick={()=>setScheduleSheet(null)}>
@@ -2985,7 +3066,7 @@ export default function App() {
                 ? "HOLD THE RING TO LOG ONE FOR TODAY · EDIT ANY DAY BELOW"
                 : "HOLD THE RING TO COMPLETE · TAP A PAST DAY BELOW TO LOG IT"}
             </div>
-            {dStats && !isWeekly(detailTask) && (
+            {dStats && (
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
                 <div style={{background:"rgba(0,0,0,0.25)",borderRadius:16,padding:"11px 8px",textAlign:"center"}}>
                   <div style={{fontSize:21,fontWeight:900,color:dStats.rate>=80?GOOD:dStats.rate>=50?"#ffc46b":BAD}}>{dStats.rate}%</div>
@@ -2993,7 +3074,7 @@ export default function App() {
                 </div>
                 <div style={{background:"rgba(0,0,0,0.25)",borderRadius:16,padding:"11px 8px",textAlign:"center"}}>
                   <div style={{fontSize:21,fontWeight:900,color:"#fff"}}>{dStats.done}<span style={{fontSize:12,color:FAINT}}>/{dStats.expected}</span></div>
-                  <div style={{fontSize:8,color:FAINT,fontWeight:800,marginTop:2}}>DONE / EXPECTED</div>
+                  <div style={{fontSize:8,color:FAINT,fontWeight:800,marginTop:2}}>{dStats.weekly?"WEEKS MET":"DONE / EXPECTED"}</div>
                 </div>
                 <div style={{background:"rgba(0,0,0,0.25)",borderRadius:16,padding:"11px 8px",textAlign:"center"}}>
                   <div style={{fontSize:13,fontWeight:900,color:"#fff",marginTop:4}}>{dStats.start.slice(5).replace("-","/")}</div>
@@ -3048,22 +3129,15 @@ export default function App() {
                     TAP ＋ / － ON ANY DAY · USE ‹ › TO FIX PAST WEEKS
                   </div>
                 </div>
-                {/* ACTIVE SINCE */}
-                <div style={{background:"rgba(0,0,0,0.22)",borderRadius:16,padding:"12px 15px",marginBottom:12,
-                  display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                  <div>
-                    <div style={{fontSize:12.5,fontWeight:800,color:"#fff"}}>Active since</div>
-                    <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:1}}>When this habit started counting</div>
-                  </div>
-                  <input type="date" value={detailTask.createdAt || today}
-                    max={today}
-                    onChange={e=>{ if(e.target.value) setActiveSince(detailTask.id, e.target.value); }}
-                    style={{background:"rgba(0,0,0,0.35)",border:`1px solid ${LINE}`,borderRadius:12,color:"#fff",
-                      padding:"9px 11px",fontFamily:FONT,fontWeight:700,fontSize:12.5,colorScheme:"dark"}}/>
-                </div>
                 <div style={{display:"flex",gap:8}}>
+                  {getReps(detailTask,today)>0 && (
+                    <button style={{...C.btnSm,flex:1,padding:"13px",color:BAD}}
+                      onClick={()=>clearDay(detailTask.id, today)}>↺ CLEAR</button>
+                  )}
                   <button style={{...C.btnSm,flex:1,padding:"13px"}}
                     onClick={()=>{ setEditTask({...detailTask}); setDetailTaskId(null); setView("editTask"); }}>✎ EDIT</button>
+                  <button style={{...C.btnSm,flex:1,padding:"13px",color:"#ffc46b"}}
+                    onClick={()=>setConfirmBox({type:"questReset",id:detailTask.id,name:detailTask.name})}>↺ RESET</button>
                   <button style={{...C.btn,flex:1,padding:"13px"}} onClick={()=>setDetailTaskId(null)}>DONE</button>
                 </div>
               </>
@@ -3570,29 +3644,8 @@ export default function App() {
                         opacity:drag?.id===card.id?0.35:1,
                         WebkitUserSelect:"none",userSelect:"none",
                         boxShadow:"0 3px 10px rgba(0,0,0,0.3)",
-                        paddingRight:20,
                       }}>
                       {card.text}
-                      <div style={{position:"absolute",bottom:2,right:3,display:"flex",gap:3}}>
-                        {data.lists.length>0 && (
-                          <button
-                            onPointerDown={e=>e.stopPropagation()}
-                            onClick={e=>{e.stopPropagation(); setCardMenu({col, cardId:card.id}); }}
-                            title="Move to a list"
-                            style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:"#fff",fontSize:11,cursor:"pointer",padding:"2px 6px"}}>📋</button>
-                        )}
-                        {col==="todo" && (
-                          <button
-                            onPointerDown={e=>e.stopPropagation()}
-                            onClick={e=>{e.stopPropagation(); setScheduleSheet({title:card.text,color:color,source:"board",refId:card.id,start:9*60,dur:30,dk:planDate}); }}
-                            title="Add to calendar"
-                            style={{background:"rgba(0,0,0,0.25)",border:"none",borderRadius:7,color:"#fff",fontSize:11,cursor:"pointer",padding:"2px 6px"}}>🗓</button>
-                        )}
-                      </div>
-                      <button
-                        onPointerDown={e=>e.stopPropagation()}
-                        onClick={e=>{e.stopPropagation(); boardDelete(col, card.id);}}
-                        style={{position:"absolute",top:2,right:3,background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer",padding:"3px 4px"}}>✕</button>
                     </div>
                   ))}
                   {data.kanban[col].length===0 && (
@@ -3604,7 +3657,7 @@ export default function App() {
               ))}
             </div>
             <div style={{fontSize:9,color:DIM,textAlign:"center",marginTop:10,fontWeight:800}}>
-              TAP A CARD TO MOVE IT FORWARD · DRAG SIDEWAYS FOR ANY COLUMN
+              TAP A CARD FOR OPTIONS · HOLD TO MOVE IT FORWARD · DRAG SIDEWAYS FOR ANY COLUMN
             </div>
             {data.kanban.done.length>0 && (
               <button style={{...C.btnSm,width:"100%",marginTop:12,padding:"12px"}} onClick={boardClearDone}>
