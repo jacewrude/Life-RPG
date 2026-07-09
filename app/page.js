@@ -304,6 +304,10 @@ const INIT = {
   kanban: { todo:[], doing:[], done:[] },
   lists: [],
   schedule: {},
+  combo: { count:0, lastAt:0 },
+  challengeClaims: {},
+  trophies: {},
+  flags: {},
   pomodoro: { ...DEFAULT_POMO },
   wallet: { ...DEFAULT_WALLET },
   lastDecayDate: null,
@@ -510,6 +514,10 @@ function migrate(d) {
     kanban: (d.kanban && Array.isArray(d.kanban.todo)) ? d.kanban : { todo:[], doing:[], done:[] },
     lists: Array.isArray(d.lists) ? d.lists : [],
     schedule: (d.schedule && typeof d.schedule === "object") ? d.schedule : {},
+    combo: (d.combo && typeof d.combo === "object") ? { count:d.combo.count||0, lastAt:d.combo.lastAt||0 } : { count:0, lastAt:0 },
+    challengeClaims: (d.challengeClaims && typeof d.challengeClaims === "object") ? d.challengeClaims : {},
+    trophies: (d.trophies && typeof d.trophies === "object") ? d.trophies : {},
+    flags: (d.flags && typeof d.flags === "object") ? d.flags : {},
     pomodoro: { ...DEFAULT_POMO, ...(d.pomodoro||{}), sessionsByDay: { ...((d.pomodoro||{}).sessionsByDay||{}) } },
     wallet: { ...DEFAULT_WALLET, ...(d.wallet||{}),
       coinsByTaskDay: { ...((d.wallet||{}).coinsByTaskDay||{}) },
@@ -661,6 +669,58 @@ function questStats(task) {
   const rate = expected > 0 ? Math.min(100, Math.round((done/expected)*100)) : 0;
   return { start, expected, done, rate };
 }
+
+// ── DAILY CHALLENGE (deterministic per date) ─────────────────────────────────
+function dailyChallengeFor(d, todayK) {
+  const dailies = (d.tasks||[]).filter(t=>t.catId && !isWeekly(t) && isScheduledOn(t, todayK));
+  const weeklies = (d.tasks||[]).filter(t=>t.catId && isWeekly(t));
+  const seed = todayK.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
+  const catsToday = [...new Set(dailies.map(t=>t.catId))];
+  const opts = [];
+  if (dailies.length>=2) opts.push("count");
+  if (catsToday.length>=2) opts.push("cat");
+  if (weeklies.length>=1) opts.push("weekly");
+  if (!opts.length) return null;
+  const pick = opts[seed % opts.length];
+  if (pick==="cat") {
+    const catId = catsToday[seed % catsToday.length];
+    const goal = dailies.filter(t=>t.catId===catId).length;
+    return { type:"cat", catId, goal, gems:15 };
+  }
+  if (pick==="weekly") {
+    const n = 2 + (seed % 3);
+    return { type:"weekly", n, goal:n, gems:12 };
+  }
+  const n = Math.max(2, Math.min(dailies.length, 2 + (seed % 3)));
+  return { type:"count", n, goal:n, gems:10 };
+}
+
+// ── TROPHIES (permanent achievements; claim once for gems) ───────────────────
+const TROPHIES = [
+  { id:"first_blood", icon:"⚔", name:"First Blood", desc:"Complete your first quest", gems:5,
+    check:(d)=>(d.tasks||[]).some(t=>totalCompletions(t)>0) },
+  { id:"streak_7", icon:"🔥", name:"On Fire", desc:"Hold a 7-day streak on any quest", gems:15,
+    check:(d)=>(d.tasks||[]).some(t=>!isWeekly(t)&&getStreak(t)>=7) },
+  { id:"streak_30", icon:"☄️", name:"Unbreakable", desc:"Hold a 30-day streak on any quest", gems:40,
+    check:(d)=>(d.tasks||[]).some(t=>!isWeekly(t)&&getStreak(t)>=30) },
+  { id:"century", icon:"💯", name:"Century", desc:"100 total completions", gems:20,
+    check:(d)=>(d.tasks||[]).reduce((a,t)=>a+totalCompletions(t),0)>=100 },
+  { id:"relentless", icon:"🏛", name:"Relentless", desc:"500 total completions", gems:50,
+    check:(d)=>(d.tasks||[]).reduce((a,t)=>a+totalCompletions(t),0)>=500 },
+  { id:"clean_sweep", icon:"📅", name:"Clean Sweep", desc:"Meet every weekly target in one week", gems:15,
+    check:(d)=>{ const w=(d.tasks||[]).filter(t=>t.catId&&isWeekly(t)); return w.length>0 && w.every(t=>weeklyMet(t, dateKey())); } },
+  { id:"knighted", icon:"🛡", name:"Knighted", desc:"Reach level 7", gems:25,
+    check:(d)=>getLevel(getRating(d.categories||[]))>=7 },
+  { id:"war_chest", icon:"🪙", name:"War Chest", desc:"Earn 1,000 lifetime coins", gems:20,
+    check:(d)=>(d.wallet?.coinsEarned||0)>=1000 },
+  { id:"gem_hoard", icon:"💎", name:"Gem Hoard", desc:"Earn 100 lifetime gems", gems:25,
+    check:(d)=>(d.wallet?.gemsEarned||0)>=100 },
+  { id:"tactician", icon:"🗓", name:"Tactician", desc:"Schedule 10 time blocks on the Plan page", gems:10,
+    check:(d)=>Object.values(d.schedule||{}).reduce((a,l)=>a+(l?.length||0),0)>=10 },
+  { id:"chain_lightning", icon:"⚡", name:"Chain Lightning", desc:"Hit a x2 coin combo", gems:15,
+    check:(d)=>(d.flags?.maxCombo||1)>=3 },
+];
+
 // Last 7 day keys ending today (HabitKit grid)
 function last7Keys() {
   const out = [];
@@ -1751,15 +1811,7 @@ export default function App() {
       // coins: pay per rep up to the weekly target. Ledger key includes the rep
       // index so each of the first wt reps banks once and can't be re-farmed.
       const repIndex = doneBefore + 1;                // 1-based rep number this week
-      const key = `${tid}|wk|${weekKeysFor(d)[0]}|${repIndex}`;
-      setData(cur=>{
-        if (repIndex > wt) return cur;                // weekly coin cap reached
-        if ((cur.wallet.coinsByTaskDay||{})[key]) return cur;
-        const coins = coinsForTask(task);
-        const ledger = {...(cur.wallet.coinsByTaskDay||{})}; ledger[key] = coins;
-        const n={...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)+coins, coinsByTaskDay:ledger}};
-        persistRaw(n); return n;
-      });
+      if (repIndex <= wt) payCoins(task, `${tid}|wk|${weekKeysFor(d)[0]}|${repIndex}`, d);
       const cat = data.categories.find(c=>c.id===task.catId);
       const nowDone = doneBefore + 1;
       if (nowDone === wt) toast$(`✓ ${task.name} — WEEK COMPLETE!`, cat?.color || "#34d399");
@@ -1786,20 +1838,52 @@ export default function App() {
     const justDone = prevReps < target && newReps >= target;
     // Mint coins when the quest crosses into completion — but only ONCE per task
     // per day. The ledger key blocks re-earning by unchecking and rechecking.
-    if (justDone) {
-      const key = `${tid}|${d}`;
-      setData(cur=>{
-        if ((cur.wallet.coinsByTaskDay||{})[key]) return cur; // already paid today
-        const coins = coinsForTask(task);
-        const ledger = {...(cur.wallet.coinsByTaskDay||{})}; ledger[key] = coins;
-        const n={...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)+coins, coinsByTaskDay:ledger}};
-        persistRaw(n); return n;
-      });
-    }
+    if (justDone) payCoins(task, `${tid}|${d}`, d);
     const showXP = data.settings.showXP;
     if (justDone) toast$(showXP ? `✓ ${task.name}  +${(delta+refund).toFixed(3)}` : `✓ ${task.name}`, cat?.color || "#34d399");
     else if (newReps > target) toast$(showXP ? `BONUS +${delta.toFixed(3)}` : "BONUS!", "#f59e0b");
     else toast$(`${newReps}/${target} ${task.name}`, cat?.color);
+  };
+
+  // ── UNIFIED COIN PAYMENT: combo momentum + first-win bonus ──────────────────
+  // Completing tasks back-to-back (within 45 min) builds a coin multiplier:
+  // x1 → x1.5 → x2 (cap). Your FIRST completion each day pays a flat bonus.
+  // Both apply only when logging TODAY — back-filling past days is bookkeeping,
+  // not momentum. Every payment is ledger-keyed so nothing can be double-earned.
+  const COMBO_WINDOW_MS = 45*60*1000;
+  const COMBO_MULT = [1, 1.5, 2];
+  const FIRST_WIN_COINS = 15;
+  const payCoins = (task, key, dayKey) => {
+    const isToday = dayKey === dateKey();
+    // precompute for toasts (cosmetic; ledger inside setData is authoritative)
+    const now = Date.now();
+    const pc = data.combo || {count:0,lastAt:0};
+    const chained = isToday && (now - (pc.lastAt||0)) <= COMBO_WINDOW_MS;
+    const preCount = isToday ? (chained ? Math.min(3,(pc.count||0)+1) : 1) : 0;
+    const hadFirstWin = !!((data.wallet.coinsByTaskDay||{})[`fw|${dayKey}`]);
+    setData(cur=>{
+      const ledger = cur.wallet.coinsByTaskDay||{};
+      if (ledger[key]) return cur;
+      const base = coinsForTask(task);
+      let count = cur.combo?.count||0, lastAt = cur.combo?.lastAt||0, mult = 1;
+      if (isToday) {
+        count = (now - lastAt) <= COMBO_WINDOW_MS ? Math.min(3, count+1) : 1;
+        lastAt = now;
+        mult = COMBO_MULT[count-1];
+      }
+      const coins = Math.round(base * mult);
+      const nl = {...ledger}; nl[key] = coins;
+      let earned = (cur.wallet.coinsEarned||0) + coins;
+      if (isToday && !nl[`fw|${dayKey}`]) { nl[`fw|${dayKey}`] = FIRST_WIN_COINS; earned += FIRST_WIN_COINS; }
+      const n = {...cur,
+        combo: isToday ? {count, lastAt} : (cur.combo||{count:0,lastAt:0}),
+        flags: {...(cur.flags||{}), maxCombo: Math.max(cur.flags?.maxCombo||1, count)},
+        wallet: {...cur.wallet, coinsEarned: earned, coinsByTaskDay: nl}};
+      persistRaw(n); return n;
+    });
+    if (isToday && !hadFirstWin) toast$(`⚡ FIRST WIN OF THE DAY +${FIRST_WIN_COINS} 🪙`, "#ffc46b");
+    else if (preCount >= 2) toast$(`🔥 COMBO x${COMBO_MULT[preCount-1]} — coins boosted!`, "#ff7a2e");
+    try { navigator.vibrate && navigator.vibrate(preCount>=2 ? 14 : 8); } catch {}
   };
 
   // Reverse a coin payment when a completion is undone. Symmetric with earning:
@@ -1891,16 +1975,7 @@ export default function App() {
     const wkStart = weekKeysFor(dk)[0];
     if (dir>0) {
       const repIndex = weekTotal + 1;
-      if (repIndex <= wt) {
-        const key = `${tid}|wk|${wkStart}|${repIndex}`;
-        setData(cur=>{
-          if ((cur.wallet.coinsByTaskDay||{})[key]) return cur;
-          const coins = coinsForTask(task);
-          const ledger = {...(cur.wallet.coinsByTaskDay||{})}; ledger[key] = coins;
-          const n={...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)+coins, coinsByTaskDay:ledger}};
-          persistRaw(n); return n;
-        });
-      }
+      if (repIndex <= wt) payCoins(task, `${tid}|wk|${wkStart}|${repIndex}`, dk);
     } else {
       clawbackCoins(`${tid}|wk|${wkStart}|${weekTotal}`);
     }
@@ -1924,14 +1999,7 @@ export default function App() {
         return {...t, completions: comps};
       });
       update({...data, categories:cats, tasks});
-      const key = `${tid}|${dk}`;
-      setData(cur=>{
-        if ((cur.wallet.coinsByTaskDay||{})[key]) return cur;
-        const coins = coinsForTask(task);
-        const ledger = {...(cur.wallet.coinsByTaskDay||{})}; ledger[key] = coins;
-        const n={...cur, wallet:{...cur.wallet, coinsEarned:(cur.wallet.coinsEarned||0)+coins, coinsByTaskDay:ledger}};
-        persistRaw(n); return n;
-      });
+      payCoins(task, `${tid}|${dk}`, dk);
       toast$(`LOGGED ${dk}`, "#34d399");
     }
   };
@@ -2115,6 +2183,20 @@ export default function App() {
   // ── SPIN GAMES (slot / wheel / blackjack, chosen at random) ─────────────────
   const spendCoins = (n) => setData(d=>{ const nd={...d, wallet:{...d.wallet, coinsSpent:(d.wallet.coinsSpent||0)+n}}; persistRaw(nd); return nd; });
   const awardGems  = (n) => setData(d=>{ const nd={...d, wallet:{...d.wallet, gemsEarned:(d.wallet.gemsEarned||0)+n}}; persistRaw(nd); return nd; });
+  const claimChallenge = (gems) => {
+    setData(cur=>{ const n={...cur, challengeClaims:{...(cur.challengeClaims||{}), [dateKey()]:true},
+      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+gems}}; persistRaw(n); return n; });
+    toast$(`CHALLENGE COMPLETE +${gems} 💎`, "#a78bfa");
+    try { navigator.vibrate && navigator.vibrate([10,40,20]); } catch {}
+  };
+  const claimTrophy = (t) => {
+    if (data.trophies && data.trophies[t.id]) return;
+    setData(cur=>{ if (cur.trophies && cur.trophies[t.id]) return cur;
+      const n={...cur, trophies:{...(cur.trophies||{}), [t.id]:dateKey()},
+      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+t.gems}}; persistRaw(n); return n; });
+    toast$(`🏆 ${t.name.toUpperCase()} +${t.gems} 💎`, "#ffc46b");
+    try { navigator.vibrate && navigator.vibrate([10,40,20]); } catch {}
+  };
   const markSpinUsed = (dk) => setData(d=>{
     const used = {...(d.wallet.spinsUsedByDay||{})}; used[dk]=(used[dk]||0)+1;
     const nd={...d, wallet:{...d.wallet, spinsUsedByDay:used}}; persistRaw(nd); return nd;
@@ -3328,6 +3410,49 @@ export default function App() {
                 <div style={C.sectionTitle}>Today's Quests</div>
                 <div style={{fontSize:11,color:DIM,fontWeight:800}}>{todayDone} of {todayTasks.length}</div>
               </div>
+              {(()=>{
+                const ch = dailyChallengeFor(data, today);
+                if (!ch) return null;
+                const claimed = !!(data.challengeClaims||{})[today];
+                let progress=0, label="";
+                if (ch.type==="count"){ progress=todayDone; label=`Complete ${ch.n} quests today`; }
+                else if (ch.type==="cat"){ const cat=data.categories.find(c=>c.id===ch.catId);
+                  progress=data.tasks.filter(t=>t.catId===ch.catId&&!isWeekly(t)&&isScheduledOn(t,today)&&isCompletedOn(t,today)).length;
+                  label=`Finish every ${cat?cat.name:""} quest today`; }
+                else { progress=weeklyHabits.reduce((a,t)=>a+(getReps(t,today)||0),0); label=`Log ${ch.n} weekly-habit reps today`; }
+                const met = progress>=ch.goal;
+                const pct = Math.min(100,(progress/ch.goal)*100);
+                const comboHot = data.combo && (Date.now()-(data.combo.lastAt||0))<=COMBO_WINDOW_MS && (data.combo.count||0)>=1;
+                return (
+                  <div style={{...C.glass, border:`1.5px solid ${claimed?LINE:`${T.accent}66`}`, marginBottom:11, padding:"13px 15px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{fontSize:24}}>{claimed?"🏅":"🎯"}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1.5,color:T.accent}}>DAILY CHALLENGE</div>
+                        <div style={{fontSize:13.5,fontWeight:800,color:"#fff",marginTop:2}}>{label}</div>
+                        <div style={{height:6,borderRadius:4,background:"rgba(0,0,0,0.3)",marginTop:8,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${pct}%`,borderRadius:4,background:T.accent,transition:"width .4s"}}/>
+                        </div>
+                      </div>
+                      {claimed ? (
+                        <div style={{fontSize:10,fontWeight:900,color:GOOD,whiteSpace:"nowrap"}}>DONE ✓</div>
+                      ) : met ? (
+                        <button onClick={()=>claimChallenge(ch.gems)} style={{...C.btn,padding:"11px 14px",fontSize:11,whiteSpace:"nowrap",animation:"glowPulse 1.6s ease-in-out infinite"}}>CLAIM +{ch.gems} 💎</button>
+                      ) : (
+                        <div style={{textAlign:"center",whiteSpace:"nowrap"}}>
+                          <div style={{fontSize:14,fontWeight:900,color:"#fff"}}>{Math.min(progress,ch.goal)}/{ch.goal}</div>
+                          <div style={{fontSize:8.5,fontWeight:800,color:DIM}}>+{ch.gems} 💎</div>
+                        </div>
+                      )}
+                    </div>
+                    {comboHot && (
+                      <div style={{fontSize:9.5,fontWeight:800,color:"#ff9a4e",marginTop:9}}>
+                        🔥 MOMENTUM — next quest pays x{COMBO_MULT[Math.min(2,(data.combo.count||0))]} coins
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {spinsAvail > 0 && (
                 <div onClick={openSpin} style={{
                   background:`linear-gradient(135deg,${shade(T.accent,-40)},${T.accent},${T.sun})`,borderRadius:20,padding:"14px 16px",marginBottom:11,
@@ -3970,6 +4095,31 @@ export default function App() {
                 </div>
               );
             })}
+
+            <div style={{...C.sectionTitle, margin:"18px 2px 12px"}}>Trophies</div>
+            <div style={C.glass}>
+              {TROPHIES.map((t,i)=>{
+                const claimedOn = (data.trophies||{})[t.id];
+                const unlocked = claimedOn || t.check(data);
+                return (
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 2px",
+                    borderBottom: i<TROPHIES.length-1 ? `1px solid ${LINE}` : "none", opacity: unlocked?1:0.45}}>
+                    <div style={{fontSize:22,width:32,textAlign:"center",filter:unlocked?"none":"grayscale(1)"}}>{t.icon}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>{t.name}</div>
+                      <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:1}}>{t.desc}</div>
+                    </div>
+                    {claimedOn ? (
+                      <div style={{fontSize:12,fontWeight:900,color:GOOD}}>✓</div>
+                    ) : unlocked ? (
+                      <button onClick={()=>claimTrophy(t)} style={{...C.btn,padding:"9px 12px",fontSize:10.5,animation:"glowPulse 1.6s ease-in-out infinite"}}>+{t.gems} 💎</button>
+                    ) : (
+                      <div style={{fontSize:10,fontWeight:800,color:FAINT}}>+{t.gems} 💎</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
