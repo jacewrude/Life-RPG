@@ -133,7 +133,7 @@ const PERFECT_DAY_BONUS_GEMS = 30;
 
 const DEFAULT_WALLET = {
   coinsEarned: 0, coinsSpent: 0,
-  gemsEarned: 0, gemsSpent: 0,
+  gemsEarned: 0, gemsSpent: 0, shields: 0,
   coinsByTaskDay: {},                 // "taskId|YYYY-MM-DD" -> coins banked (prevents double-earn)
   lastCoinDecay: null,                // date we last applied coin decay
   spinsUsedByDay: {}, perfectClaimedByDay: {},
@@ -306,6 +306,7 @@ const INIT = {
   schedule: {},
   combo: { count:0, lastAt:0 },
   challengeClaims: {},
+  bossClaims: {},
   trophies: {},
   flags: {},
   pomodoro: { ...DEFAULT_POMO },
@@ -353,6 +354,7 @@ function getStreak(task) {
     const dk = dateKey(cur);
     if (isScheduledOn(task, dk)) {
       if (isCompletedOn(task, dk)) s++;
+      else if ((task.frozen||{})[dk]) { /* shielded day — streak survives */ }
       else break;
     }
     cur.setDate(cur.getDate()-1);
@@ -473,6 +475,7 @@ function applyDecay(data) {
           if (!task.catId) return;
           if (!isScheduledOn(task, dk)) return;
           if (isCompletedOn(task, dk)) return;
+          if ((task.frozen||{})[dk]) return;      // streak shield — no decay
           const ci = cats.findIndex(c=>c.id===task.catId);
           if (ci !== -1) {
             const before = cats[ci].value;
@@ -509,6 +512,7 @@ function migrate(d) {
       freq: t.freq === "weekly" ? "weekly" : "daily",
       weeklyTarget: Math.max(1, t.weeklyTarget || 1),
       createdAt: t.createdAt || Object.keys(t.completions||{}).sort()[0] || dateKey(),
+      frozen: (t.frozen && typeof t.frozen === "object") ? t.frozen : {},
     })),
     customTitles: d.customTitles || {},
     kanban: (d.kanban && Array.isArray(d.kanban.todo)) ? d.kanban : { todo:[], doing:[], done:[] },
@@ -517,10 +521,12 @@ function migrate(d) {
     combo: (d.combo && typeof d.combo === "object") ? { count:d.combo.count||0, lastAt:d.combo.lastAt||0 } : { count:0, lastAt:0 },
     challengeClaims: (d.challengeClaims && typeof d.challengeClaims === "object") ? d.challengeClaims : {},
     trophies: (d.trophies && typeof d.trophies === "object") ? d.trophies : {},
+    bossClaims: (d.bossClaims && typeof d.bossClaims === "object") ? d.bossClaims : {},
     flags: (d.flags && typeof d.flags === "object") ? d.flags : {},
     pomodoro: { ...DEFAULT_POMO, ...(d.pomodoro||{}), sessionsByDay: { ...((d.pomodoro||{}).sessionsByDay||{}) } },
     wallet: { ...DEFAULT_WALLET, ...(d.wallet||{}),
       coinsByTaskDay: { ...((d.wallet||{}).coinsByTaskDay||{}) },
+      shields: (d.wallet||{}).shields || 0,
       spinsUsedByDay: { ...((d.wallet||{}).spinsUsedByDay||{}) },
       perfectClaimedByDay: { ...((d.wallet||{}).perfectClaimedByDay||{}) },
       owned: Array.isArray((d.wallet||{}).owned) ? d.wallet.owned : [],
@@ -693,6 +699,41 @@ function dailyChallengeFor(d, todayK) {
   }
   const n = Math.max(2, Math.min(dailies.length, 2 + (seed % 3)));
   return { type:"count", n, goal:n, gems:10 };
+}
+
+
+// ── WEEKLY BOSS (deterministic per week; every completion deals damage) ──────
+const BOSSES = [
+  { name:"Sloth Behemoth",    icon:"🦥" },
+  { name:"The Procrastinator",icon:"👹" },
+  { name:"Doubt Wraith",      icon:"👻" },
+  { name:"Inertia Golem",     icon:"🗿" },
+  { name:"Distraction Hydra", icon:"🐉" },
+  { name:"Chaos Fiend",       icon:"😈" },
+  { name:"Fog of Excuses",    icon:"🌫️" },
+  { name:"The Snooze King",   icon:"👑" },
+];
+function bossForWeek(d, anyDay) {
+  const wk = weekKeysFor(anyDay);
+  const wkStart = wk[0];
+  const seed = wkStart.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
+  const b = BOSSES[seed % BOSSES.length];
+  let E = 0;
+  (d.tasks||[]).forEach(t=>{
+    if (!t.catId) return;
+    if (isWeekly(t)) E += weeklyTargetOf(t);
+    else wk.forEach(dk=>{ if (isScheduledOn(t,dk)) E++; });
+  });
+  if (E === 0) return null;
+  const hp = Math.max(5, Math.round(E * 0.6));
+  let dmg = 0;
+  const todayK = dateKey();
+  (d.tasks||[]).forEach(t=>{
+    if (!t.catId) return;
+    if (isWeekly(t)) dmg += weeklyDone(t, wkStart);
+    else wk.forEach(dk=>{ if (dk<=todayK && isScheduledOn(t,dk) && isCompletedOn(t,dk)) dmg++; });
+  });
+  return { ...b, wkStart, hp, dmg: Math.min(dmg, hp), gems: Math.max(15, Math.round(hp*1.2)) };
 }
 
 // ── TROPHIES (permanent achievements; claim once for gems) ───────────────────
@@ -1298,7 +1339,7 @@ function MonthCalendar({ task, color, viewYear, viewMonth, onPrev, onNext, onTog
               onClick={()=>{ if (!isFuture) onToggleDay(dk); }}
               style={{
                 aspectRatio:"1", borderRadius:"50%", border: isToday ? `2px solid #fff` : "none",
-                background: done ? color : partial ? `${color}55` : "rgba(255,255,255,0.07)",
+                background: done ? color : partial ? `${color}55` : (task.frozen||{})[dk] ? "rgba(157,180,255,0.4)" : "rgba(255,255,255,0.07)",
                 color: done ? "#fff" : sched ? DIM : FAINT,
                 fontSize:10.5, fontWeight: done?900:600, cursor: isFuture?"default":"pointer",
                 opacity: isFuture ? 0.3 : sched ? 1 : 0.5,
@@ -1724,9 +1765,16 @@ export default function App() {
     const lvl = getLevel(getRating(data.categories)).lvl;
     if (prevLevelRef.current === null) { prevLevelRef.current = lvl; return; }
     if (lvl > prevLevelRef.current) {
-      setShowLevelUp({ lvl, name: getTitle(data, lvl), unlock: LEVELS[lvl].unlock });
+      const best = data.flags?.maxLevel || 0;
+      const isNewBest = lvl > best;
+      const gems = isNewBest ? 10 + lvl * 2 : 0;   // scale a little with level
+      setShowLevelUp({ lvl, name: getTitle(data, lvl), unlock: LEVELS[lvl].unlock, gems });
+      if (isNewBest) {
+        setData(cur=>{ const n={...cur, flags:{...(cur.flags||{}), maxLevel:lvl},
+          wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+gems}}; persistRaw(n); return n; });
+      }
       try { navigator.vibrate && navigator.vibrate([30,60,30,60,80]); } catch {}
-      setTimeout(()=>setShowLevelUp(null), 4500);
+      setTimeout(()=>setShowLevelUp(null), 6000);
     }
     prevLevelRef.current = lvl;
   }, [data?.categories]);
@@ -2189,6 +2237,13 @@ export default function App() {
     toast$(`CHALLENGE COMPLETE +${gems} 💎`, "#a78bfa");
     try { navigator.vibrate && navigator.vibrate([10,40,20]); } catch {}
   };
+  const claimBoss = (gems, wkStart) => {
+    setData(cur=>{ if ((cur.bossClaims||{})[wkStart]) return cur;
+      const n={...cur, bossClaims:{...(cur.bossClaims||{}), [wkStart]:true},
+      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+gems}}; persistRaw(n); return n; });
+    toast$(`⚔ BOSS SLAIN +${gems} 💎`, "#ff8f5e");
+    try { navigator.vibrate && navigator.vibrate([20,50,20,50,40]); } catch {}
+  };
   const claimTrophy = (t) => {
     if (data.trophies && data.trophies[t.id]) return;
     setData(cur=>{ if (cur.trophies && cur.trophies[t.id]) return cur;
@@ -2244,6 +2299,38 @@ export default function App() {
     } else {
       setSpinState("ready"); setSpinResult(null);
     }
+  };
+
+  // ── STREAK SHIELD (consumable item) ─────────────────────────────────────────
+  const SHIELD_COST = 30;
+  const buyShield = () => {
+    setData(cur=>{
+      const w = cur.wallet;
+      const bal = Math.max(0,(w.gemsEarned||0)-(w.gemsSpent||0));
+      if (bal < SHIELD_COST) { toast$("NOT ENOUGH GEMS","#ffc46b"); return cur; }
+      const n = {...cur, wallet:{...w, gemsSpent:(w.gemsSpent||0)+SHIELD_COST, shields:(w.shields||0)+1}};
+      persistRaw(n); return n;
+    });
+    toast$("🛡 STREAK SHIELD ACQUIRED", "#9db4ff");
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
+  // Protect a missed scheduled day: streak survives, decay refunded.
+  const useShield = (tid, dk) => {
+    const task = data.tasks.find(t=>t.id===tid); if (!task) return;
+    if ((data.wallet.shields||0) < 1) { toast$("NO SHIELDS — BUY ONE IN THE SHOP","#ffc46b"); return; }
+    if (!isScheduledOn(task, dk) || isCompletedOn(task, dk) || (task.frozen||{})[dk]) return;
+    const processed = dk < data.lastDecayDate;         // decay already charged? refund it
+    const refund = processed ? (task.decayRate||0) : 0;
+    setData(cur=>{
+      const t2 = cur.tasks.map(t=> t.id!==tid ? t : {...t, frozen:{...(t.frozen||{}), [dk]:true}});
+      const cats = cur.categories.map(c=> c.id!==task.catId ? c
+        : {...c, value: Math.min(c.maxValue, c.value + refund)});
+      const n = {...cur, tasks:t2, categories:cats,
+        wallet:{...cur.wallet, shields:(cur.wallet.shields||0)-1}};
+      persistRaw(n); return n;
+    });
+    toast$("🛡 DAY SHIELDED — STREAK PROTECTED", "#9db4ff");
+    try { navigator.vibrate && navigator.vibrate([12,30,12]); } catch {}
   };
 
   // ── SHOP ────────────────────────────────────────────────────────────────────
@@ -2804,7 +2891,8 @@ export default function App() {
     <div style={C.app}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
-        @keyframes popIn { 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
+        @keyframes popIn { 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.08)}
+        @keyframes confettiFall { 0%{transform:translateY(-4vh) rotate(0deg)} 100%{transform:translateY(108vh) rotate(540deg)} } 100%{transform:scale(1);opacity:1} }
         @keyframes sparkle { 0%,100%{opacity:.4;transform:scale(.9)} 50%{opacity:1;transform:scale(1.15)} }
         @keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
         @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
@@ -2882,7 +2970,12 @@ export default function App() {
 
       {/* LEVEL-UP MODAL */}
       {showLevelUp && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div onClick={()=>setShowLevelUp(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+          {Array.from({length:18}).map((_,i)=>(
+            <div key={i} style={{position:"absolute",top:"-4%",left:`${(i*53)%100}%`,width:i%3?7:10,height:i%3?7:10,
+              borderRadius:i%2?"50%":2,background:[T.accent,"#ffd76b","#fff",GOOD][i%4],opacity:0.9,
+              animation:`confettiFall ${2.4+(i%5)*0.5}s linear ${(i%6)*0.25}s infinite`}}/>
+          ))}
           <div style={{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",border:`2px solid ${T.accent}`,borderRadius:30,
             padding:"32px 42px",textAlign:"center",boxShadow:`0 0 70px ${T.accent}88`,maxWidth:320,animation:"popIn .4s ease"}}>
             <div style={{fontSize:13,letterSpacing:3,color:T.accent,fontWeight:900,animation:"sparkle 1.2s infinite"}}>★ LEVEL UP ★</div>
@@ -2893,6 +2986,10 @@ export default function App() {
             <div style={{fontSize:19,color:T.accent,fontWeight:900,marginTop:2}}>{showLevelUp.name}</div>
             <div style={{fontSize:11,color:GOOD,marginTop:12,fontWeight:900,letterSpacing:1}}>UNLOCKED</div>
             <div style={{fontSize:14,color:DIM,marginTop:3,fontWeight:700}}>{showLevelUp.unlock}</div>
+            {showLevelUp.gems > 0 && (
+              <div style={{marginTop:14,fontSize:15,fontWeight:900,color:"#c084fc"}}>+{showLevelUp.gems} 💎</div>
+            )}
+            <div style={{fontSize:9,color:FAINT,fontWeight:800,marginTop:14}}>TAP ANYWHERE TO CONTINUE</div>
           </div>
         </div>
       )}
@@ -3269,6 +3366,26 @@ export default function App() {
                 onNext={()=>setCalCursor(c=>c.m===11?{y:c.y+1,m:0}:{y:c.y,m:c.m+1})}
                 onToggleDay={(dk)=>toggleDay(detailTask.id, dk)}/>
             </div>
+            {(()=>{
+              const y = new Date(); y.setDate(y.getDate()-1);
+              const yk = dateKey(y);
+              const missedYest = isScheduledOn(detailTask,yk) && !isCompletedOn(detailTask,yk) && !((detailTask.frozen||{})[yk]);
+              if (!missedYest) return null;
+              const owned = data.wallet.shields||0;
+              return (
+                <button onClick={()=> owned>0 ? useShield(detailTask.id, yk) : setView("shop") || setDetailTaskId(null)}
+                  style={{width:"100%",marginBottom:10,display:"flex",alignItems:"center",gap:11,background:"rgba(157,180,255,0.12)",
+                    border:"1.5px solid rgba(157,180,255,0.45)",borderRadius:15,padding:"12px 14px",cursor:"pointer",fontFamily:FONT,textAlign:"left"}}>
+                  <span style={{fontSize:18}}>🛡</span>
+                  <span style={{flex:1}}>
+                    <span style={{display:"block",fontSize:12.5,fontWeight:800,color:"#fff"}}>Yesterday was missed — shield it</span>
+                    <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>
+                      {owned>0 ? `Streak survives, decay refunded · ${owned} shield${owned>1?"s":""} owned` : "No shields owned — tap to visit the shop"}
+                    </span>
+                  </span>
+                </button>
+              );
+            })()}
             <div style={{display:"flex",gap:8}}>
               {getReps(detailTask,today)>0 && (
                 <button style={{...C.btnSm,flex:1,padding:"13px",color:BAD}}
@@ -3450,6 +3567,46 @@ export default function App() {
                         🔥 MOMENTUM — next quest pays x{COMBO_MULT[Math.min(2,(data.combo.count||0))]} coins
                       </div>
                     )}
+                  </div>
+                );
+              })()}
+              {(()=>{
+                const boss = bossForWeek(data, today);
+                if (!boss) return null;
+                const claimed = !!(data.bossClaims||{})[boss.wkStart];
+                const dead = boss.dmg >= boss.hp;
+                const hpLeft = boss.hp - boss.dmg;
+                const pct = (hpLeft/boss.hp)*100;
+                if (claimed) return (
+                  <div style={{...C.glass, marginBottom:11, padding:"10px 15px", display:"flex",alignItems:"center",gap:10, opacity:0.75}}>
+                    <span style={{fontSize:18,filter:"grayscale(1)"}}>{boss.icon}</span>
+                    <span style={{fontSize:11.5,fontWeight:800,color:DIM}}>{boss.name} slain this week</span>
+                    <span style={{marginLeft:"auto",fontSize:11,fontWeight:900,color:GOOD}}>✓</span>
+                  </div>
+                );
+                return (
+                  <div style={{...C.glass, border:`1.5px solid ${dead?"#34d39966":"#ef444455"}`, marginBottom:11, padding:"13px 15px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{fontSize:26,filter:dead?"grayscale(1)":"none",transform:dead?"rotate(90deg)":"none",transition:"all .4s"}}>{boss.icon}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1.5,color:"#ff8f5e"}}>WEEKLY BOSS</div>
+                        <div style={{fontSize:13.5,fontWeight:800,color:"#fff",marginTop:2}}>{boss.name}</div>
+                        <div style={{height:7,borderRadius:4,background:"rgba(0,0,0,0.35)",marginTop:8,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${pct}%`,borderRadius:4,background:"linear-gradient(90deg,#ef4444,#f87171)",transition:"width .4s"}}/>
+                        </div>
+                        <div style={{fontSize:8.5,fontWeight:800,color:DIM,marginTop:4}}>
+                          {dead ? "DEFEATED — every quest you completed was a strike" : `${hpLeft}/${boss.hp} HP — every completion this week deals 1 damage`}
+                        </div>
+                      </div>
+                      {dead ? (
+                        <button onClick={()=>claimBoss(boss.gems, boss.wkStart)} style={{...C.btn,padding:"11px 14px",fontSize:11,whiteSpace:"nowrap",animation:"glowPulse 1.6s ease-in-out infinite"}}>CLAIM +{boss.gems} 💎</button>
+                      ) : (
+                        <div style={{textAlign:"center",whiteSpace:"nowrap"}}>
+                          <div style={{fontSize:14,fontWeight:900,color:"#ff8f5e"}}>{boss.dmg}</div>
+                          <div style={{fontSize:8.5,fontWeight:800,color:DIM}}>DMG · +{boss.gems} 💎</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })()}
@@ -4810,6 +4967,16 @@ export default function App() {
             </div>
             <div style={{fontSize:10.5,color:DIM,fontWeight:700,marginBottom:10}}>
               🔥 Best perfect-day streak: <b style={{color:"#ffc46b"}}>{perfectStreak}</b> — some gear unlocks at higher streaks.
+            </div>
+            {/* STREAK SHIELD (consumable) */}
+            <div style={{...C.glass, border:"1.5px solid rgba(157,180,255,0.45)", marginBottom:12, padding:"13px 15px",
+              display:"flex",alignItems:"center",gap:12}}>
+              <div style={{fontSize:26}}>🛡</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>Streak Shield <span style={{fontSize:10,color:"#9db4ff",fontWeight:800}}>· owned: {data.wallet.shields||0}</span></div>
+                <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:2}}>Protect a missed day — streak survives, no decay. Use it from that quest's calendar.</div>
+              </div>
+              <button onClick={buyShield} style={{...C.btn,padding:"11px 13px",fontSize:11,whiteSpace:"nowrap"}}>{SHIELD_COST} 💎</button>
             </div>
             {/* Filter chips */}
             <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:10,WebkitOverflowScrolling:"touch"}}>
