@@ -522,7 +522,11 @@ function migrate(d) {
     combo: (d.combo && typeof d.combo === "object") ? { count:d.combo.count||0, lastAt:d.combo.lastAt||0 } : { count:0, lastAt:0 },
     challengeClaims: (d.challengeClaims && typeof d.challengeClaims === "object") ? d.challengeClaims : {},
     trophies: (d.trophies && typeof d.trophies === "object") ? d.trophies : {},
-    bossClaims: (d.bossClaims && typeof d.bossClaims === "object") ? d.bossClaims : {},
+    bossClaims: (()=>{ const src=(d.bossClaims && typeof d.bossClaims==="object")?d.bossClaims:{}; const out={};
+      const ids=["sloth","procrast","wraith","golem","hydra","fiend","fog","snooze"];
+      Object.entries(src).forEach(([wk,v])=>{ if (typeof v==="string") out[wk]=v;
+        else { const seed=String(wk).split("").reduce((x,c)=>x+c.charCodeAt(0),0); out[wk]=ids[seed%ids.length]; } });
+      return out; })(),
     flags: (d.flags && typeof d.flags === "object") ? d.flags : {},
     pomodoro: { ...DEFAULT_POMO, ...(d.pomodoro||{}), sessionsByDay: { ...((d.pomodoro||{}).sessionsByDay||{}) } },
     wallet: { ...DEFAULT_WALLET, ...(d.wallet||{}),
@@ -999,11 +1003,29 @@ const BOSSES = [
   { id:"fog",      name:"Fog of Excuses",     icon:"🌫️", desc:"A haze of perfectly reasonable excuses. Every completion burns a hole in it." },
   { id:"snooze",   name:"The Snooze King",    icon:"👑", desc:"He rules from a pillow throne and calls it rest. Every rep you log is treason." },
 ];
+function roman(n){const R=[[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];let o="";for(const[v,c]of R){while(n>=v){o+=c;n-=v;}}return o||"I";}
+// Strict rotation: every boss appears once before any repeats (index = week number mod roster)
+function bossWeekIndex(wkStart){ return Math.floor(Math.round(Date.parse(wkStart+"T00:00:00")/86400000)/7); }
+const bossAt = (wkStart) => BOSSES[((bossWeekIndex(wkStart) % BOSSES.length) + BOSSES.length) % BOSSES.length];
+// How many times this boss was slain BEFORE the given week → its generation number
+function bossGen(d, id, beforeWk){ return Object.entries(d.bossClaims||{}).filter(([wk,v])=>v===id && wk<beforeWk).length + 1; }
+function nextBosses(d, fromDay, n){
+  const out=[]; const cur=new Date(weekKeysFor(fromDay)[0]+"T00:00:00");
+  for(let k=1;k<=n;k++){ const m=new Date(cur); m.setDate(m.getDate()+7*k); const wk=dateKey(m);
+    const b=bossAt(wk); const g=bossGen(d,b.id,wk);
+    out.push({...b, wkStart:wk, title: g>1?`${b.name} ${roman(g)}`:b.name, when:`WEEK OF ${MONTHS[m.getMonth()].slice(0,3).toUpperCase()} ${m.getDate()}`});
+  } return out;
+}
+function nextAppearance(d, fromDay, id){
+  const cur=new Date(weekKeysFor(fromDay)[0]+"T00:00:00");
+  for(let k=1;k<=BOSSES.length;k++){ const m=new Date(cur); m.setDate(m.getDate()+7*k);
+    if (bossAt(dateKey(m)).id===id) return `${MONTHS[m.getMonth()].slice(0,3).toUpperCase()} ${m.getDate()}`; }
+  return "";
+}
 function bossForWeek(d, anyDay) {
   const wk = weekKeysFor(anyDay);
   const wkStart = wk[0];
-  const seed = wkStart.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
-  const b = BOSSES[seed % BOSSES.length];
+  const b = bossAt(wkStart);
   let E = 0;
   (d.tasks||[]).forEach(t=>{
     if (!t.catId) return;
@@ -1019,7 +1041,10 @@ function bossForWeek(d, anyDay) {
     if (isWeekly(t)) dmg += weeklyDone(t, wkStart);
     else wk.forEach(dk=>{ if (dk<=todayK && isScheduledOn(t,dk) && isCompletedOn(t,dk)) dmg++; });
   });
-  return { ...b, wkStart, hp, dmg: Math.min(dmg, hp), gems: Math.max(15, Math.round(hp*1.2)) };
+  const gen = bossGen(d, b.id, wkStart);
+  const xp = Math.min(0.5, 0.12 + hp*0.008);   // "significant" — boosts EVERY stat on a kill
+  return { ...b, wkStart, gen, title: gen>1 ? `${b.name} ${roman(gen)}` : b.name,
+    hp, dmg: Math.min(dmg, hp), gems: Math.max(15, Math.round(hp*1.2)), xp };
 }
 
 // ── TROPHIES (permanent achievements; claim once for gems) ───────────────────
@@ -2065,6 +2090,33 @@ export default function App() {
     prevLevelRef.current = lvl;
   }, [data?.categories]);
 
+  // ── BOSS SETTLEMENT: when the week turns, judge last week's boss ───────────
+  useEffect(() => {
+    if (!data) return;
+    const wk0 = new Date(weekKeysFor(dateKey())[0]+"T00:00:00"); wk0.setDate(wk0.getDate()-7);
+    const prevMon = dateKey(wk0);
+    if ((data.flags||{}).bossSettledWeek === prevMon) return;
+    // First run of this feature: initialize silently — judgments start NEXT week.
+    if ((data.flags||{}).bossSettledWeek === undefined) {
+      setData(cur=>{ const n={...cur, flags:{...(cur.flags||{}), bossSettledWeek:prevMon}}; persistRaw(n); return n; });
+      return;
+    }
+    const mark = (extra)=> setData(cur=>{ const n={...cur, ...(extra?extra(cur):{}), flags:{...(cur.flags||{}), bossSettledWeek:prevMon}}; persistRaw(n); return n; });
+    const prevBoss = bossForWeek(data, prevMon);
+    if (!prevBoss || (data.bossClaims||{})[prevMon]) { mark(); return; }
+    if (prevBoss.dmg >= prevBoss.hp) {
+      // slain but never claimed — grant the bounty automatically
+      mark(cur=>({ categories: cur.categories.map(c=>({...c, value:Math.min(c.maxValue, c.value+prevBoss.xp)})),
+        bossClaims: {...(cur.bossClaims||{}), [prevMon]: prevBoss.id},
+        wallet: {...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+prevBoss.gems} }));
+      toast$(`⚔ ${prevBoss.title.toUpperCase()} FELL LAST WEEK +${prevBoss.gems} 💎`, "#ff8f5e");
+    } else {
+      // it escaped — the XP is taken from you
+      mark(cur=>({ categories: cur.categories.map(c=>({...c, value:Math.max(0, c.value-prevBoss.xp)})) }));
+      toast$(`💀 ${prevBoss.title.toUpperCase()} ESCAPED — −${prevBoss.xp.toFixed(2)} XP ALL STATS`, "#ef4444");
+    }
+  }, [currentDay, data]);
+
   // ── POMODORO TICK ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!pomoRunning) return;
@@ -2510,6 +2562,10 @@ export default function App() {
     });
   };
 
+  const resetAllQuests = () => {
+    update({...data, tasks: data.tasks.map(t=>({...t, completions:{}, frozen:{}, createdAt: dateKey()}))});
+    toast$("ALL QUEST HISTORY RESET");
+  };
   const resetQuest = (id) => {
     update({...data, tasks:data.tasks.map(t=>t.id===id?{...t, completions:{}, createdAt: dateKey()}:t)});
     toast$("QUEST HISTORY RESET");
@@ -2524,11 +2580,12 @@ export default function App() {
     toast$(`CHALLENGE COMPLETE +${gems} 💎`, "#a78bfa");
     try { navigator.vibrate && navigator.vibrate([10,40,20]); } catch {}
   };
-  const claimBoss = (gems, wkStart) => {
-    setData(cur=>{ if ((cur.bossClaims||{})[wkStart]) return cur;
-      const n={...cur, bossClaims:{...(cur.bossClaims||{}), [wkStart]:true},
-      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+gems}}; persistRaw(n); return n; });
-    toast$(`⚔ BOSS SLAIN +${gems} 💎`, "#ff8f5e");
+  const claimBoss = (boss) => {
+    setData(cur=>{ if ((cur.bossClaims||{})[boss.wkStart]) return cur;
+      const cats = cur.categories.map(c=>({...c, value: Math.min(c.maxValue, c.value + boss.xp)}));
+      const n={...cur, categories:cats, bossClaims:{...(cur.bossClaims||{}), [boss.wkStart]:boss.id},
+      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+boss.gems}}; persistRaw(n); return n; });
+    toast$(`⚔ BOSS SLAIN +${boss.gems} 💎 · +${boss.xp.toFixed(2)} XP ALL STATS`, "#ff8f5e");
     try { navigator.vibrate && navigator.vibrate([20,50,20,50,40]); } catch {}
   };
   const claimTrophy = (t) => {
@@ -3289,7 +3346,8 @@ export default function App() {
             <div style={{fontSize:12,letterSpacing:2,color:BAD,fontWeight:900,textAlign:"center",marginBottom:14}}>
               {confirmBox.type==="reset" ? "⚠ RESET STATS" : confirmBox.type==="questReset" ? "⚠ RESET QUEST"
                 : confirmBox.type==="resetCoins" ? "⚠ RESET COINS" : confirmBox.type==="resetGems" ? "⚠ RESET GEMS"
-                : confirmBox.type==="resetCosmetics" ? "⚠ RESET COSMETICS" : "⚠ CONFIRM DELETE"}
+                : confirmBox.type==="resetCosmetics" ? "⚠ RESET COSMETICS"
+                : confirmBox.type==="resetAllQuests" ? "⚠ RESET ALL QUESTS" : "⚠ CONFIRM DELETE"}
             </div>
             <div style={{fontSize:14.5,color:"#fff",textAlign:"center",marginBottom:10,lineHeight:1.5,fontWeight:600}}>
               {confirmBox.type==="reset"
@@ -3300,6 +3358,8 @@ export default function App() {
                 ? <>Set your coin (gold) balance back to <span style={{color:"#fcd34d",fontWeight:900}}>zero</span>?</>
                 : confirmBox.type==="resetGems"
                 ? <>Set your gem balance back to <span style={{color:"#67e8f9",fontWeight:900}}>zero</span>?</>
+                : confirmBox.type==="resetAllQuests"
+                ? <>Wipe the history, streaks, and shields of <span style={{color:BAD,fontWeight:900}}>every quest</span> and start them all fresh from today? Your character's stats, coins, and gems are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="resetCosmetics"
                 ? <>Unequip and <span style={{color:BAD,fontWeight:900}}>permanently clear</span> every cosmetic you own? You'll have to re-earn them.</>
                 : <>Are you sure you want to delete <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span>?</>}
@@ -3321,9 +3381,10 @@ export default function App() {
                   else if (confirmBox.type==="resetCoins") resetCoins();
                   else if (confirmBox.type==="resetGems") resetGems();
                   else if (confirmBox.type==="resetCosmetics") resetCosmetics();
+                  else if (confirmBox.type==="resetAllQuests") resetAllQuests();
                   setConfirmBox(null);
                 }}>
-                {["reset","questReset","resetCoins","resetGems","resetCosmetics"].includes(confirmBox.type) ? "RESET" : "DELETE"}
+                {["reset","questReset","resetCoins","resetGems","resetCosmetics","resetAllQuests"].includes(confirmBox.type) ? "RESET" : "DELETE"}
               </button>
             </div>
           </div>
@@ -3871,7 +3932,7 @@ export default function App() {
                     <span style={{fontSize:19,filter:(dead||claimed)?"grayscale(1)":"none"}}>{boss.icon}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:11.5,fontWeight:900,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                        {boss.name} {claimed && <span style={{color:GOOD}}>· slain ✓</span>}{!claimed && dead && <span style={{color:GOOD}}>· defeated — claim!</span>}
+                        {boss.title} {claimed && <span style={{color:GOOD}}>· slain ✓</span>}{!claimed && dead && <span style={{color:GOOD}}>· defeated — claim!</span>}
                       </div>
                       {!claimed && (
                         <div style={{height:5,borderRadius:3,background:"rgba(0,0,0,0.35)",marginTop:5,overflow:"hidden"}}>
@@ -4588,7 +4649,8 @@ export default function App() {
                 </div>
                 <div style={{padding:"14px 17px 17px"}}>
                   <div style={{fontSize:9,fontWeight:900,letterSpacing:2,color:"#ff8f5e"}}>WEEKLY BOSS</div>
-                  <div style={{fontSize:21,fontWeight:900,color:"#fff",marginTop:3}}>{boss.name}</div>
+                  <div style={{fontSize:21,fontWeight:900,color:"#fff",marginTop:3}}>{boss.title}</div>
+                  {boss.gen>1 && <div style={{fontSize:9,fontWeight:800,color:"#ff8f5e",marginTop:2}}>💀 You've slain this line {boss.gen-1} time{boss.gen>2?"s":""} — it returns stronger in name only.</div>}
                   <div style={{fontSize:12,color:DIM,fontWeight:600,lineHeight:1.55,marginTop:7}}>{boss.desc}</div>
 
                   {claimed ? (
@@ -4612,7 +4674,8 @@ export default function App() {
                           <div style={{fontSize:8,fontWeight:800,color:FAINT}}>DAMAGE DEALT</div>
                         </div>
                         <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:13,padding:"10px 0",textAlign:"center"}}>
-                          <div style={{fontSize:16,fontWeight:900,color:"#c084fc"}}>+{boss.gems} 💎</div>
+                          <div style={{fontSize:14,fontWeight:900,color:"#c084fc"}}>+{boss.gems} 💎</div>
+                          <div style={{fontSize:9.5,fontWeight:900,color:GOOD,marginTop:1}}>+{boss.xp.toFixed(2)} XP</div>
                           <div style={{fontSize:8,fontWeight:800,color:FAINT}}>BOUNTY</div>
                         </div>
                         <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:13,padding:"10px 0",textAlign:"center"}}>
@@ -4621,19 +4684,66 @@ export default function App() {
                         </div>
                       </div>
                       {dead ? (
-                        <button onClick={()=>claimBoss(boss.gems, boss.wkStart)}
+                        <button onClick={()=>claimBoss(boss)}
                           style={{...C.btn,width:"100%",padding:"15px",marginTop:14,fontSize:13,animation:"glowPulse 1.6s ease-in-out infinite"}}>
                           ⚔ CLAIM BOUNTY +{boss.gems} 💎
                         </button>
                       ) : (
                         <div style={{fontSize:9.5,color:FAINT,fontWeight:700,textAlign:"center",marginTop:13,lineHeight:1.5}}>
-                          EVERY QUEST COMPLETION & WEEKLY REP THIS WEEK DEALS 1 DAMAGE.<br/>THE BOSS SCALES TO YOUR WEEK — SLAY IT BY SUNDAY.
+                          EVERY QUEST COMPLETION & WEEKLY REP THIS WEEK DEALS 1 DAMAGE.<br/>SLAY IT BY SUNDAY MIDNIGHT — <span style={{color:"#ef8f8f"}}>IF IT ESCAPES, IT TAKES {boss.xp.toFixed(2)} XP FROM EVERY STAT.</span>
                         </div>
                       )}
                     </>
                   )}
                 </div>
               </div>
+
+              {/* UP NEXT — the rotation guarantees every boss appears before any repeats */}
+              <div style={{...C.sectionTitle, fontSize:14, margin:"18px 2px 10px"}}>Up Next</div>
+              <div style={{display:"flex",gap:8,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:4}}>
+                {nextBosses(data, today, 4).map(nb=>(
+                  <div key={nb.wkStart} style={{...C.glass,flexShrink:0,padding:"10px 13px",marginBottom:0,display:"flex",alignItems:"center",gap:9}}>
+                    <span style={{fontSize:17}}>{nb.icon}</span>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:900,color:"#fff",whiteSpace:"nowrap"}}>{nb.title}</div>
+                      <div style={{fontSize:8,fontWeight:800,color:FAINT,whiteSpace:"nowrap",marginTop:1}}>{nb.when}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* BESTIARY — every boss, its lore, and your kill tally */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"16px 2px 10px"}}>
+                <div style={{...C.sectionTitle, fontSize:14}}>Bestiary</div>
+                <div style={{fontSize:9.5,fontWeight:800,color:FAINT}}>💀 = ONE KILL</div>
+              </div>
+              {BOSSES.map(b=>{
+                const kills = Object.values(data.bossClaims||{}).filter(v=>v===b.id).length;
+                const isCurrent = b.id===boss.id;
+                return (
+                  <div key={b.id} style={{...C.glass, padding:0, overflow:"hidden", marginBottom:10,
+                    border: isCurrent ? "1.5px solid #ff8f5e66" : `1px solid ${LINE}`}}>
+                    <div style={{display:"flex",alignItems:"center"}}>
+                      <div style={{width:120,flexShrink:0, filter: kills>0||isCurrent ? "none" : "saturate(0.45) brightness(0.85)"}}>
+                        <BossArt id={b.id}/>
+                      </div>
+                      <div style={{flex:1,minWidth:0,padding:"12px 14px 12px 4px"}}>
+                        <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>
+                          {kills>0 ? `${b.name} ${roman(kills+1)}` : b.name}
+                          {isCurrent && <span style={{fontSize:8.5,fontWeight:900,color:"#ff8f5e",marginLeft:6,letterSpacing:1}}>· NOW</span>}
+                        </div>
+                        <div style={{fontSize:10.5,color:DIM,fontWeight:600,lineHeight:1.5,marginTop:4}}>{b.desc}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
+                          <div style={{fontSize:11,fontWeight:900,color: kills>0 ? "#ff8f5e" : FAINT,letterSpacing:1}}>
+                            {kills>0 ? ("💀".repeat(Math.min(kills,5)) + (kills>5 ? ` ×${kills}` : "")) : "NOT YET SLAIN"}
+                          </div>
+                          {!isCurrent && <div style={{fontSize:8,fontWeight:800,color:FAINT,marginLeft:"auto",whiteSpace:"nowrap"}}>RETURNS {nextAppearance(data, today, b.id)}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           );
         })()}
@@ -5155,6 +5265,10 @@ export default function App() {
               <button style={{...C.btnSm,width:"100%",padding:"14px",color:BAD,marginBottom:8}}
                 onClick={()=>setConfirmBox({type:"reset"})}>
                 ↺ RESET STATS (KEEPS QUESTS & HISTORY)
+              </button>
+              <button style={{...C.btnSm,width:"100%",padding:"12px",color:BAD,marginBottom:8}}
+                onClick={()=>setConfirmBox({type:"resetAllQuests"})}>
+                ↺ RESET ALL QUESTS (WIPES EVERY STREAK & HISTORY)
               </button>
               <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#fcd34d",marginBottom:8}}
                 onClick={()=>setConfirmBox({type:"resetCoins"})}>
