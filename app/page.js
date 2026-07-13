@@ -715,70 +715,54 @@ function bossArtSVG(id) {
   const close = `</svg>`;
 
   if (id==="sloth") {
-    // Sloth Behemoth — a heavy fur mountain with drooping arms and mossy back
     return open(`
-      <radialGradient id="sl_b" cx="50%" cy="40%" r="65%"><stop offset="0%" stop-color="#7a6a52"/><stop offset="100%" stop-color="#4a3f30"/></radialGradient>
-      <linearGradient id="sl_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6b5c46"/><stop offset="100%" stop-color="#3c3325"/></linearGradient>`)+
-      `<ellipse cx="190" cy="272" rx="150" ry="18" fill="#000" opacity="0.35"/>`+
-      // body mound
-      `<path d="M60 262 C 55 150 120 70 190 70 C 260 70 325 150 320 262 Z" fill="url(#sl_b)"/>`+
-      // fur ridges
-      `<path d="M75 240 Q 100 210 92 175" stroke="#3c3325" stroke-width="7" fill="none" stroke-linecap="round" opacity="0.6"/>`+
-      `<path d="M305 240 Q 280 210 288 175" stroke="#3c3325" stroke-width="7" fill="none" stroke-linecap="round" opacity="0.6"/>`+
-      `<path d="M140 258 Q 150 220 143 190" stroke="#3c3325" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.45"/>`+
-      `<path d="M240 258 Q 230 220 237 190" stroke="#3c3325" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.45"/>`+
-      // moss patches
-      `<ellipse cx="130" cy="110" rx="26" ry="12" fill="#5d7a42" opacity="0.8" transform="rotate(-18 130 110)"/>`+
-      `<ellipse cx="252" cy="98" rx="20" ry="9" fill="#6d8a4b" opacity="0.75" transform="rotate(14 252 98)"/>`+
-      `<ellipse cx="200" cy="82" rx="13" ry="6" fill="#7d9a55" opacity="0.7"/>`+
-      // face plate
-      `<ellipse cx="190" cy="160" rx="72" ry="58" fill="#8d7d63"/>`+
-      // heavy eyelids over eyes
-      `<ellipse cx="163" cy="150" rx="18" ry="12" fill="#f2e7cf"/><ellipse cx="217" cy="150" rx="18" ry="12" fill="#f2e7cf"/>`+
-      `<circle cx="165" cy="154" r="6" fill="#2a2318"/><circle cx="215" cy="154" r="6" fill="#2a2318"/>`+
-      `<path d="M144 141 A 19 13 0 0 1 182 141 L 182 148 A 19 10 0 0 0 144 148 Z" fill="#6b5c46"/>`+
-      `<path d="M198 141 A 19 13 0 0 1 236 141 L 236 148 A 19 10 0 0 0 198 148 Z" fill="#6b5c46"/>`+
-      // snout
-      `<ellipse cx="190" cy="185" rx="26" ry="16" fill="#a99a7d"/>`+
-      `<ellipse cx="190" cy="180" rx="8" ry="5" fill="#3c3325"/>`+
-      `<path d="M176 194 Q 190 200 204 194" stroke="#3c3325" stroke-width="4" fill="none" stroke-linecap="round"/>`+
-      // drooping arms with claws
-      `<path d="M92 200 C 60 220 52 252 58 268" stroke="url(#sl_a)" stroke-width="26" fill="none" stroke-linecap="round"/>`+
-      `<path d="M288 200 C 320 220 328 252 322 268" stroke="url(#sl_a)" stroke-width="26" fill="none" stroke-linecap="round"/>`+
-      `<path d="M50 266 l-8 12 M60 268 l-3 14 M70 266 l3 13" stroke="#d8ccb2" stroke-width="5" stroke-linecap="round"/>`+
-      `<path d="M330 266 l8 12 M320 268 l3 14 M310 266 l-3 13" stroke="#d8ccb2" stroke-width="5" stroke-linecap="round"/>`+close;
+      <linearGradient id="sl_b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5c4c36"/><stop offset="100%" stop-color="#241c11"/></linearGradient>
+      <linearGradient id="sl_f" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6d5b41"/><stop offset="100%" stop-color="#33291a"/></linearGradient>
+      <radialGradient id="sl_e" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffd27a"/><stop offset="55%" stop-color="#ff8c1e"/><stop offset="100%" stop-color="#8a2c00"/></radialGradient>`)+
+      `<ellipse cx="190" cy="276" rx="158" ry="16" fill="#000" opacity="0.45"/>`+
+      `<path d="M46 268 C 40 200 58 140 96 104 L 88 84 L 112 92 L 112 70 L 134 84 L 142 58 L 162 78 L 182 50 L 200 76 L 224 56 L 232 82 L 258 68 L 260 92 L 286 86 L 276 108 C 314 146 328 204 334 268 Z" fill="url(#sl_b)"/>`+
+      `<path d="M84 236 Q 104 196 96 156" stroke="#1d160d" stroke-width="8" fill="none" stroke-linecap="round" opacity="0.7"/>`+
+      `<path d="M296 232 Q 276 196 284 158" stroke="#1d160d" stroke-width="8" fill="none" stroke-linecap="round" opacity="0.7"/>`+
+      `<path d="M150 262 Q 158 228 150 196 M 230 262 Q 222 228 230 196" stroke="#1d160d" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.55"/>`+
+      `<ellipse cx="122" cy="118" rx="24" ry="9" fill="#44601f" opacity="0.85" transform="rotate(-20 122 118)"/>`+
+      `<ellipse cx="262" cy="106" rx="18" ry="7" fill="#52702a" opacity="0.8" transform="rotate(16 262 106)"/>`+
+      `<path d="M124 210 C 118 156 146 126 190 126 C 234 126 262 156 256 210 C 240 232 140 232 124 210 Z" fill="url(#sl_f)"/>`+
+      `<path d="M128 158 C 156 138 224 138 252 158 L 246 176 C 220 160 160 160 134 176 Z" fill="#171008"/>`+
+      `<path d="M146 176 L 182 168 L 182 182 L 148 186 Z" fill="#0a0603"/>`+
+      `<path d="M234 176 L 198 168 L 198 182 L 232 186 Z" fill="#0a0603"/>`+
+      `<ellipse cx="166" cy="177" rx="14" ry="6" fill="url(#sl_e)" transform="rotate(-8 166 177)"/>`+
+      `<ellipse cx="214" cy="177" rx="14" ry="6" fill="url(#sl_e)" transform="rotate(8 214 177)"/>`+
+      `<path d="M158 200 l 26 10 M 172 198 l -4 14" stroke="#8a7458" stroke-width="4" stroke-linecap="round" opacity="0.8"/>`+
+      `<path d="M146 214 C 160 232 220 232 234 214 L 232 228 C 216 242 164 242 148 228 Z" fill="#2a2013"/>`+
+      `<path d="M156 222 L 150 200 L 166 216 Z" fill="#e8dcc2"/>`+
+      `<path d="M224 222 L 230 200 L 214 216 Z" fill="#e8dcc2"/>`+
+      `<path d="M176 226 l 3 -8 l 4 8 M 196 226 l 3 -8 l 4 8" stroke="#e8dcc2" stroke-width="3.5" fill="none" stroke-linecap="round"/>`+
+      `<path d="M96 196 C 66 214 56 244 62 266 L 118 266 C 122 240 118 216 108 200 Z" fill="url(#sl_b)"/>`+
+      `<path d="M284 196 C 314 214 324 244 318 266 L 262 266 C 258 240 262 216 272 200 Z" fill="url(#sl_b)"/>`+
+      `<path d="M62 266 C 52 274 46 284 46 292 M 78 268 C 74 280 74 290 76 296 M 96 268 C 96 280 98 290 102 296 M 114 266 C 118 278 122 286 128 292" stroke="#e8dcc2" stroke-width="7" fill="none" stroke-linecap="round"/>`+
+      `<path d="M318 266 C 328 274 334 284 334 292 M 302 268 C 306 280 306 290 304 296 M 284 268 C 284 280 282 290 278 296 M 266 266 C 262 278 258 286 252 292" stroke="#e8dcc2" stroke-width="7" fill="none" stroke-linecap="round"/>`+close;
   }
 
   if (id==="procrast") {
-    // The Procrastinator — crimson imp lounging with an hourglass, clock ring behind
     return open(`
       <radialGradient id="pr_c" cx="50%" cy="45%" r="60%"><stop offset="0%" stop-color="#d24a3a"/><stop offset="100%" stop-color="#7a1f1c"/></radialGradient>
       <linearGradient id="pr_g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffd98a"/><stop offset="100%" stop-color="#c9902e"/></linearGradient>`)+
-      // clock ring
       `<circle cx="190" cy="140" r="112" fill="none" stroke="#c9902e" stroke-width="5" opacity="0.35"/>`+
       Array.from({length:12},(_,i)=>{const a=i*Math.PI/6;const x=190+Math.sin(a)*112,y=140-Math.cos(a)*112;return `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="4" fill="#c9902e" opacity="0.5"/>`;}).join("")+
       `<ellipse cx="190" cy="272" rx="120" ry="16" fill="#000" opacity="0.35"/>`+
-      // crossed legs
       `<path d="M130 250 Q 190 218 250 250 Q 226 268 190 266 Q 154 268 130 250 Z" fill="#8f2a22"/>`+
-      // torso
       `<path d="M150 250 C 140 190 158 150 190 148 C 222 150 240 190 230 250 Z" fill="url(#pr_c)"/>`+
       `<ellipse cx="190" cy="212" rx="26" ry="30" fill="#e8b06a" opacity="0.9"/>`+
-      // head
       `<circle cx="190" cy="120" r="42" fill="url(#pr_c)"/>`+
-      // curled horns
       `<path d="M156 92 C 138 76 136 54 152 44 C 146 62 154 74 166 82 Z" fill="#5a1512"/>`+
       `<path d="M224 92 C 242 76 244 54 228 44 C 234 62 226 74 214 82 Z" fill="#5a1512"/>`+
-      // sly eyes + grin
       `<path d="M164 112 q 12 -8 24 0" stroke="#2a0c0a" stroke-width="5" fill="none" stroke-linecap="round"/>`+
-      `<path d="M216 112 q -12 -8 -24 0" stroke="#2a0c0a" stroke-width="0" fill="none"/>`+
       `<circle cx="172" cy="118" r="6" fill="#ffd98a"/><circle cx="208" cy="118" r="6" fill="#ffd98a"/>`+
       `<circle cx="172" cy="118" r="3" fill="#2a0c0a"/><circle cx="208" cy="118" r="3" fill="#2a0c0a"/>`+
       `<path d="M198 106 q 12 -8 22 -2" stroke="#2a0c0a" stroke-width="5" fill="none" stroke-linecap="round"/>`+
       `<path d="M168 138 Q 190 152 214 134" stroke="#2a0c0a" stroke-width="5" fill="none" stroke-linecap="round"/>`+
       `<path d="M206 139 l 2 8" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`+
-      // arm holding hourglass
       `<path d="M228 180 C 258 172 274 190 272 208" stroke="#8f2a22" stroke-width="18" fill="none" stroke-linecap="round"/>`+
-      // hourglass
       `<g transform="translate(272,208)">
         <rect x="-26" y="-4" width="52" height="8" rx="4" fill="#6b4a1c"/>
         <rect x="-26" y="56" width="52" height="8" rx="4" fill="#6b4a1c"/>
@@ -787,132 +771,109 @@ function bossArtSVG(id) {
         <path d="M-12 52 L 12 52 L 6 44 L -6 44 Z" fill="url(#pr_g)"/>
         <rect x="-1.5" y="28" width="3" height="16" fill="url(#pr_g)"/>
       </g>`+
-      // tail
       `<path d="M150 250 C 110 246 92 220 100 198" stroke="#8f2a22" stroke-width="12" fill="none" stroke-linecap="round"/>`+
       `<path d="M100 198 l -12 -4 l 10 -10 z" fill="#8f2a22"/>`+close;
   }
 
   if (id==="wraith") {
-    // Doubt Wraith — hooded specter with hollow glow eyes and trailing wisps
     return open(`
-      <linearGradient id="wr_b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#cfd6e6"/><stop offset="60%" stop-color="#7d879e"/><stop offset="100%" stop-color="#7d879e00"/></linearGradient>
-      <radialGradient id="wr_e" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#bfe0ff"/><stop offset="100%" stop-color="#3b6ea8"/></radialGradient>`)+
-      `<ellipse cx="190" cy="276" rx="110" ry="12" fill="#000" opacity="0.25"/>`+
-      // aura swirls
-      `<path d="M84 210 q -26 -30 4 -58" stroke="#8fa8cf" stroke-width="5" fill="none" opacity="0.4" stroke-linecap="round"/>`+
-      `<path d="M298 202 q 28 -26 2 -56" stroke="#8fa8cf" stroke-width="5" fill="none" opacity="0.4" stroke-linecap="round"/>`+
-      `<path d="M120 84 q 8 -22 32 -22" stroke="#8fa8cf" stroke-width="4" fill="none" opacity="0.35" stroke-linecap="round"/>`+
-      // robe body with tattered bottom
-      `<path d="M190 44 C 128 44 110 110 116 168 C 120 206 112 232 104 252 L 128 238 L 142 262 L 160 240 L 176 268 L 190 244 L 204 268 L 220 240 L 238 262 L 252 238 L 276 252 C 268 232 260 206 264 168 C 270 110 252 44 190 44 Z" fill="url(#wr_b)"/>`+
-      // hood cavity
-      `<path d="M190 66 C 156 66 142 96 146 126 C 150 152 168 164 190 164 C 212 164 230 152 234 126 C 238 96 224 66 190 66 Z" fill="#171b26"/>`+
-      // hollow eyes
-      `<ellipse cx="172" cy="122" rx="11" ry="15" fill="url(#wr_e)"/>`+
-      `<ellipse cx="208" cy="122" rx="11" ry="15" fill="url(#wr_e)"/>`+
-      `<ellipse cx="172" cy="122" rx="4" ry="7" fill="#eaf6ff"/>`+
-      `<ellipse cx="208" cy="122" rx="4" ry="7" fill="#eaf6ff"/>`+
-      // drooping sleeves / hands
-      `<path d="M128 150 C 96 168 88 198 96 222 C 104 206 116 196 132 192 Z" fill="#a9b4c9"/>`+
-      `<path d="M252 150 C 284 168 292 198 284 222 C 276 206 264 196 248 192 Z" fill="#a9b4c9"/>`+
-      // trailing wisps
-      `<path d="M150 262 q -8 18 -24 22" stroke="#9fb0cc" stroke-width="5" fill="none" opacity="0.55" stroke-linecap="round"/>`+
-      `<path d="M232 262 q 8 18 24 22" stroke="#9fb0cc" stroke-width="5" fill="none" opacity="0.55" stroke-linecap="round"/>`+close;
+      <linearGradient id="wr_b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#aeb8cf"/><stop offset="55%" stop-color="#5b6478"/><stop offset="100%" stop-color="#5b647800"/></linearGradient>
+      <radialGradient id="wr_e" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#e8fbff"/><stop offset="45%" stop-color="#6fd0ff"/><stop offset="100%" stop-color="#1c4f8a"/></radialGradient>`)+
+      `<ellipse cx="190" cy="280" rx="120" ry="10" fill="#000" opacity="0.3"/>`+
+      `<path d="M92 96 l 10 5 l -7 9 z M 296 120 l -11 4 l 6 10 z M 300 60 l -9 7 l 10 5 z M 76 180 l 9 -6 l 3 11 z" fill="#7d9cc9" opacity="0.75"/>`+
+      `<path d="M190 26 L 206 44 L 226 40 L 232 62 C 258 86 266 128 262 168 C 258 204 266 234 276 258 L 254 246 L 246 274 L 228 248 L 216 282 L 202 250 L 190 284 L 178 250 L 164 282 L 152 248 L 134 274 L 126 246 L 104 258 C 114 234 122 204 118 168 C 114 128 122 86 148 62 L 154 40 L 174 44 Z" fill="url(#wr_b)"/>`+
+      `<path d="M154 44 C 132 66 122 100 122 134" stroke="#dfe9fb" stroke-width="3" fill="none" opacity="0.5"/>`+
+      `<path d="M190 58 C 154 58 140 92 144 126 C 148 156 166 172 190 172 C 214 172 232 156 236 126 C 240 92 226 58 190 58 Z" fill="#0b0e16"/>`+
+      `<path d="M152 118 L 184 106 L 184 122 L 154 128 Z" fill="url(#wr_e)"/>`+
+      `<path d="M228 118 L 196 106 L 196 122 L 226 128 Z" fill="url(#wr_e)"/>`+
+      `<path d="M160 118 L 178 111 M 220 118 L 202 111" stroke="#eafaff" stroke-width="3" stroke-linecap="round" opacity="0.9"/>`+
+      `<path d="M172 148 l 8 6 l 8 -6 l 8 6 l 8 -6" stroke="#3c6ea8" stroke-width="3.5" fill="none" opacity="0.6" stroke-linecap="round"/>`+
+      `<path d="M124 148 C 96 150 78 168 74 192 M 74 192 C 66 186 60 178 58 170 M 74 192 C 68 194 60 194 54 190 M 74 192 C 74 200 78 208 84 212" stroke="#8b98b4" stroke-width="9" fill="none" stroke-linecap="round"/>`+
+      `<path d="M256 148 C 284 150 302 168 306 192 M 306 192 C 314 186 320 178 322 170 M 306 192 C 312 194 320 194 326 190 M 306 192 C 306 200 302 208 296 212" stroke="#8b98b4" stroke-width="9" fill="none" stroke-linecap="round"/>`+
+      `<path d="M150 270 q -14 16 -34 18 M 230 270 q 14 16 34 18" stroke="#7d8aa8" stroke-width="5" fill="none" opacity="0.5" stroke-linecap="round"/>`+close;
   }
 
   if (id==="golem") {
-    // Inertia Golem — cracked stone giant, mossy, dim eyes, seated and immovable
     return open(`
-      <linearGradient id="go_s" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8b8f96"/><stop offset="100%" stop-color="#4c5057"/></linearGradient>
-      <linearGradient id="go_d" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6a6e76"/><stop offset="100%" stop-color="#3a3d43"/></linearGradient>`)+
-      `<ellipse cx="190" cy="274" rx="150" ry="16" fill="#000" opacity="0.35"/>`+
-      // legs as slabs
-      `<rect x="106" y="212" width="62" height="58" rx="14" fill="url(#go_d)"/>`+
-      `<rect x="212" y="212" width="62" height="58" rx="14" fill="url(#go_d)"/>`+
-      // torso block
-      `<path d="M120 226 L 112 120 Q 112 96 138 92 L 242 92 Q 268 96 268 120 L 260 226 Z" fill="url(#go_s)"/>`+
-      // chest crack
-      `<path d="M190 100 l -8 26 l 14 12 l -10 24 l 16 14 l -8 26" stroke="#2b2e33" stroke-width="6" fill="none" stroke-linecap="round"/>`+
-      `<path d="M136 130 l 14 10 M252 150 l -16 8" stroke="#2b2e33" stroke-width="5" stroke-linecap="round"/>`+
-      // shoulders / arms hanging like boulders
-      `<circle cx="104" cy="126" r="34" fill="url(#go_d)"/>`+
-      `<circle cx="276" cy="126" r="34" fill="url(#go_d)"/>`+
-      `<path d="M96 152 C 84 190 88 224 100 244" stroke="url(#go_d)" stroke-width="30" fill="none" stroke-linecap="round"/>`+
-      `<path d="M284 152 C 296 190 292 224 280 244" stroke="url(#go_d)" stroke-width="30" fill="none" stroke-linecap="round"/>`+
-      // head
-      `<path d="M156 92 L 158 52 Q 160 36 178 34 L 202 34 Q 220 36 222 52 L 224 92 Z" fill="url(#go_s)"/>`+
-      // dim eyes
-      `<rect x="168" y="56" width="16" height="8" rx="4" fill="#ffcf6b" opacity="0.85"/>`+
-      `<rect x="196" y="56" width="16" height="8" rx="4" fill="#ffcf6b" opacity="0.85"/>`+
-      `<path d="M172 78 L 208 78" stroke="#2b2e33" stroke-width="5" stroke-linecap="round"/>`+
-      // moss
-      `<ellipse cx="140" cy="96" rx="20" ry="7" fill="#5d7a42" opacity="0.85"/>`+
-      `<ellipse cx="246" cy="110" rx="14" ry="6" fill="#6d8a4b" opacity="0.8"/>`+
-      `<ellipse cx="118" cy="216" rx="12" ry="5" fill="#5d7a42" opacity="0.7"/>`+
-      // small weed growing from shoulder
-      `<path d="M270 100 q 2 -14 12 -18 M276 100 q 6 -8 14 -8" stroke="#7d9a55" stroke-width="4" fill="none" stroke-linecap="round"/>`+close;
+      <linearGradient id="go_s" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#767b84"/><stop offset="100%" stop-color="#33363c"/></linearGradient>
+      <linearGradient id="go_d" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#565b63"/><stop offset="100%" stop-color="#24262b"/></linearGradient>
+      <linearGradient id="go_m" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffb64a"/><stop offset="100%" stop-color="#d43a12"/></linearGradient>
+      <radialGradient id="go_e" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffd27a"/><stop offset="100%" stop-color="#c93a08"/></radialGradient>`)+
+      `<ellipse cx="190" cy="276" rx="160" ry="16" fill="#000" opacity="0.45"/>`+
+      `<path d="M58 268 C 50 232 62 204 88 198 C 112 194 126 212 126 238 L 122 268 Z" fill="url(#go_d)"/>`+
+      `<path d="M322 268 C 330 232 318 204 292 198 C 268 194 254 212 254 238 L 258 268 Z" fill="url(#go_d)"/>`+
+      `<path d="M70 238 l 40 -4 M 74 254 l 40 -2 M 310 238 l -40 -4 M 306 254 l -40 -2" stroke="#1b1d21" stroke-width="5" stroke-linecap="round"/>`+
+      `<path d="M112 250 L 104 128 Q 104 98 138 92 L 242 92 Q 276 98 276 128 L 268 250 Z" fill="url(#go_s)"/>`+
+      `<path d="M192 96 l -12 30 l 18 14 l -14 28 l 20 16 l -12 30" stroke="url(#go_m)" stroke-width="9" fill="none" stroke-linecap="round"/>`+
+      `<path d="M192 96 l -12 30 l 18 14 l -14 28 l 20 16 l -12 30" stroke="#ffe9b0" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>`+
+      `<path d="M180 126 l -26 -6 M 198 140 l 26 -10 M 184 168 l -30 4 M 204 184 l 28 8" stroke="url(#go_m)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.9"/>`+
+      `<path d="M136 122 l 12 8 M 250 148 l -14 6 M 130 200 l 16 2" stroke="#1b1d21" stroke-width="5" stroke-linecap="round"/>`+
+      `<circle cx="96" cy="130" r="38" fill="url(#go_d)"/>`+
+      `<circle cx="284" cy="130" r="38" fill="url(#go_d)"/>`+
+      `<path d="M78 116 l 24 10 M 268 112 l 20 16" stroke="#1b1d21" stroke-width="5" stroke-linecap="round"/>`+
+      `<path d="M150 96 L 152 46 Q 154 30 174 28 L 206 28 Q 226 30 228 46 L 230 96 Z" fill="url(#go_s)"/>`+
+      `<path d="M146 52 L 234 52 L 230 70 L 150 70 Z" fill="#17181c"/>`+
+      `<path d="M158 66 L 186 62 L 186 74 L 160 76 Z" fill="url(#go_e)"/>`+
+      `<path d="M222 66 L 194 62 L 194 74 L 220 76 Z" fill="url(#go_e)"/>`+
+      `<path d="M166 84 L 214 84 M 178 84 l -3 7 M 200 84 l 3 7" stroke="#17181c" stroke-width="5" stroke-linecap="round"/>`+
+      `<ellipse cx="140" cy="98" rx="16" ry="6" fill="#4a5a2c" opacity="0.7"/>`+
+      `<ellipse cx="252" cy="118" rx="11" ry="5" fill="#4a5a2c" opacity="0.6"/>`+close;
   }
 
   if (id==="hydra") {
-    // Distraction Hydra — three serpent heads looking in different directions
     return open(`
-      <linearGradient id="hy_g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3fae7a"/><stop offset="100%" stop-color="#1c5f45"/></linearGradient>
-      <linearGradient id="hy_p" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7a5fd0"/><stop offset="100%" stop-color="#45348a"/></linearGradient>
-      <linearGradient id="hy_o" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e88a3a"/><stop offset="100%" stop-color="#a4531c"/></linearGradient>`)+
-      `<ellipse cx="190" cy="272" rx="140" ry="16" fill="#000" opacity="0.35"/>`+
-      // body
-      `<path d="M110 268 C 104 210 140 186 190 186 C 240 186 276 210 270 268 Z" fill="url(#hy_g)"/>`+
-      `<path d="M132 250 q 58 -22 118 0" stroke="#154a36" stroke-width="6" fill="none" opacity="0.6"/>`+
-      // LEFT neck+head (green, looks left)
-      `<path d="M150 196 C 118 168 102 130 116 96" stroke="url(#hy_g)" stroke-width="24" fill="none" stroke-linecap="round"/>`+
-      `<g transform="translate(112,88) rotate(-18)">
-        <ellipse cx="0" cy="0" rx="30" ry="20" fill="url(#hy_g)"/>
-        <circle cx="-8" cy="-6" r="6" fill="#ffe27a"/><circle cx="-8" cy="-6" r="3" fill="#17301f"/>
-        <path d="M-28 6 L -44 10 L -28 12 Z" fill="#c94b4b"/>
-        <path d="M6 -18 l 4 -10 l 6 8 z" fill="#2a7a58"/>
+      <linearGradient id="hy_g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2f8a5c"/><stop offset="100%" stop-color="#0f3d28"/></linearGradient>
+      <linearGradient id="hy_p" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5f48b8"/><stop offset="100%" stop-color="#2a1c60"/></linearGradient>
+      <linearGradient id="hy_o" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#c86a1e"/><stop offset="100%" stop-color="#6e340c"/></linearGradient>
+      <radialGradient id="hy_e" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffe98a"/><stop offset="100%" stop-color="#b8860a"/></radialGradient>`)+
+      `<ellipse cx="190" cy="274" rx="145" ry="15" fill="#000" opacity="0.4"/>`+
+      `<path d="M104 270 C 96 210 134 182 190 182 C 246 182 284 210 276 270 Z" fill="url(#hy_g)"/>`+
+      `<path d="M128 200 l 8 -14 l 8 14 M 158 190 l 8 -15 l 8 15 M 206 190 l 8 -15 l 8 15 M 236 200 l 8 -14 l 8 14" fill="#0c2e1e"/>`+
+      `<path d="M136 252 q 54 -18 108 0 M 146 234 q 44 -14 88 0" stroke="#8fd8b4" stroke-width="6" fill="none" opacity="0.35"/>`+
+      `<path d="M152 194 C 116 168 98 128 110 92" stroke="url(#hy_g)" stroke-width="26" fill="none" stroke-linecap="round"/>`+
+      `<g transform="translate(106,84) rotate(-24)">
+        <path d="M-6 -14 l -7 -14 l 12 6 l 6 -12 l 6 11 z" fill="#0c2e1e"/>
+        <path d="M-30 -6 C -34 -18 -18 -26 2 -24 C 22 -22 34 -12 32 -2 L -8 2 Z" fill="url(#hy_g)"/>
+        <path d="M-30 8 C -34 20 -16 28 4 26 C 22 24 32 14 30 6 L -8 4 Z" fill="#1c5438"/>
+        <path d="M-26 -2 l 7 8 M -14 -4 l 6 9 M -2 -5 l 5 10 M -24 6 l 6 -7 M -12 8 l 5 -8" stroke="#f2ead0" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M-30 2 L -52 -2 L -52 6 Z" fill="#c92f2f"/>
+        <ellipse cx="14" cy="-12" rx="8" ry="6" fill="url(#hy_e)"/><path d="M14 -17 L 14 -7" stroke="#141005" stroke-width="3"/>
       </g>`+
-      // MIDDLE neck+head (purple, looks up)
-      `<path d="M190 190 C 190 150 186 116 192 84" stroke="url(#hy_p)" stroke-width="26" fill="none" stroke-linecap="round"/>`+
-      `<g transform="translate(194,72)">
-        <ellipse cx="0" cy="0" rx="32" ry="22" fill="url(#hy_p)"/>
-        <circle cx="-10" cy="-4" r="7" fill="#ffe27a"/><circle cx="-10" cy="-4" r="3.5" fill="#1d1436"/>
-        <circle cx="12" cy="-4" r="7" fill="#ffe27a"/><circle cx="12" cy="-4" r="3.5" fill="#1d1436"/>
-        <path d="M-6 12 Q 2 18 10 12" stroke="#1d1436" stroke-width="4" fill="none" stroke-linecap="round"/>
-        <path d="M-4 -20 l 3 -12 l 6 10 z M10 -19 l 4 -10 l 5 9 z" fill="#5a48a8"/>
+      `<path d="M190 186 C 190 148 184 112 192 76" stroke="url(#hy_p)" stroke-width="28" fill="none" stroke-linecap="round"/>`+
+      `<g transform="translate(194,64)">
+        <path d="M-8 -22 l -6 -16 l 12 7 l 6 -14 l 6 13 l 12 -6 l -6 15 z" fill="#1c1244"/>
+        <path d="M-32 -4 C -30 -20 -12 -28 6 -26 C 26 -24 38 -12 34 2 C 22 12 -20 12 -32 -4 Z" fill="url(#hy_p)"/>
+        <path d="M-24 10 C -14 24 16 24 28 8 L 20 30 L 8 22 L -2 32 L -12 22 L -20 28 Z" fill="#3a2a80"/>
+        <path d="M-16 12 l 5 10 M 0 14 l 3 11 M 14 12 l -3 10" stroke="#f2ead0" stroke-width="4" stroke-linecap="round"/>
+        <ellipse cx="-12" cy="-10" rx="9" ry="7" fill="url(#hy_e)"/><path d="M-12 -16 L -12 -4" stroke="#141005" stroke-width="3.5"/>
+        <ellipse cx="16" cy="-10" rx="9" ry="7" fill="url(#hy_e)"/><path d="M16 -16 L 16 -4" stroke="#141005" stroke-width="3.5"/>
+        <path d="M-24 -16 l 14 4 M 28 -16 l -14 4" stroke="#150e38" stroke-width="4" stroke-linecap="round"/>
       </g>`+
-      // RIGHT neck+head (orange, looks right)
-      `<path d="M232 198 C 264 172 282 136 270 100" stroke="url(#hy_o)" stroke-width="24" fill="none" stroke-linecap="round"/>`+
-      `<g transform="translate(272,92) rotate(16)">
-        <ellipse cx="0" cy="0" rx="30" ry="20" fill="url(#hy_o)"/>
-        <circle cx="8" cy="-6" r="6" fill="#ffe27a"/><circle cx="8" cy="-6" r="3" fill="#301c0d"/>
-        <path d="M28 6 L 44 10 L 28 12 Z" fill="#c94b4b"/>
-        <path d="M-8 -18 l 4 -10 l 6 8 z" fill="#c06a28"/>
-      </g>`+
-      // belly plates
-      `<path d="M150 268 q 40 -14 80 0" stroke="#8fd8b4" stroke-width="7" fill="none" opacity="0.5"/>`+
-      `<path d="M160 252 q 30 -10 60 0" stroke="#8fd8b4" stroke-width="6" fill="none" opacity="0.45"/>`+close;
+      `<path d="M230 196 C 266 172 286 134 272 96" stroke="url(#hy_o)" stroke-width="26" fill="none" stroke-linecap="round"/>`+
+      `<g transform="translate(276,88) rotate(22)">
+        <path d="M6 -14 l 7 -14 l -12 6 l -6 -12 l -6 11 z" fill="#4a2408"/>
+        <path d="M30 -6 C 34 -18 18 -26 -2 -24 C -22 -22 -34 -12 -32 -2 L 8 2 Z" fill="url(#hy_o)"/>
+        <path d="M30 8 C 34 20 16 28 -4 26 C -22 24 -32 14 -30 6 L 8 4 Z" fill="#7a3c10"/>
+        <path d="M26 -2 l -7 8 M 14 -4 l -6 9 M 2 -5 l -5 10 M 24 6 l -6 -7 M 12 8 l -5 -8" stroke="#f2ead0" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M30 2 L 52 -2 L 52 6 Z" fill="#c92f2f"/>
+        <ellipse cx="-14" cy="-12" rx="8" ry="6" fill="url(#hy_e)"/><path d="M-14 -17 L -14 -7" stroke="#141005" stroke-width="3"/>
+      </g>`+close;
   }
 
   if (id==="fiend") {
-    // Chaos Fiend — jagged asymmetric demon, purple-black, crack lightning
     return open(`
       <linearGradient id="fi_b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5a2f8a"/><stop offset="100%" stop-color="#241040"/></linearGradient>`)+
       `<ellipse cx="190" cy="272" rx="130" ry="16" fill="#000" opacity="0.35"/>`+
-      // jagged silhouette body
       `<path d="M190 60 L 226 84 L 262 76 L 252 116 L 286 142 L 250 158 L 268 206 L 226 198 L 224 252 L 190 226 L 156 252 L 154 198 L 112 206 L 130 158 L 94 142 L 128 116 L 118 76 L 154 84 Z" fill="url(#fi_b)"/>`+
-      // asymmetric horns
       `<path d="M162 70 C 148 44 152 24 170 14 C 164 36 170 52 180 62 Z" fill="#180a2e"/>`+
       `<path d="M216 68 C 236 52 240 30 228 18 C 232 40 224 54 212 62 Z" fill="#180a2e"/>`+
       `<path d="M234 60 C 250 52 256 40 252 30 C 252 44 244 52 236 56 Z" fill="#180a2e"/>`+
-      // wild uneven eyes
       `<circle cx="168" cy="118" r="15" fill="#ff5a3c"/><circle cx="168" cy="118" r="7" fill="#ffe08a"/>`+
       `<circle cx="216" cy="112" r="9" fill="#ff5a3c"/><circle cx="216" cy="112" r="4" fill="#ffe08a"/>`+
-      // crooked grin with fangs
       `<path d="M156 152 L 172 162 L 184 150 L 198 164 L 212 148 L 226 158" stroke="#ffe08a" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`+
-      // chaos cracks
       `<path d="M150 190 l 12 -10 l -4 14 l 14 -6" stroke="#c084fc" stroke-width="4" fill="none" stroke-linecap="round"/>`+
       `<path d="M228 184 l -10 -12 l 14 2 l -6 -14" stroke="#c084fc" stroke-width="4" fill="none" stroke-linecap="round"/>`+
       `<path d="M186 78 l 6 12 l -10 2 l 8 12" stroke="#c084fc" stroke-width="4" fill="none" stroke-linecap="round"/>`+
-      // floating chaos shards
       `<path d="M96 96 l 10 6 l -8 8 z" fill="#7a5fd0" opacity="0.8"/>`+
       `<path d="M292 108 l -10 4 l 6 10 z" fill="#7a5fd0" opacity="0.8"/>`+
       `<path d="M280 220 l 10 4 l -6 10 z" fill="#7a5fd0" opacity="0.7"/>`+
@@ -920,73 +881,67 @@ function bossArtSVG(id) {
   }
 
   if (id==="fog") {
-    // Fog of Excuses — layered haze with sleepy peeking eyes and swirl tendrils
     return open(`
-      <linearGradient id="fo_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9aa79b"/><stop offset="100%" stop-color="#5b6b60"/></linearGradient>
-      <linearGradient id="fo_b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#b8c4b6"/><stop offset="100%" stop-color="#7d8d7f"/></linearGradient>`)+
-      `<ellipse cx="190" cy="270" rx="150" ry="14" fill="#000" opacity="0.25"/>`+
-      // back layer
-      `<path d="M70 232 C 52 196 84 168 116 176 C 112 138 160 118 190 138 C 208 104 268 110 274 148 C 316 144 336 190 306 214 C 322 238 296 262 268 254 C 254 274 214 276 198 258 C 176 276 136 272 126 252 C 96 262 70 252 70 232 Z" fill="url(#fo_a)"/>`+
-      // front layer
-      `<path d="M104 240 C 92 214 112 196 136 202 C 136 174 172 162 192 178 C 206 154 250 160 252 188 C 282 186 296 218 274 234 C 284 252 262 266 242 258 C 230 272 198 272 188 258 C 170 272 138 268 132 252 C 116 258 104 252 104 240 Z" fill="url(#fo_b)"/>`+
-      // sleepy eyes peeking (three, uneven)
-      `<path d="M146 214 a 12 12 0 0 1 24 0" fill="#2c352e"/>`+
-      `<path d="M142 214 L 172 214" stroke="#2c352e" stroke-width="4" stroke-linecap="round"/>`+
-      `<path d="M204 206 a 14 14 0 0 1 28 0" fill="#2c352e"/>`+
-      `<circle cx="218" cy="202" r="5" fill="#e8f0e6"/>`+
-      `<path d="M246 226 a 9 9 0 0 1 18 0" fill="#2c352e"/>`+
-      `<path d="M243 226 L 267 226" stroke="#2c352e" stroke-width="3.5" stroke-linecap="round"/>`+
-      // murmuring mouth swirl
-      `<path d="M178 240 q 14 8 30 -2" stroke="#2c352e" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.8"/>`+
-      // tendrils drifting off
-      `<path d="M84 210 q -26 4 -34 -14 q 16 4 22 -6" stroke="#8d9c8c" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.7"/>`+
-      `<path d="M300 196 q 28 0 34 -18 q -16 6 -22 -4" stroke="#8d9c8c" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.7"/>`+
-      `<path d="M160 148 q -4 -20 12 -28" stroke="#c3cfc0" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.6"/>`+
-      `<path d="M238 150 q 10 -18 -2 -30" stroke="#c3cfc0" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.55"/>`+close;
+      <linearGradient id="fo_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6e7d68"/><stop offset="100%" stop-color="#39443a"/></linearGradient>
+      <linearGradient id="fo_b" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8a9a80"/><stop offset="100%" stop-color="#525f4e"/></linearGradient>
+      <radialGradient id="fo_e" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#f4ffdf"/><stop offset="100%" stop-color="#9fc060"/></radialGradient>`)+
+      `<ellipse cx="190" cy="272" rx="150" ry="12" fill="#000" opacity="0.3"/>`+
+      `<path d="M96 224 C 62 232 44 224 34 206 M 34 206 C 30 214 32 224 38 230 M 34 206 C 26 206 20 202 16 196" stroke="#5d6c58" stroke-width="8" fill="none" stroke-linecap="round" opacity="0.85"/>`+
+      `<path d="M286 216 C 320 224 340 214 348 196 M 348 196 C 354 202 356 212 352 220 M 348 196 C 356 194 362 188 364 182" stroke="#5d6c58" stroke-width="8" fill="none" stroke-linecap="round" opacity="0.85"/>`+
+      `<path d="M150 254 C 142 268 128 276 112 276 M 236 252 C 246 266 260 274 276 272" stroke="#5d6c58" stroke-width="7" fill="none" stroke-linecap="round" opacity="0.7"/>`+
+      `<path d="M64 226 C 44 192 74 160 108 168 C 100 132 148 106 182 126 C 196 92 260 96 268 136 C 310 128 336 172 310 200 C 330 224 302 254 272 244 C 262 266 216 270 200 252 C 180 270 138 266 128 246 C 96 258 68 250 64 226 Z" fill="url(#fo_a)"/>`+
+      `<path d="M104 234 C 88 208 110 186 136 194 C 132 164 172 148 196 166 C 208 142 254 148 256 178 C 288 174 304 208 280 226 C 292 244 268 260 246 252 C 236 266 202 268 192 254 C 176 268 142 264 136 248 C 118 256 104 250 104 234 Z" fill="url(#fo_b)"/>`+
+      `<g>
+        <path d="M138 208 a 15 15 0 0 1 30 0 z" fill="#141a12"/>
+        <ellipse cx="153" cy="206" rx="9" ry="5" fill="url(#fo_e)"/><circle cx="153" cy="206" r="2.5" fill="#101408"/>
+        <path d="M134 200 L 170 194" stroke="#141a12" stroke-width="6" stroke-linecap="round"/>
+      </g>`+
+      `<g>
+        <path d="M196 196 a 19 19 0 0 1 38 0 z" fill="#141a12"/>
+        <ellipse cx="215" cy="193" rx="12" ry="7" fill="url(#fo_e)"/><circle cx="215" cy="193" r="3.5" fill="#101408"/>
+        <path d="M192 186 L 240 182" stroke="#141a12" stroke-width="7" stroke-linecap="round"/>
+      </g>`+
+      `<g>
+        <path d="M252 220 a 11 11 0 0 1 22 0 z" fill="#141a12"/>
+        <ellipse cx="263" cy="219" rx="7" ry="4" fill="url(#fo_e)"/><circle cx="263" cy="219" r="2" fill="#101408"/>
+        <path d="M249 214 L 276 210" stroke="#141a12" stroke-width="5" stroke-linecap="round"/>
+      </g>`+
+      `<circle cx="176" cy="232" r="5" fill="url(#fo_e)" opacity="0.9"/><circle cx="176" cy="232" r="1.8" fill="#101408"/>`+
+      `<circle cx="238" cy="240" r="4" fill="url(#fo_e)" opacity="0.8"/><circle cx="238" cy="240" r="1.5" fill="#101408"/>`+
+      `<path d="M158 248 L 172 242 L 184 250 L 198 242 L 210 250 L 224 244 L 218 256 L 202 252 L 190 258 L 176 252 L 164 256 Z" fill="#10150f"/>`+close;
   }
 
   if (id==="snooze") {
-    // The Snooze King — plump monarch asleep on a pillow throne, tilted crown, Zzz
     return open(`
-      <linearGradient id="sn_r" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8a5fd0"/><stop offset="100%" stop-color="#4c3390"/></linearGradient>
-      <linearGradient id="sn_p" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f4e6ff"/><stop offset="100%" stop-color="#c7b2e8"/></linearGradient>
-      <linearGradient id="sn_g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe08a"/><stop offset="100%" stop-color="#d0a13a"/></linearGradient>`)+
-      `<ellipse cx="190" cy="274" rx="140" ry="14" fill="#000" opacity="0.3"/>`+
-      // pillow throne
-      `<path d="M78 268 Q 70 226 108 222 L 272 222 Q 310 226 302 268 Q 246 258 190 262 Q 134 258 78 268 Z" fill="url(#sn_p)"/>`+
-      `<path d="M84 262 l -12 8 M296 262 l 12 8 M92 230 l -12 -8 M288 230 l 12 -8" stroke="#b3a0d6" stroke-width="5" stroke-linecap="round"/>`+
-      // body slumped
-      `<path d="M132 236 C 126 178 150 148 190 148 C 230 148 254 178 248 236 Z" fill="url(#sn_r)"/>`+
-      // royal trim
-      `<path d="M138 226 Q 190 210 242 226" stroke="#ffe08a" stroke-width="6" fill="none" opacity="0.8"/>`+
-      `<circle cx="190" cy="196" r="9" fill="#ffe08a"/><circle cx="190" cy="196" r="4" fill="#a4531c"/>`+
-      // head tilted asleep
-      `<g transform="rotate(-12 190 118)">
-        <circle cx="190" cy="118" r="38" fill="#f2cfa0"/>
-        <path d="M164 114 a 9 9 0 0 1 18 0 M198 114 a 9 9 0 0 1 18 0" stroke="#4a3520" stroke-width="4.5" fill="none" stroke-linecap="round"/>
-        <path d="M180 136 q 10 7 22 1" stroke="#4a3520" stroke-width="4" fill="none" stroke-linecap="round"/>
-        <ellipse cx="164" cy="128" rx="7" ry="4" fill="#e8a87a" opacity="0.7"/>
-        <ellipse cx="214" cy="124" rx="7" ry="4" fill="#e8a87a" opacity="0.7"/>
-      </g>`+
-      // tilted crown sliding off
-      `<g transform="rotate(-26 158 84)">
-        <path d="M132 84 L 138 62 L 150 76 L 160 56 L 170 76 L 182 62 L 188 84 Z" fill="url(#sn_g)"/>
-        <rect x="130" y="82" width="60" height="9" rx="4" fill="url(#sn_g)"/>
-        <circle cx="160" cy="56" r="4" fill="#dc2626"/>
-      </g>`+
-      // arms resting
-      `<path d="M138 200 C 118 214 112 232 118 244" stroke="url(#sn_r)" stroke-width="18" fill="none" stroke-linecap="round"/>`+
-      `<path d="M242 200 C 262 214 268 232 262 244" stroke="url(#sn_r)" stroke-width="18" fill="none" stroke-linecap="round"/>`+
-      // Zzz
-      `<g fill="#c7b2e8" font-family="sans-serif" font-weight="900">
-        <text x="248" y="86" font-size="26">Z</text>
-        <text x="270" y="64" font-size="20" opacity="0.8">z</text>
-        <text x="286" y="46" font-size="15" opacity="0.6">z</text>
-      </g>`+close;
+      <linearGradient id="sn_r" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5c3f9e"/><stop offset="100%" stop-color="#2a1a54"/></linearGradient>
+      <linearGradient id="sn_p" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4a3d6e"/><stop offset="100%" stop-color="#241c3c"/></linearGradient>
+      <linearGradient id="sn_g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffd76b"/><stop offset="100%" stop-color="#a8741c"/></linearGradient>`)+
+      `<ellipse cx="190" cy="276" rx="148" ry="14" fill="#000" opacity="0.4"/>`+
+      `<path d="M66 268 Q 56 222 100 216 L 280 216 Q 324 222 314 268 Q 252 256 190 260 Q 128 256 66 268 Z" fill="url(#sn_p)"/>`+
+      `<path d="M72 260 l -16 10 M 308 260 l 16 10 M 84 224 l -14 -12 M 296 224 l 14 -12" stroke="#171129" stroke-width="6" stroke-linecap="round"/>`+
+      `<path d="M118 232 C 106 158 140 118 190 118 C 240 118 274 158 262 232 C 240 248 140 248 118 232 Z" fill="url(#sn_r)"/>`+
+      `<path d="M126 218 Q 190 198 254 218" stroke="#1c1238" stroke-width="9" fill="none" opacity="0.7"/>`+
+      `<path d="M132 226 Q 190 208 248 226" stroke="#cbb2e8" stroke-width="5" fill="none" opacity="0.4"/>`+
+      `<path d="M128 216 C 108 224 100 238 102 250 M 102 250 l -8 8 M 110 252 l -4 10 M 118 252 l 0 11" stroke="url(#sn_r)" stroke-width="12" fill="none" stroke-linecap="round"/>`+
+      `<path d="M94 258 l -6 7 M 106 262 l -3 8 M 118 263 l 1 8" stroke="#d8cbb2" stroke-width="4.5" stroke-linecap="round"/>`+
+      `<path d="M252 216 C 272 222 282 234 282 246" stroke="url(#sn_r)" stroke-width="12" fill="none" stroke-linecap="round"/>`+
+      `<rect x="278" y="140" width="8" height="112" rx="4" fill="#6b4a1c"/>`+
+      `<path d="M282 138 C 306 130 318 108 310 88 C 312 108 300 122 282 126 Z" fill="url(#sn_g)"/>`+
+      `<circle cx="282" cy="134" r="7" fill="url(#sn_g)"/>`+
+      `<path d="M148 128 C 144 88 162 66 190 66 C 218 66 236 88 232 128 C 222 144 158 144 148 128 Z" fill="#d8b287"/>`+
+      `<path d="M150 130 Q 162 142 178 142 M 230 130 Q 218 142 202 142" stroke="#b28a5c" stroke-width="4" fill="none" opacity="0.8"/>`+
+      `<path d="M156 96 L 184 106 M 224 96 L 196 106" stroke="#3a2410" stroke-width="7" stroke-linecap="round"/>`+
+      `<path d="M162 112 Q 172 118 182 112 M 198 112 Q 208 118 218 112" stroke="#3a2410" stroke-width="4.5" fill="none" stroke-linecap="round"/>`+
+      `<path d="M170 128 Q 190 118 210 128" stroke="#3a2410" stroke-width="5" fill="none" stroke-linecap="round"/>`+
+      `<path d="M150 70 L 156 34 L 170 56 L 184 26 L 198 56 L 212 30 L 224 56 L 230 70 Z" fill="url(#sn_g)"/>`+
+      `<rect x="148" y="66" width="84" height="11" rx="4" fill="url(#sn_g)"/>`+
+      `<circle cx="190" cy="72" r="4.5" fill="#c01f1f"/>`+
+      `<path d="M258 88 l 22 0 l -22 18 l 22 0" stroke="#8f7ac9" stroke-width="6" fill="none" stroke-linejoin="miter"/>`+
+      `<path d="M292 62 l 15 0 l -15 13 l 15 0" stroke="#8f7ac9" stroke-width="4.5" fill="none" opacity="0.75"/>`+
+      `<path d="M314 42 l 10 0 l -10 9 l 10 0" stroke="#8f7ac9" stroke-width="3.5" fill="none" opacity="0.55"/>`+close;
   }
   return open("")+`<circle cx="190" cy="150" r="60" fill="#666"/>`+close;
 }
-
 
 function BossArt({ id, style }) {
   return <div style={{lineHeight:0, ...style}} dangerouslySetInnerHTML={{__html: bossArtSVG(id)}}/>;
@@ -4703,7 +4658,6 @@ export default function App() {
               <div style={{display:"flex",gap:8,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:4}}>
                 {nextBosses(data, today, 4).map(nb=>(
                   <div key={nb.wkStart} style={{...C.glass,flexShrink:0,padding:"10px 13px",marginBottom:0,display:"flex",alignItems:"center",gap:9}}>
-                    <span style={{fontSize:17}}>{nb.icon}</span>
                     <div>
                       <div style={{fontSize:11,fontWeight:900,color:"#fff",whiteSpace:"nowrap"}}>{nb.title}</div>
                       <div style={{fontSize:8,fontWeight:800,color:FAINT,whiteSpace:"nowrap",marginTop:1}}>{nb.when}</div>
