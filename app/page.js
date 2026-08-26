@@ -308,6 +308,7 @@ const INIT = {
   combo: { count:0, lastAt:0 },
   challengeClaims: {},
   bossClaims: {},
+  priorityBar: [0,0,0,0,0,0,0],
   trophies: {},
   flags: {},
   pomodoro: { ...DEFAULT_POMO },
@@ -527,6 +528,8 @@ function migrate(d) {
       Object.entries(src).forEach(([wk,v])=>{ if (typeof v==="string") out[wk]=v;
         else { const seed=String(wk).split("").reduce((x,c)=>x+c.charCodeAt(0),0); out[wk]=ids[seed%ids.length]; } });
       return out; })(),
+    priorityBar: (()=>{ const src=Array.isArray(d.priorityBar)?d.priorityBar:[];
+      return [0,1,2,3,4,5,6].map(i=>Math.max(0, parseInt(src[i])||0)); })(),
     flags: (d.flags && typeof d.flags === "object") ? d.flags : {},
     pomodoro: { ...DEFAULT_POMO, ...(d.pomodoro||{}), sessionsByDay: { ...((d.pomodoro||{}).sessionsByDay||{}) } },
     wallet: { ...DEFAULT_WALLET, ...(d.wallet||{}),
@@ -1945,6 +1948,8 @@ export default function App() {
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
+  const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
+  const barDragRef = useRef(false);
   useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
@@ -2421,9 +2426,9 @@ export default function App() {
   // ── RESET (stats only — keeps quests, names, history, customization) ────────
   const resetStats = () => {
     update({...data,
-      categories: data.categories.map(c=>({...c, value:3.0})),
+      categories: data.categories.map(c=>({...c, value:0})),
       lastDecayDate: dateKey()});
-    toast$("STATS RESET — YOUR QUESTS REMAIN", "#fb923c");
+    toast$("STATS RESET — BACK TO LEVEL 0", "#fb923c");
   };
 
   // ── BOARD (kanban) ──────────────────────────────────────────────────────────
@@ -2930,6 +2935,19 @@ export default function App() {
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
   const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
   const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
+  // ── PRIORITY DIVIDER — one draggable bar, remembered per weekday ────────────
+  const PRI = "#ffb020";
+  const priDow = new Date(today+"T00:00:00").getDay();
+  const priBarPos = (()=>{ const arr = Array.isArray(data.priorityBar)?data.priorityBar:[0,0,0,0,0,0,0];
+    return Math.max(0, Math.min(todayTasks.length, parseInt(arr[priDow])||0)); })();
+  const setPriBar = (idx, persist) => {
+    const arr = Array.isArray(data.priorityBar) ? [...data.priorityBar] : [0,0,0,0,0,0,0];
+    while (arr.length < 7) arr.push(0);
+    if (arr[priDow] === idx && !persist) return;
+    arr[priDow] = idx;
+    const n = {...data, priorityBar: arr};
+    if (persist) update(n); else setData(n);
+  };
   const rating = getRating(data.categories);
   const tier = getTier(rating);
   const level = getLevel(rating);
@@ -3079,7 +3097,50 @@ export default function App() {
     );
   };
 
-  const QuestCard = ({task, showReorder=false, siblingIds=null}) => {
+  // ── THE PRIORITY DIVIDER ────────────────────────────────────────────────────
+  const PriorityDivider = ({count, total}) => {
+    if (!total) return null;
+    const moveTo = (clientY) => {
+      const rows = Array.from(document.querySelectorAll('[data-qrow="1"]'));
+      let idx = 0;
+      rows.forEach(r=>{ const b = r.getBoundingClientRect(); if (b.top + b.height/2 < clientY) idx++; });
+      idx = Math.max(0, Math.min(rows.length, idx));
+      if (idx !== priBarPos) { setPriBar(idx, false); try{navigator.vibrate&&navigator.vibrate(6);}catch{} }
+    };
+    return (
+      <div style={{position:"relative",height:34,marginBottom:11,marginTop:1}}>
+        <div style={{position:"absolute",left:0,right:0,top:16,height:3,borderRadius:2,
+          background:`linear-gradient(90deg,${PRI}00 0%,${PRI} 9%,${PRI} 91%,${PRI}00 100%)`,
+          boxShadow:`0 0 14px ${PRI}88`,transition:barDrag?"none":"all .18s"}}/>
+        <div style={{position:"absolute",left:8,top:4,background:"#180f04",
+          border:`1.5px solid ${PRI}66`,borderRadius:11,padding:"4px 10px",
+          fontSize:8.5,fontWeight:900,color:PRI,letterSpacing:1,whiteSpace:"nowrap"}}>
+          {count>0 ? `⚑ ${count} MUST-DO BY TONIGHT` : "⚑ DRAG ME DOWN TO SET MUST-DOS"}
+        </div>
+        <div
+          onPointerDown={e=>{ e.stopPropagation(); e.preventDefault();
+            try{ e.currentTarget.setPointerCapture(e.pointerId); }catch{}
+            barDragRef.current = true; setBarDrag(true);
+            try{navigator.vibrate&&navigator.vibrate(14);}catch{} }}
+          onPointerMove={e=>{ if(!barDragRef.current) return; e.preventDefault(); moveTo(e.clientY); }}
+          onPointerUp={e=>{ if(!barDragRef.current) return;
+            barDragRef.current = false; setBarDrag(false); setPriBar(priBarPos, true);
+            try{navigator.vibrate&&navigator.vibrate([10,25,10]);}catch{} }}
+          onPointerCancel={()=>{ barDragRef.current=false; setBarDrag(false); setPriBar(priBarPos, true); }}
+          style={{position:"absolute",right:-11,top:2,width:31,height:31,borderRadius:16,
+            background:`linear-gradient(160deg,#ffd27a 0%,${PRI} 45%,#c96a06 100%)`,
+            border:"2px solid #1a1004",
+            boxShadow:barDrag?`0 0 22px ${PRI}, 0 4px 12px rgba(0,0,0,0.6)`:`0 0 12px ${PRI}66, 0 3px 9px rgba(0,0,0,0.5)`,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            cursor:"grab",touchAction:"none",userSelect:"none",WebkitUserSelect:"none",
+            transform:barDrag?"scale(1.18)":"scale(1)",transition:"transform .12s, box-shadow .12s",zIndex:5}}>
+          <div style={{fontSize:13,fontWeight:900,color:"#1a1004",lineHeight:1,pointerEvents:"none"}}>⇕</div>
+        </div>
+      </div>
+    );
+  };
+
+  const QuestCard = ({task, showReorder=false, siblingIds=null, priority=false}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
     const color = task.color || cat?.color || T.accent;
     const tinted = S.cardStyle === "tinted";
@@ -3128,6 +3189,11 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:7}}>
               <div style={{fontSize:15.5,fontWeight:800,color:"#fff",textDecoration:done?"line-through":"none",
                 whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textShadow:tinted?"none":"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
+              {priority && (
+                <div style={{flexShrink:0,fontSize:9,fontWeight:900,color:"#2a1a00",background:PRI,
+                  padding:"2px 7px",borderRadius:10,letterSpacing:0.5,whiteSpace:"nowrap",
+                  boxShadow:`0 0 10px ${PRI}88`}}>⚑ MUST</div>
+              )}
               {streak >= 2 && (
                 <div style={{flexShrink:0,fontSize:10,fontWeight:900,color:"#fff",background:"rgba(0,0,0,0.25)",
                   padding:"2px 7px",borderRadius:10}}>🔥{streak}</div>
@@ -3935,13 +4001,29 @@ export default function App() {
                 <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>No quests scheduled today.</div>
               )}
               {(()=>{
-                const shown = [...todayTasks].sort((a,b)=>{
-                  const ad=isCompletedOn(a,today)?1:0, bd=isCompletedOn(b,today)?1:0;
-                  if (ad!==bd) return ad-bd;
-                  return (a.order??0)-(b.order??0);
+                // True running order — independent of what's checked off, so the bar can't drift.
+                const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
+                const ids = byOrder.map(t=>t.id);
+                const n = Math.max(0, Math.min(byOrder.length, priBarPos));
+                const prio = new Set(byOrder.slice(0,n).map(t=>t.id));
+                const settle = (arr)=>[...arr].sort((x,y)=>{
+                  const xd=isCompletedOn(x,today)?1:0, yd=isCompletedOn(y,today)?1:0;
+                  if (xd!==yd) return xd-yd;
+                  return (x.order??0)-(y.order??0);
                 });
-                const ids = shown.map(t=>t.id);
-                return shown.map(t=><QuestCard key={t.id} task={t} showReorder siblingIds={ids}/>);
+                // While dragging, hold pure order so nothing shuffles under your thumb.
+                const above = barDrag ? byOrder.slice(0,n) : settle(byOrder.slice(0,n));
+                const below = barDrag ? byOrder.slice(n)   : settle(byOrder.slice(n));
+                const row = (t)=>(
+                  <div key={t.id} data-qrow="1">
+                    <QuestCard task={t} showReorder siblingIds={ids} priority={prio.has(t.id)}/>
+                  </div>
+                );
+                return (<>
+                  {above.map(row)}
+                  <PriorityDivider count={n} total={byOrder.length}/>
+                  {below.map(row)}
+                </>);
               })()}
 
               {/* THIS WEEK — frequency-based habits (do X times, any days) */}
