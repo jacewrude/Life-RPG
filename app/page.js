@@ -1950,6 +1950,9 @@ export default function App() {
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
   const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
   const barDragRef = useRef(false);
+  const [barPreview, setBarPreview] = useState(null); // live position while dragging
+  const barPreviewRef = useRef(null);
+  const [listEdit, setListEdit] = useState(null);  // {kind:"list"|"item", listId, itemId, parentId, text}
   useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
@@ -2736,6 +2739,19 @@ export default function App() {
     update({...data, lists:[...data.lists, {id:`l${Date.now()}`, name, color, items:[]}]});
     setListInput("");
   };
+  const commitListEdit = () => {
+    const le = listEdit; if (!le) { return; }
+    const text = (le.text||"").trim();
+    setListEdit(null);
+    if (!text) return;
+    if (le.kind === "list") { mutateList(le.listId, l=>({...l, name:text})); return; }
+    mutateList(le.listId, l=>({...l, items: le.parentId
+      ? l.items.map(it=>it.id!==le.parentId?it:{...it, children:(it.children||[]).map(c=>c.id===le.itemId?{...c,text}:c)})
+      : l.items.map(it=>it.id===le.itemId?{...it,text}:it)}));
+  };
+  const editingList = (lid)          => listEdit && listEdit.kind==="list" && listEdit.listId===lid;
+  const editingItem = (lid,iid,pid)  => listEdit && listEdit.kind==="item" && listEdit.listId===lid
+                                        && listEdit.itemId===iid && (listEdit.parentId||null)===(pid||null);
   const deleteList = (id) => {
     update({...data, lists:data.lists.filter(l=>l.id!==id)});
     if (openListId===id) setOpenListId(null);
@@ -2777,18 +2793,24 @@ export default function App() {
   };
 
   // Move a board card into a list (removes it from the board).
-  const sendCardToList = (col, cardId, listId) => {
+  const sendCardToList = (col, cardId, listId, parentId=null) => {
     const card = (data.kanban[col]||[]).find(c=>c.id===cardId);
     const list = data.lists.find(l=>l.id===listId);
     if (!card || !list) return;
-    const newItem = { id:`li${Date.now()}`, text:card.text, done:false, children:[] };
+    const parent = parentId ? list.items.find(i=>i.id===parentId) : null;
+    if (parentId && !parent) return;
+    const newItem = parentId
+      ? { id:`li${Date.now()}`, text:card.text, done:false }
+      : { id:`li${Date.now()}`, text:card.text, done:false, children:[] };
     update({
       ...data,
       kanban: {...data.kanban, [col]: data.kanban[col].filter(c=>c.id!==cardId)},
-      lists: data.lists.map(l=> l.id!==listId ? l : {...l, items:[...l.items, newItem]}),
+      lists: data.lists.map(l=> l.id!==listId ? l : (parentId
+        ? {...l, items: l.items.map(it=>it.id!==parentId?it:{...it, children:[...(it.children||[]), newItem]})}
+        : {...l, items:[...l.items, newItem]})),
     });
     setCardMenu(null);
-    toast$(`MOVED TO ${list.name.toUpperCase()}`);
+    toast$(`MOVED UNDER ${(parent ? parent.text : list.name).toUpperCase()}`);
     try { navigator.vibrate && navigator.vibrate(12); } catch {}
   };
 
@@ -3097,49 +3119,6 @@ export default function App() {
     );
   };
 
-  // ── THE PRIORITY DIVIDER ────────────────────────────────────────────────────
-  const PriorityDivider = ({count, total}) => {
-    if (!total) return null;
-    const moveTo = (clientY) => {
-      const rows = Array.from(document.querySelectorAll('[data-qrow="1"]'));
-      let idx = 0;
-      rows.forEach(r=>{ const b = r.getBoundingClientRect(); if (b.top + b.height/2 < clientY) idx++; });
-      idx = Math.max(0, Math.min(rows.length, idx));
-      if (idx !== priBarPos) { setPriBar(idx, false); try{navigator.vibrate&&navigator.vibrate(6);}catch{} }
-    };
-    return (
-      <div style={{position:"relative",height:34,marginBottom:11,marginTop:1}}>
-        <div style={{position:"absolute",left:0,right:0,top:16,height:3,borderRadius:2,
-          background:`linear-gradient(90deg,${PRI}00 0%,${PRI} 9%,${PRI} 91%,${PRI}00 100%)`,
-          boxShadow:`0 0 14px ${PRI}88`,transition:barDrag?"none":"all .18s"}}/>
-        <div style={{position:"absolute",left:8,top:4,background:"#180f04",
-          border:`1.5px solid ${PRI}66`,borderRadius:11,padding:"4px 10px",
-          fontSize:8.5,fontWeight:900,color:PRI,letterSpacing:1,whiteSpace:"nowrap"}}>
-          {count>0 ? `⚑ ${count} MUST-DO BY TONIGHT` : "⚑ DRAG ME DOWN TO SET MUST-DOS"}
-        </div>
-        <div
-          onPointerDown={e=>{ e.stopPropagation(); e.preventDefault();
-            try{ e.currentTarget.setPointerCapture(e.pointerId); }catch{}
-            barDragRef.current = true; setBarDrag(true);
-            try{navigator.vibrate&&navigator.vibrate(14);}catch{} }}
-          onPointerMove={e=>{ if(!barDragRef.current) return; e.preventDefault(); moveTo(e.clientY); }}
-          onPointerUp={e=>{ if(!barDragRef.current) return;
-            barDragRef.current = false; setBarDrag(false); setPriBar(priBarPos, true);
-            try{navigator.vibrate&&navigator.vibrate([10,25,10]);}catch{} }}
-          onPointerCancel={()=>{ barDragRef.current=false; setBarDrag(false); setPriBar(priBarPos, true); }}
-          style={{position:"absolute",right:-11,top:2,width:31,height:31,borderRadius:16,
-            background:`linear-gradient(160deg,#ffd27a 0%,${PRI} 45%,#c96a06 100%)`,
-            border:"2px solid #1a1004",
-            boxShadow:barDrag?`0 0 22px ${PRI}, 0 4px 12px rgba(0,0,0,0.6)`:`0 0 12px ${PRI}66, 0 3px 9px rgba(0,0,0,0.5)`,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            cursor:"grab",touchAction:"none",userSelect:"none",WebkitUserSelect:"none",
-            transform:barDrag?"scale(1.18)":"scale(1)",transition:"transform .12s, box-shadow .12s",zIndex:5}}>
-          <div style={{fontSize:13,fontWeight:900,color:"#1a1004",lineHeight:1,pointerEvents:"none"}}>⇕</div>
-        </div>
-      </div>
-    );
-  };
-
   const QuestCard = ({task, showReorder=false, siblingIds=null, priority=false}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
     const color = task.color || cat?.color || T.accent;
@@ -3430,7 +3409,7 @@ export default function App() {
         if (!card) return null;
         const colNames = { todo:"TO DO", doing:"IN PROGRESS", done:"DONE" };
         const colColors = { todo:"#38bdf8", doing:"#f59e0b", done:"#34d399" };
-        const inLists = cardMenu.mode==="lists";
+        const inLists = cardMenu.mode==="lists" || cardMenu.mode==="sublist";
         return (
         <div style={C.modal} onClick={()=>setCardMenu(null)}>
           <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
@@ -3490,20 +3469,55 @@ export default function App() {
               </>
             ) : (
               <>
-                <div style={{...C.label,marginBottom:8}}>PICK A LIST</div>
-                <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"42vh",overflowY:"auto"}}>
-                  {data.lists.map(l=>(
-                    <button key={l.id} onClick={()=>sendCardToList(cardMenu.col, cardMenu.cardId, l.id)}
-                      style={{display:"flex",alignItems:"center",gap:11,background:`linear-gradient(135deg,${l.color}cc,${shade(l.color,-45)})`,
-                        border:"none",borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,textAlign:"left",
-                        boxShadow:`0 4px 14px ${l.color}44`}}>
-                      <span style={{width:12,height:12,borderRadius:"50%",background:"#fff",opacity:0.9,flexShrink:0}}/>
-                      <span style={{fontSize:14,fontWeight:800,color:"#fff",flex:1}}>{l.name}</span>
-                      <span style={{fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.8)"}}>{l.items.length} items</span>
-                    </button>
-                  ))}
-                </div>
-                <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:12}} onClick={()=>setCardMenu({...cardMenu, mode:"actions"})}>‹ BACK</button>
+                {cardMenu.mode==="lists" ? (
+                  <>
+                    <div style={{...C.label,marginBottom:8}}>PICK A LIST</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"42vh",overflowY:"auto"}}>
+                      {data.lists.map(l=>(
+                        <button key={l.id} onClick={()=>{
+                            if ((l.items||[]).length===0) sendCardToList(cardMenu.col, cardMenu.cardId, l.id);
+                            else setCardMenu({...cardMenu, mode:"sublist", listId:l.id});
+                          }}
+                          style={{display:"flex",alignItems:"center",gap:11,background:`linear-gradient(135deg,${l.color}cc,${shade(l.color,-45)})`,
+                            border:"none",borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,textAlign:"left",
+                            boxShadow:`0 4px 14px ${l.color}44`}}>
+                          <span style={{width:12,height:12,borderRadius:"50%",background:"#fff",opacity:0.9,flexShrink:0}}/>
+                          <span style={{fontSize:14,fontWeight:800,color:"#fff",flex:1}}>{l.name}</span>
+                          <span style={{fontSize:10,fontWeight:800,color:"rgba(255,255,255,0.8)"}}>{l.items.length} items</span>
+                        </button>
+                      ))}
+                    </div>
+                    <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:12}} onClick={()=>setCardMenu({...cardMenu, mode:"actions"})}>‹ BACK</button>
+                  </>
+                ) : (()=>{
+                  const tl = data.lists.find(x=>x.id===cardMenu.listId);
+                  if (!tl) return <button style={{...C.btnSm,width:"100%",padding:"14px"}} onClick={()=>setCardMenu({...cardMenu, mode:"lists"})}>‹ BACK</button>;
+                  return (
+                    <>
+                      <div style={{...C.label,marginBottom:8}}>WHERE IN {tl.name.toUpperCase()}?</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"42vh",overflowY:"auto"}}>
+                        <button onClick={()=>sendCardToList(cardMenu.col, cardMenu.cardId, tl.id, null)}
+                          style={{display:"flex",alignItems:"center",gap:11,background:`linear-gradient(135deg,${tl.color}cc,${shade(tl.color,-45)})`,
+                            border:"none",borderRadius:15,padding:"14px 15px",cursor:"pointer",fontFamily:FONT,textAlign:"left",
+                            boxShadow:`0 4px 14px ${tl.color}44`}}>
+                          <span style={{fontSize:15}}>📋</span>
+                          <span style={{fontSize:14,fontWeight:800,color:"#fff",flex:1}}>Top of the list</span>
+                        </button>
+                        <div style={{...C.label,marginTop:6,marginBottom:2}}>OR TUCK IT UNDER</div>
+                        {tl.items.map(it=>(
+                          <button key={it.id} onClick={()=>sendCardToList(cardMenu.col, cardMenu.cardId, tl.id, it.id)}
+                            style={{display:"flex",alignItems:"center",gap:11,background:GLASS,
+                              border:`1px solid ${tl.color}55`,borderRadius:15,padding:"13px 15px",cursor:"pointer",fontFamily:FONT,textAlign:"left"}}>
+                            <span style={{color:tl.color,fontSize:15,fontWeight:900,flexShrink:0}}>↳</span>
+                            <span style={{fontSize:13.5,fontWeight:800,color:"#fff",flex:1,wordBreak:"break-word"}}>{it.text}</span>
+                            <span style={{fontSize:10,fontWeight:800,color:FAINT,flexShrink:0}}>{(it.children||[]).length}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:12}} onClick={()=>setCardMenu({...cardMenu, mode:"lists"})}>‹ BACK</button>
+                    </>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -4004,7 +4018,7 @@ export default function App() {
                 // True running order — independent of what's checked off, so the bar can't drift.
                 const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
                 const ids = byOrder.map(t=>t.id);
-                const n = Math.max(0, Math.min(byOrder.length, priBarPos));
+                const n = Math.max(0, Math.min(byOrder.length, barPreview!=null ? barPreview : priBarPos));
                 const prio = new Set(byOrder.slice(0,n).map(t=>t.id));
                 const settle = (arr)=>[...arr].sort((x,y)=>{
                   const xd=isCompletedOn(x,today)?1:0, yd=isCompletedOn(y,today)?1:0;
@@ -4021,7 +4035,67 @@ export default function App() {
                 );
                 return (<>
                   {above.map(row)}
-                  <PriorityDivider count={n} total={byOrder.length}/>
+                  {byOrder.length>0 && (
+                    <div key="pribar" style={{position:"relative",height:38,marginBottom:11,marginTop:1}}>
+                      <div style={{position:"absolute",left:0,right:0,top:18,height:3,borderRadius:2,
+                        background:`linear-gradient(90deg,${PRI}00 0%,${PRI} 9%,${PRI} 91%,${PRI}00 100%)`,
+                        boxShadow:`0 0 14px ${PRI}88`}}/>
+                      <div style={{position:"absolute",left:8,top:6,background:"#180f04",
+                        border:`1.5px solid ${PRI}66`,borderRadius:11,padding:"4px 10px",
+                        fontSize:8.5,fontWeight:900,color:PRI,letterSpacing:1,whiteSpace:"nowrap",pointerEvents:"none"}}>
+                        {n>0 ? `⚑ ${n} MUST-DO BY TONIGHT` : "⚑ DRAG THE KNOB DOWN"}
+                      </div>
+                      <div
+                        onPointerDown={e=>{
+                          e.stopPropagation(); e.preventDefault();
+                          try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+                          barDragRef.current = true; setBarDrag(true);
+                          barPreviewRef.current = priBarPos; setBarPreview(priBarPos);
+                          try { navigator.vibrate && navigator.vibrate(14); } catch {}
+                        }}
+                        onPointerMove={e=>{
+                          if (!barDragRef.current) return;
+                          e.preventDefault(); e.stopPropagation();
+                          const rows = Array.from(document.querySelectorAll('[data-qrow="1"]'));
+                          let idx = 0;
+                          for (const r of rows) { const b2 = r.getBoundingClientRect(); if (b2.top + b2.height/2 < e.clientY) idx++; }
+                          idx = Math.max(0, Math.min(rows.length, idx));
+                          if (idx !== barPreviewRef.current) {
+                            barPreviewRef.current = idx; setBarPreview(idx);
+                            try { navigator.vibrate && navigator.vibrate(7); } catch {}
+                          }
+                        }}
+                        onPointerUp={e=>{
+                          if (!barDragRef.current) return;
+                          e.preventDefault(); e.stopPropagation();
+                          try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+                          const finalIdx = barPreviewRef.current ?? priBarPos;
+                          barDragRef.current = false; setBarDrag(false);
+                          barPreviewRef.current = null; setBarPreview(null);
+                          setPriBar(finalIdx, true);
+                          try { navigator.vibrate && navigator.vibrate([10,25,10]); } catch {}
+                        }}
+                        onPointerCancel={()=>{
+                          const finalIdx = barPreviewRef.current ?? priBarPos;
+                          barDragRef.current = false; setBarDrag(false);
+                          barPreviewRef.current = null; setBarPreview(null);
+                          setPriBar(finalIdx, true);
+                        }}
+                        style={{position:"absolute",right:-17,top:-4,width:46,height:46,
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"grab",touchAction:"none",userSelect:"none",WebkitUserSelect:"none",
+                          WebkitTapHighlightColor:"transparent",zIndex:6}}>
+                        <div style={{width:32,height:32,borderRadius:16,
+                          background:`linear-gradient(160deg,#ffd27a 0%,${PRI} 45%,#c96a06 100%)`,
+                          border:"2px solid #1a1004",pointerEvents:"none",
+                          boxShadow:barDrag?`0 0 24px ${PRI}, 0 4px 12px rgba(0,0,0,0.6)`:`0 0 12px ${PRI}66, 0 3px 9px rgba(0,0,0,0.5)`,
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          transform:barDrag?"scale(1.2)":"scale(1)",transition:"transform .12s, box-shadow .12s"}}>
+                          <div style={{fontSize:14,fontWeight:900,color:"#1a1004",lineHeight:1}}>⇕</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {below.map(row)}
                 </>);
               })()}
@@ -4245,7 +4319,7 @@ export default function App() {
                 ) : (
                   <>
                     <div style={{...C.label,marginTop:8}}>TIMES PER DAY: <span style={{color:"#fff"}}>{t.targetReps||1}</span></div>
-                    <input type="range" min="1" max="10" step="1" value={t.targetReps||1}
+                    <input type="range" min="1" max="20" step="1" value={t.targetReps||1}
                       onChange={e=>set({targetReps:parseInt(e.target.value)})}
                       style={{width:"100%",accentColor:"#ffffff"}}/>
                     <div style={{...C.label,marginTop:16}}>SCHEDULED DAYS</div>
@@ -4393,7 +4467,16 @@ export default function App() {
                 <div style={C.glass}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                     <div style={{width:30,height:30,borderRadius:"50%",background:l.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff"}}>{l.name.slice(0,1).toUpperCase()}</div>
-                    <div style={{flex:1,fontSize:17,fontWeight:900,color:"#fff"}}>{l.name}</div>
+                    {editingList(l.id) ? (
+                      <input autoFocus style={{...C.input,flex:1,padding:"9px 12px",fontSize:16,fontWeight:900}}
+                        value={listEdit.text}
+                        onChange={e=>setListEdit({...listEdit, text:e.target.value})}
+                        onBlur={commitListEdit}
+                        onKeyDown={e=>{ if(e.key==="Enter") commitListEdit(); if(e.key==="Escape") setListEdit(null); }}/>
+                    ) : (
+                      <div onClick={()=>setListEdit({kind:"list", listId:l.id, text:l.name})}
+                        style={{flex:1,fontSize:17,fontWeight:900,color:"#fff",cursor:"text"}}>{l.name} <span style={{fontSize:11,color:FAINT}}>✎</span></div>
+                    )}
                     <button onClick={()=>setConfirmBox({type:"list",id:l.id,name:l.name})}
                       style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:10,color:BAD,fontSize:12,cursor:"pointer",padding:"7px 10px",fontWeight:800}}>DELETE</button>
                   </div>
@@ -4403,15 +4486,24 @@ export default function App() {
                       onKeyDown={e=>{if(e.key==="Enter")addListItem(l.id,null);}}/>
                     <button style={{...C.btn,padding:"0 16px",fontSize:17}} onClick={()=>addListItem(l.id,null)}>+</button>
                   </div>
-                  <div style={{fontSize:8.5,color:FAINT,fontWeight:800,marginBottom:6,textAlign:"center"}}>➜ SENDS IT TO THE BOARD'S TO-DO · ⊕ ADDS A SUB-BULLET</div>
+                  <div style={{fontSize:8.5,color:FAINT,fontWeight:800,marginBottom:6,textAlign:"center"}}>TAP ANY TEXT TO FIX A TYPO · ➜ SENDS IT TO THE BOARD · ⊕ ADDS A SUB-BULLET</div>
                   {l.items.map(it=>(
                     <div key={it.id}>
                       <div style={{display:"flex",alignItems:"center",gap:9,padding:"7px 0"}}>
                         <button onClick={()=>toggleListItem(l.id,it.id,null)}
                           style={{width:21,height:21,borderRadius:"50%",border:`2px solid ${l.color}`,flexShrink:0,
                             background:it.done?l.color:"transparent",cursor:"pointer",padding:0}}/>
-                        <div style={{flex:1,fontSize:13.5,fontWeight:600,color:it.done?FAINT:"#fff",
-                          textDecoration:it.done?"line-through":"none",wordBreak:"break-word"}}>{it.text}</div>
+                        {editingItem(l.id,it.id,null) ? (
+                          <input autoFocus style={{...C.input,flex:1,padding:"8px 11px",fontSize:13.5}}
+                            value={listEdit.text}
+                            onChange={e=>setListEdit({...listEdit, text:e.target.value})}
+                            onBlur={commitListEdit}
+                            onKeyDown={e=>{ if(e.key==="Enter") commitListEdit(); if(e.key==="Escape") setListEdit(null); }}/>
+                        ) : (
+                          <div onClick={()=>setListEdit({kind:"item", listId:l.id, itemId:it.id, parentId:null, text:it.text})}
+                            style={{flex:1,fontSize:13.5,fontWeight:600,color:it.done?FAINT:"#fff",cursor:"text",
+                              textDecoration:it.done?"line-through":"none",wordBreak:"break-word"}}>{it.text}</div>
+                        )}
                         <button onClick={()=>sendToBoard(l.id,it.id,null)} title="Send to board"
                           style={{background:`${l.color}33`,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",padding:"5px 9px",fontWeight:900,flexShrink:0}}>➜</button>
                         <button onClick={()=>{setSubFor(subFor===it.id?null:it.id); setSubInput("");}}
@@ -4424,8 +4516,17 @@ export default function App() {
                           <button onClick={()=>toggleListItem(l.id,c.id,it.id)}
                             style={{width:17,height:17,borderRadius:"50%",border:`2px solid ${l.color}aa`,flexShrink:0,
                               background:c.done?`${l.color}aa`:"transparent",cursor:"pointer",padding:0}}/>
-                          <div style={{flex:1,fontSize:12.5,fontWeight:600,color:c.done?FAINT:DIM,
-                            textDecoration:c.done?"line-through":"none",wordBreak:"break-word"}}>{c.text}</div>
+                          {editingItem(l.id,c.id,it.id) ? (
+                            <input autoFocus style={{...C.input,flex:1,padding:"7px 10px",fontSize:12.5}}
+                              value={listEdit.text}
+                              onChange={e=>setListEdit({...listEdit, text:e.target.value})}
+                              onBlur={commitListEdit}
+                              onKeyDown={e=>{ if(e.key==="Enter") commitListEdit(); if(e.key==="Escape") setListEdit(null); }}/>
+                          ) : (
+                            <div onClick={()=>setListEdit({kind:"item", listId:l.id, itemId:c.id, parentId:it.id, text:c.text})}
+                              style={{flex:1,fontSize:12.5,fontWeight:600,color:c.done?FAINT:DIM,cursor:"text",
+                                textDecoration:c.done?"line-through":"none",wordBreak:"break-word"}}>{c.text}</div>
+                          )}
                           <button onClick={()=>sendToBoard(l.id,c.id,it.id)}
                             style={{background:`${l.color}26`,border:"none",borderRadius:8,color:"#fff",fontSize:11,cursor:"pointer",padding:"4px 8px",fontWeight:900,flexShrink:0}}>➜</button>
                           <button onClick={()=>deleteListItem(l.id,c.id,it.id)}
