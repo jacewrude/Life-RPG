@@ -1934,6 +1934,128 @@ function ShopPreview({ item }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// DAILY BADGES — four ranks earned by how much of the day's quest load you clear
+// ══════════════════════════════════════════════════════════════════════════════
+const BADGE_TIERS = [
+  { t:1, need:25,  name:"SPARK",    lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
+  { t:2, need:50,  name:"TEMPERED", lore:"Half the day forged",   base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
+  { t:3, need:75,  name:"VALIANT",  lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
+  { t:4, need:100, name:"FORGED",   lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
+];
+function badgeTierFor(pct) {
+  if (pct == null) return 0;
+  if (pct >= 100) return 4;
+  if (pct >= 75)  return 3;
+  if (pct >= 50)  return 2;
+  if (pct >= 25)  return 1;
+  return 0;
+}
+const BADGE_SHIELD = "M20 3.5 L34.5 8.4 V19.6 C34.5 28.4 27.8 34.6 20 36.8 C12.2 34.6 5.5 28.4 5.5 19.6 V8.4 Z";
+
+function DayBadge({ tier, size=32, earned=true, pulse=false }) {
+  const b = BADGE_TIERS[tier-1];
+  if (!b) return null;
+  const id = `bdg${tier}`;
+  const rivet = (x,y)=><circle key={`${x}-${y}`} cx={x} cy={y} r="1.05" fill={b.light} opacity="0.85"/>;
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" style={{
+      display:"block", overflow:"visible",
+      opacity: earned ? 1 : 0.22,
+      filter: earned
+        ? `drop-shadow(0 0 ${tier>=4?8:tier>=3?5:3}px ${b.base}bb)`
+        : "grayscale(1) brightness(0.6)",
+      animation: (earned && pulse && tier===4) ? "glowPulse 1.8s ease-in-out infinite" : "none",
+    }}>
+      <defs>
+        <linearGradient id={`${id}f`} x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0" stopColor={b.light}/>
+          <stop offset="0.48" stopColor={b.base}/>
+          <stop offset="1" stopColor={b.dark}/>
+        </linearGradient>
+        <linearGradient id={`${id}g`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.5"/>
+          <stop offset="0.42" stopColor="#ffffff" stopOpacity="0.05"/>
+          <stop offset="1" stopColor="#000000" stopOpacity="0.26"/>
+        </linearGradient>
+        <radialGradient id={`${id}c`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="#ffffff"/>
+          <stop offset="0.55" stopColor={b.light}/>
+          <stop offset="1" stopColor={b.base} stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+
+      {/* RANK 4 — radiant crown of rays */}
+      {tier===4 && (
+        <g opacity="0.9">
+          {[0,30,60,90,120,150,180,210,240,270,300,330].map(ang=>(
+            <rect key={ang} x="19.35" y="-2.4" width="1.3" height="5.4" rx="0.65"
+              fill={b.light} transform={`rotate(${ang} 20 20)`}/>
+          ))}
+        </g>
+      )}
+
+      {/* RANK 3+ — laurel sprigs flanking the shield */}
+      {tier>=3 && (
+        <g fill="none" stroke={b.light} strokeWidth="1.3" strokeLinecap="round" opacity="0.75">
+          <path d="M3.6 16.5 C1.4 21.5 2.4 27.5 5.8 31.2"/>
+          <path d="M36.4 16.5 C38.6 21.5 37.6 27.5 34.2 31.2"/>
+        </g>
+      )}
+
+      {/* the shield plate */}
+      <path d={BADGE_SHIELD} fill={`url(#${id}f)`} stroke={b.dark} strokeWidth="1.7"/>
+      <path d={BADGE_SHIELD} fill={`url(#${id}g)`}/>
+
+      {/* RANK 2+ — riveted rim */}
+      {tier>=2 && <g>{rivet(20,6.6)}{rivet(9.4,10.6)}{rivet(30.6,10.6)}</g>}
+      {tier>=3 && <g>{rivet(7.6,21)}{rivet(32.4,21)}</g>}
+
+      {/* ── RANK 1 · a single lightning bolt ── */}
+      {tier===1 && (
+        <path d="M23.6 10.5 L13.2 23.2 H18.6 L16.4 30.6 L26.6 17.6 H21.2 Z"
+          fill="#fff6e8" stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round"/>
+      )}
+
+      {/* ── RANK 2 · an upright blade ── */}
+      {tier===2 && (
+        <g stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round">
+          <path d="M20 9.2 L22.4 14.2 V24.4 H17.6 V14.2 Z" fill="#f4f9ff"/>
+          <rect x="14.4" y="24.4" width="11.2" height="2.5" rx="1.1" fill={b.light}/>
+          <rect x="18.9" y="26.9" width="2.2" height="3.6" fill={b.light}/>
+          <circle cx="20" cy="31.4" r="1.6" fill={b.light}/>
+        </g>
+      )}
+
+      {/* ── RANK 3 · crossed blades ── */}
+      {tier===3 && (
+        <g>
+          {[-34,34].map(ang=>(
+            <g key={ang} transform={`rotate(${ang} 20 22)`} stroke={b.dark} strokeWidth="0.85" strokeLinejoin="round">
+              <path d="M20 8.6 L22.1 13.2 V27 H17.9 V13.2 Z" fill="#f4f9ff"/>
+              <rect x="14.6" y="27" width="10.8" height="2.3" rx="1" fill={b.light}/>
+              <rect x="19" y="29.3" width="2" height="3" fill={b.light}/>
+            </g>
+          ))}
+        </g>
+      )}
+
+      {/* ── RANK 4 · a white-hot flame under a crown ── */}
+      {tier===4 && (
+        <g>
+          <path d="M12.6 12.4 L15.4 15.6 L17.6 10.6 L20 14.4 L22.4 10.6 L24.6 15.6 L27.4 12.4 L26.2 18.2 H13.8 Z"
+            fill="#fff3cf" stroke={b.dark} strokeWidth="0.8" strokeLinejoin="round"/>
+          <ellipse cx="20" cy="26.6" rx="7.4" ry="7.9" fill={`url(#${id}c)`} opacity="0.9"/>
+          <path d="M20 17.8 C24.1 22.4 26.4 25.1 26.4 28.4 C26.4 32 23.5 34.4 20 34.4 C16.5 34.4 13.6 32 13.6 28.4 C13.6 25.1 15.9 22.4 20 17.8 Z"
+            fill="#ffd257" stroke={b.dark} strokeWidth="0.85"/>
+          <path d="M20 22.6 C22.5 25.6 23.6 27.2 23.6 29.2 C23.6 31.4 22 32.9 20 32.9 C18 32.9 16.4 31.4 16.4 29.2 C16.4 27.2 17.5 25.6 20 22.6 Z"
+            fill="#fffbe8"/>
+        </g>
+      )}
+    </svg>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -1953,6 +2075,7 @@ export default function App() {
   const [barPreview, setBarPreview] = useState(null); // live position while dragging
   const barPreviewRef = useRef(null);
   const [listEdit, setListEdit] = useState(null);  // {kind:"list"|"item", listId, itemId, parentId, text}
+  const [recCursor, setRecCursor] = useState({y:new Date().getFullYear(), m:new Date().getMonth()});
   useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
@@ -2739,6 +2862,10 @@ export default function App() {
     update({...data, lists:[...data.lists, {id:`l${Date.now()}`, name, color, items:[]}]});
     setListInput("");
   };
+  const toggleCollapse = (listId, itemId) => {
+    mutateList(listId, l=>({...l, items:l.items.map(it=>it.id===itemId?{...it, collapsed:!it.collapsed}:it)}));
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
+  };
   const commitListEdit = () => {
     const le = listEdit; if (!le) { return; }
     const text = (le.text||"").trim();
@@ -2760,7 +2887,7 @@ export default function App() {
     const text = (parentId ? subInput : itemInput).trim(); if (!text) return;
     mutateList(listId, l=>{
       if (!parentId) return {...l, items:[...l.items, {id:`i${Date.now()}`, text, done:false, children:[]}]};
-      return {...l, items:l.items.map(it=>it.id===parentId?{...it, children:[...(it.children||[]), {id:`i${Date.now()}`, text, done:false}]}:it)};
+      return {...l, items:l.items.map(it=>it.id===parentId?{...it, collapsed:false, children:[...(it.children||[]), {id:`i${Date.now()}`, text, done:false}]}:it)};
     });
     if (parentId) { setSubInput(""); setSubFor(null); } else setItemInput("");
   };
@@ -2957,6 +3084,23 @@ export default function App() {
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
   const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
   const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
+  // ── DAILY BADGE MATH — what share of that day's quest load got cleared ──────
+  // Returns pct:null when nothing was even scheduled (a genuine rest day).
+  const dayPct = (dk) => {
+    let total = 0, done = 0;
+    data.tasks.forEach(t=>{
+      if (!t.catId || !data.categories.find(c=>c.id===t.catId)) return;
+      if (isWeekly(t)) return;
+      if ((t.createdAt || "0000-00-00") > dk) return;   // quest didn't exist yet
+      if (!isScheduledOn(t, dk)) return;                // rest day for this quest
+      total++;
+      if (isCompletedOn(t, dk)) done++;
+    });
+    return { total, done, pct: total ? Math.round((done/total)*100) : null };
+  };
+  const todayPct  = todayTasks.length ? Math.round((todayDone/todayTasks.length)*100) : null;
+  const todayTier = badgeTierFor(todayPct);
+
   // ── PRIORITY DIVIDER — one draggable bar, remembered per weekday ────────────
   const PRI = "#ffb020";
   const priDow = new Date(today+"T00:00:00").getDay();
@@ -3046,7 +3190,7 @@ export default function App() {
     ...(S.statsEnabled !== false ? [{ v:"stats", icon:"📊", label:"STATS" }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
-  const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks");
+  const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats");
 
   // ── QUEST CARD (ring on the LEFT; vivid or tinted; per-quest color) ─────────
   // Weekly-habit card (used on Home and on the Quests page). Tap ring to log one.
@@ -3833,6 +3977,20 @@ export default function App() {
                   <span style={{fontSize:12}}>💎</span><span style={{fontSize:12,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
                 </div>
               </div>
+              {/* DAILY BADGE RACK — floats beside the character, tap for the full record */}
+              <div onClick={()=>setView("record")}
+                style={{position:"absolute",left:10,bottom:14,display:"flex",flexDirection:"column-reverse",
+                  gap:5,alignItems:"center",cursor:"pointer"}}>
+                <div style={{fontSize:8.5,fontWeight:900,letterSpacing:0.8,marginTop:1,
+                  color: todayPct==null ? FAINT : todayTier>0 ? BADGE_TIERS[todayTier-1].light : "rgba(255,255,255,0.6)",
+                  textShadow:"0 1px 6px rgba(0,0,0,0.7)"}}>
+                  {todayPct==null ? "REST" : `${todayPct}%`}
+                </div>
+                {BADGE_TIERS.map(bt=>(
+                  <DayBadge key={bt.t} tier={bt.t} size={30}
+                    earned={todayPct!=null && todayPct>=bt.need} pulse/>
+                ))}
+              </div>
               <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)"}}>
                 <PixelCharacter level={level.lvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={pet}/>
               </div>
@@ -4486,10 +4644,18 @@ export default function App() {
                       onKeyDown={e=>{if(e.key==="Enter")addListItem(l.id,null);}}/>
                     <button style={{...C.btn,padding:"0 16px",fontSize:17}} onClick={()=>addListItem(l.id,null)}>+</button>
                   </div>
-                  <div style={{fontSize:8.5,color:FAINT,fontWeight:800,marginBottom:6,textAlign:"center"}}>TAP ANY TEXT TO FIX A TYPO · ➜ SENDS IT TO THE BOARD · ⊕ ADDS A SUB-BULLET</div>
+                  <div style={{fontSize:8.5,color:FAINT,fontWeight:800,marginBottom:6,textAlign:"center"}}>TAP TEXT TO FIX A TYPO · ▼ FOLDS SUB-BULLETS AWAY · ➜ SENDS TO BOARD · ⊕ ADDS A SUB-BULLET</div>
                   {l.items.map(it=>(
                     <div key={it.id}>
                       <div style={{display:"flex",alignItems:"center",gap:9,padding:"7px 0"}}>
+                        {(it.children||[]).length>0 ? (
+                          <button onClick={()=>toggleCollapse(l.id,it.id)}
+                            style={{width:20,height:24,background:"none",border:"none",flexShrink:0,padding:0,
+                              cursor:"pointer",color:l.color,fontSize:11,fontWeight:900,lineHeight:1,
+                              display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {it.collapsed ? "▶" : "▼"}
+                          </button>
+                        ) : <div style={{width:20,flexShrink:0}}/>}
                         <button onClick={()=>toggleListItem(l.id,it.id,null)}
                           style={{width:21,height:21,borderRadius:"50%",border:`2px solid ${l.color}`,flexShrink:0,
                             background:it.done?l.color:"transparent",cursor:"pointer",padding:0}}/>
@@ -4504,6 +4670,13 @@ export default function App() {
                             style={{flex:1,fontSize:13.5,fontWeight:600,color:it.done?FAINT:"#fff",cursor:"text",
                               textDecoration:it.done?"line-through":"none",wordBreak:"break-word"}}>{it.text}</div>
                         )}
+                        {it.collapsed && (it.children||[]).length>0 && (
+                          <span onClick={()=>toggleCollapse(l.id,it.id)}
+                            style={{flexShrink:0,fontSize:9,fontWeight:900,color:"#fff",cursor:"pointer",
+                              background:`${l.color}55`,borderRadius:9,padding:"2px 7px"}}>
+                            +{(it.children||[]).length}
+                          </span>
+                        )}
                         <button onClick={()=>sendToBoard(l.id,it.id,null)} title="Send to board"
                           style={{background:`${l.color}33`,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",padding:"5px 9px",fontWeight:900,flexShrink:0}}>➜</button>
                         <button onClick={()=>{setSubFor(subFor===it.id?null:it.id); setSubInput("");}}
@@ -4511,7 +4684,7 @@ export default function App() {
                         <button onClick={()=>deleteListItem(l.id,it.id,null)}
                           style={{background:"none",border:"none",color:FAINT,fontSize:13,cursor:"pointer",padding:"4px 2px",flexShrink:0}}>✕</button>
                       </div>
-                      {(it.children||[]).map(c=>(
+                      {!it.collapsed && (it.children||[]).map(c=>(
                         <div key={c.id} style={{display:"flex",alignItems:"center",gap:9,padding:"5px 0 5px 30px"}}>
                           <button onClick={()=>toggleListItem(l.id,c.id,it.id)}
                             style={{width:17,height:17,borderRadius:"50%",border:`2px solid ${l.color}aa`,flexShrink:0,
@@ -4602,8 +4775,150 @@ export default function App() {
         )}
 
         {/* ══ STATS ══ */}
+        {/* ══ DAILY RECORD — a grid of every day's badge ══ */}
+        {view==="record" && (()=>{
+          const { y, m } = recCursor;
+          const todayK  = dateKey();
+          const first   = new Date(y, m, 1);
+          const lead    = first.getDay();
+          const nDays   = new Date(y, m+1, 0).getDate();
+          const cells   = [];
+          for (let i=0;i<lead;i++) cells.push(null);
+          for (let d=1;d<=nDays;d++) cells.push(d);
+          while (cells.length % 7 !== 0) cells.push(null);
+          const k = (d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          // Month tally
+          const tally = [0,0,0,0,0]; let rated=0, pctSum=0;
+          for (let d=1;d<=nDays;d++) {
+            const dk = k(d); if (dk > todayK) continue;
+            const r = dayPct(dk); if (r.pct==null) continue;
+            tally[badgeTierFor(r.pct)]++; rated++; pctSum += r.pct;
+          }
+          const avg = rated ? Math.round(pctSum/rated) : 0;
+          const shift = (delta)=>{ const d=new Date(y, m+delta, 1); setRecCursor({y:d.getFullYear(), m:d.getMonth()}); };
+          const atNow = (y===new Date().getFullYear() && m===new Date().getMonth());
+          return (
+          <div style={{padding:"14px 16px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={C.sectionTitle}>Daily Record</div>
+              <button style={{...C.btnSm,padding:"9px 14px",fontSize:11.5}} onClick={()=>setView("dashboard")}>‹ HOME</button>
+            </div>
+
+            {/* MONTH NAV */}
+            <div style={{...C.glass,padding:"11px 13px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <button onClick={()=>shift(-1)}
+                style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:11,color:"#fff",
+                  fontSize:16,cursor:"pointer",padding:"5px 13px",fontWeight:900}}>‹</button>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:14.5,fontWeight:900,color:"#fff"}}>{MONTHS[m]} {y}</div>
+                <div style={{fontSize:9,color:DIM,fontWeight:800,letterSpacing:0.6,marginTop:1}}>
+                  {rated>0 ? `${avg}% AVERAGE · ${rated} ACTIVE DAYS` : "NO ACTIVE DAYS"}
+                </div>
+              </div>
+              <button onClick={()=>shift(1)} disabled={atNow}
+                style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:11,
+                  color:atNow?FAINT:"#fff",fontSize:16,cursor:atNow?"default":"pointer",padding:"5px 13px",fontWeight:900}}>›</button>
+            </div>
+
+            {/* THE GRID */}
+            <div style={{...C.glass,padding:"12px 10px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
+                {DAYS.map(d=>(
+                  <div key={d} style={{textAlign:"center",fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.5}}>
+                    {d.slice(0,1).toUpperCase()}
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+                {cells.map((d,i)=>{
+                  if (d==null) return <div key={`b${i}`} style={{height:50}}/>;
+                  const dk = k(d);
+                  const future = dk > todayK;
+                  const isT = dk === todayK;
+                  const r = future ? {pct:null} : dayPct(dk);
+                  const tier = badgeTierFor(r.pct);
+                  const bt = tier>0 ? BADGE_TIERS[tier-1] : null;
+                  return (
+                    <div key={dk} style={{height:50,borderRadius:11,display:"flex",flexDirection:"column",
+                      alignItems:"center",justifyContent:"center",gap:1,
+                      background: bt ? `${bt.base}1f` : future ? "transparent" : "rgba(255,255,255,0.035)",
+                      border: isT ? `1.5px solid ${bt?bt.light:"rgba(255,255,255,0.55)"}`
+                            : bt ? `1px solid ${bt.base}55`
+                            : future ? "1px dashed rgba(255,255,255,0.09)" : "1px solid rgba(255,255,255,0.05)"}}>
+                      <div style={{fontSize:8,fontWeight:900,lineHeight:1,
+                        color: isT ? "#fff" : bt ? bt.light : FAINT}}>{d}</div>
+                      {bt ? <DayBadge tier={tier} size={26}/>
+                        : future ? <div style={{width:5,height:5,borderRadius:3,background:"rgba(255,255,255,0.13)"}}/>
+                        : r.pct==null
+                          ? <div style={{fontSize:7.5,fontWeight:800,color:"rgba(255,255,255,0.22)"}}>rest</div>
+                          : <div style={{fontSize:8.5,fontWeight:900,color:"rgba(255,255,255,0.35)"}}>{r.pct}%</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* MONTH HAUL */}
+            <div style={{...C.glass,padding:"13px 14px"}}>
+              <div style={{...C.label,marginBottom:10}}>THIS MONTH'S HAUL</div>
+              <div style={{display:"flex",gap:7}}>
+                {BADGE_TIERS.map(bt=>(
+                  <div key={bt.t} style={{flex:1,background:`${bt.base}14`,border:`1px solid ${bt.base}44`,
+                    borderRadius:14,padding:"10px 4px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <DayBadge tier={bt.t} size={30} earned={tally[bt.t]>0}/>
+                    <div style={{fontSize:16,fontWeight:900,color:tally[bt.t]>0?bt.light:FAINT,lineHeight:1}}>{tally[bt.t]}</div>
+                    <div style={{fontSize:7.5,fontWeight:900,color:FAINT,letterSpacing:0.4}}>{bt.need}%</div>
+                  </div>
+                ))}
+              </div>
+              {tally[0]>0 && (
+                <div style={{fontSize:9.5,color:FAINT,fontWeight:700,textAlign:"center",marginTop:9}}>
+                  {tally[0]} day{tally[0]===1?"":"s"} under 25% — no badge earned
+                </div>
+              )}
+            </div>
+
+            {/* LEGEND */}
+            <div style={{...C.glass,padding:"13px 14px"}}>
+              <div style={{...C.label,marginBottom:9}}>THE RANKS</div>
+              {BADGE_TIERS.map(bt=>(
+                <div key={bt.t} style={{display:"flex",alignItems:"center",gap:11,
+                  padding:"7px 0",borderBottom:bt.t<4?`1px solid ${LINE}`:"none"}}>
+                  <DayBadge tier={bt.t} size={34}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12.5,fontWeight:900,color:bt.light,letterSpacing:0.6}}>{bt.name}</div>
+                    <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>{bt.lore}</div>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:900,color:bt.base}}>{bt.need}%</div>
+                </div>
+              ))}
+              <div style={{fontSize:9,color:FAINT,fontWeight:700,textAlign:"center",marginTop:10,lineHeight:1.5}}>
+                Based on the daily quests scheduled for that day. Days with nothing scheduled read as REST and don't count against you.
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+
         {view==="stats" && (
           <div style={{padding:"14px 16px"}}>
+            <div onClick={()=>setView("record")}
+              style={{...C.glass,marginBottom:14,padding:"12px 14px",cursor:"pointer",
+                display:"flex",alignItems:"center",gap:11}}>
+              <div style={{display:"flex",gap:2,flexShrink:0}}>
+                {BADGE_TIERS.map(bt=>(
+                  <DayBadge key={bt.t} tier={bt.t} size={25}
+                    earned={todayPct!=null && todayPct>=bt.need}/>
+                ))}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>Daily Record</div>
+                <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>
+                  Every day's badge, month by month
+                </div>
+              </div>
+              <div style={{fontSize:18,color:FAINT}}>›</div>
+            </div>
             <div style={{...C.sectionTitle,marginBottom:12}}>Attributes</div>
             <div style={C.glass}>
               {data.categories.map(c=>{
