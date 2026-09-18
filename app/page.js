@@ -70,7 +70,7 @@ const THEMES = {
     name:"Blockland", swatch:"#5d9e3c", blocky:true,
     sky:["#16233d","#2f629a","#63a8d8"], sun:"#ffe98a", stars:false,
     m1:"#4a7699", m2:"#2e4c6b", m3:"#5d9e3c",
-    accent:"#5fd04a", glass:"32,32,40",
+    accent:"#7ed957", glass:"26,34,24",
   },
   forge: {
     name:"Forge", swatch:"#ec5e23",
@@ -86,10 +86,12 @@ const THEME_KEYS = Object.keys(THEMES);
 // stone, and a chunky hotbar instead of a floating glass nav.
 // ══════════════════════════════════════════════════════════════════════════════
 const BLK = {
-  panel:"#3b3b44", panelL:"#6d6d79", panelD:"#1b1b21",
-  btn:"#8b8b96",   btnL:"#c2c2cd",   btnD:"#4a4a55",
-  slot:"#26262e",  slotL:"#54545f",  slotD:"#101014",
-  ink:"#14141a",   accent:"#5fd04a", gold:"#ffcf4a",
+  panel:"#33402f", panelL:"#61784f", panelD:"#182116",
+  btn:"#6f8a5f",   btnL:"#a3bd8c",   btnD:"#3e5334",
+  slot:"#1e2a1c",  slotL:"#4a5b44",  slotD:"#0d120c",
+  ink:"#121a11",   accent:"#7ed957", gold:"#ffcf4a",
+  // solid, quiet plate used behind small artwork so texture can't compete
+  plate:"#18211a",  plateLit:"#232f20",
 };
 // Deterministic 16x16 dither, emitted as a CSS data-URI so any surface can wear it.
 function blockTexCSS(base, dark, light, seed) {
@@ -102,10 +104,10 @@ function blockTexCSS(base, dark, light, seed) {
   }
   return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'>${r}</svg>`)}")`;
 }
-const TEX_STONE = blockTexCSS("#3b3b44","#31313a","#4a4a55",7);
-const TEX_DEEP  = blockTexCSS("#17171d","#101015","#22222a",19);
-const TEX_BTN   = blockTexCSS("#8b8b96","#7a7a85","#9c9ca7",23);
-const TEX_SLOT  = blockTexCSS("#26262e","#1e1e25","#303039",29);
+const TEX_STONE = blockTexCSS("#33402f","#2e3a2a","#3a4935",7);
+const TEX_DEEP  = blockTexCSS("#151d14","#111811","#1b241a",19);
+const TEX_BTN   = blockTexCSS("#6f8a5f","#657f56","#7a9668",23);
+const TEX_SLOT  = blockTexCSS("#1e2a1c","#1a2519","#242f21",29);
 // Raised bevel (light top-left, dark bottom-right). Pass w for thickness.
 const bevelUp   = (l,d,w=3)=>({borderRadius:0,borderTop:`${w}px solid ${l}`,borderLeft:`${w}px solid ${l}`,borderRight:`${w}px solid ${d}`,borderBottom:`${w}px solid ${d}`});
 // Sunken bevel — used for inputs and empty hotbar slots.
@@ -3361,6 +3363,14 @@ export default function App() {
     chip:(on)=>({flex:1,padding:"12px 0",borderRadius:16,border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:11.5,fontWeight:900,cursor:"pointer",textAlign:"center",fontFamily:FONT}),
     sectionTitle:{fontSize:15,fontWeight:900,color:TXT,textShadow:"0 1px 8px rgba(0,0,0,0.4)"},
   };
+  // Solid quiet plate behind small artwork in Blockland — keeps the dithered
+  // stone from competing with the badge detail. Null on every other theme.
+  const plate = (lit, col, w=2) => BLOCK ? ({
+    backgroundColor: lit ? BLK.plateLit : BLK.plate,
+    backgroundImage: "none",
+    ...bevelIn(lit ? (col || BLK.btnL) : BLK.slotL, BLK.slotD, w),
+  }) : null;
+
   const navItems = [
     { v:"dashboard", icon:"⛰", label:"HOME" },
     ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
@@ -3567,7 +3577,7 @@ export default function App() {
       {BLOCK && <style>{`
         .blockmode *, .blockmode *::before, .blockmode *::after { border-radius: 0 !important; }
         .blockmode * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-        .blockmode img, .blockmode svg { image-rendering: pixelated; }
+        .blockmode img { image-rendering: pixelated; }
         .blockmode input, .blockmode button, .blockmode select { letter-spacing: 0.5px; }
       `}</style>}
       <style>{`
@@ -4179,13 +4189,20 @@ export default function App() {
                   gap:5,alignItems:"center",cursor:"pointer"}}>
                 <div style={{fontSize:8.5,fontWeight:900,letterSpacing:0.8,marginTop:1,
                   color: todayPct==null ? FAINT : todayTier>0 ? BADGE_TIERS[todayTier-1].light : "rgba(255,255,255,0.6)",
-                  textShadow:"0 1px 6px rgba(0,0,0,0.7)"}}>
+                  textShadow:"0 1px 6px rgba(0,0,0,0.7)",
+                  ...(BLOCK ? {background:"rgba(10,16,10,0.85)",padding:"2px 6px",width:36,
+                    boxSizing:"border-box",textAlign:"center"} : {})}}>
                   {todayPct==null ? "REST" : `${todayPct}%`}
                 </div>
-                {BADGE_TIERS.map(bt=>(
-                  <DayBadge key={bt.t} tier={bt.t} size={30}
-                    earned={todayPct!=null && todayPct>=bt.need} pulse/>
-                ))}
+                {BADGE_TIERS.map(bt=>{
+                  const got = todayPct!=null && todayPct>=bt.need;
+                  const art = <DayBadge tier={bt.t} size={BLOCK?26:30} earned={got} pulse/>;
+                  if (!BLOCK) return <div key={bt.t}>{art}</div>;
+                  return (
+                    <div key={bt.t} style={{width:36,height:36,display:"flex",alignItems:"center",
+                      justifyContent:"center",...plate(got, bt.light)}}>{art}</div>
+                  );
+                })}
               </div>
               <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)"}}>
                 <PixelCharacter level={level.lvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={pet}/>
@@ -5037,10 +5054,17 @@ export default function App() {
                   return (
                     <div key={dk} style={{height:50,borderRadius:11,display:"flex",flexDirection:"column",
                       alignItems:"center",justifyContent:"center",gap:1,
-                      background: bt ? `${bt.base}1f` : future ? "transparent" : "rgba(255,255,255,0.035)",
-                      border: isT ? `1.5px solid ${bt?bt.light:"rgba(255,255,255,0.55)"}`
-                            : bt ? `1px solid ${bt.base}55`
-                            : future ? "1px dashed rgba(255,255,255,0.09)" : "1px solid rgba(255,255,255,0.05)"}}>
+                      ...(BLOCK ? {
+                        ...(future
+                          ? {background:"transparent",border:`2px solid ${BLK.slotD}`}
+                          : plate(!!bt, bt?bt.light:null)),
+                        ...(isT ? {outline:`2px solid ${bt?bt.light:"#ffffff"}`,outlineOffset:"-2px"} : {}),
+                      } : {
+                        background: bt ? `${bt.base}1f` : future ? "transparent" : "rgba(255,255,255,0.035)",
+                        border: isT ? `1.5px solid ${bt?bt.light:"rgba(255,255,255,0.55)"}`
+                              : bt ? `1px solid ${bt.base}55`
+                              : future ? "1px dashed rgba(255,255,255,0.09)" : "1px solid rgba(255,255,255,0.05)",
+                      })}}>
                       <div style={{fontSize:8,fontWeight:900,lineHeight:1,
                         color: isT ? "#fff" : bt ? bt.light : FAINT}}>{d}</div>
                       {bt ? <DayBadge tier={tier} size={26}/>
@@ -5059,8 +5083,10 @@ export default function App() {
               <div style={{...C.label,marginBottom:10}}>THIS MONTH'S HAUL</div>
               <div style={{display:"flex",gap:7}}>
                 {BADGE_TIERS.map(bt=>(
-                  <div key={bt.t} style={{flex:1,background:`${bt.base}14`,border:`1px solid ${bt.base}44`,
-                    borderRadius:14,padding:"10px 4px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <div key={bt.t} style={{flex:1,borderRadius:14,padding:"10px 4px",
+                    display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+                    ...(BLOCK ? plate(tally[bt.t]>0, bt.light)
+                              : {background:`${bt.base}14`,border:`1px solid ${bt.base}44`})}}>
                     <DayBadge tier={bt.t} size={30} earned={tally[bt.t]>0}/>
                     <div style={{fontSize:16,fontWeight:900,color:tally[bt.t]>0?bt.light:FAINT,lineHeight:1}}>{tally[bt.t]}</div>
                     <div style={{fontSize:7.5,fontWeight:900,color:FAINT,letterSpacing:0.4}}>{bt.need}%</div>
@@ -5080,7 +5106,10 @@ export default function App() {
               {BADGE_TIERS.map(bt=>(
                 <div key={bt.t} style={{display:"flex",alignItems:"center",gap:11,
                   padding:"7px 0",borderBottom:bt.t<4?`1px solid ${LINE}`:"none"}}>
-                  <DayBadge tier={bt.t} size={34}/>
+                  {BLOCK
+                    ? <div style={{width:44,height:44,flexShrink:0,display:"flex",alignItems:"center",
+                        justifyContent:"center",...plate(true, bt.light)}}><DayBadge tier={bt.t} size={34}/></div>
+                    : <DayBadge tier={bt.t} size={34}/>}
                   <div style={{flex:1}}>
                     <div style={{fontSize:12.5,fontWeight:900,color:bt.light,letterSpacing:0.6}}>{bt.name}</div>
                     <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>{bt.lore}</div>
@@ -5101,11 +5130,14 @@ export default function App() {
             <div onClick={()=>setView("record")}
               style={{...C.glass,marginBottom:14,padding:"12px 14px",cursor:"pointer",
                 display:"flex",alignItems:"center",gap:11}}>
-              <div style={{display:"flex",gap:2,flexShrink:0}}>
-                {BADGE_TIERS.map(bt=>(
-                  <DayBadge key={bt.t} tier={bt.t} size={25}
-                    earned={todayPct!=null && todayPct>=bt.need}/>
-                ))}
+              <div style={{display:"flex",gap:BLOCK?3:2,flexShrink:0}}>
+                {BADGE_TIERS.map(bt=>{
+                  const got = todayPct!=null && todayPct>=bt.need;
+                  const art = <DayBadge tier={bt.t} size={25} earned={got}/>;
+                  if (!BLOCK) return <div key={bt.t}>{art}</div>;
+                  return <div key={bt.t} style={{width:33,height:33,display:"flex",alignItems:"center",
+                    justifyContent:"center",...plate(got, bt.light)}}>{art}</div>;
+                })}
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>Daily Record</div>
