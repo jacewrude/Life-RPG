@@ -1453,21 +1453,35 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
   const raf = useRef(null);
   const startT = useRef(0);
   const fired = useRef(false);
+  const moved = useRef(false);      // finger travelled → this was a scroll, not a press
+  const buzzed = useRef(false);     // haptic waits out the grace window
+  const startXY = useRef(null);
   const boxRef = useRef(null);
   const done = reps >= target;
   const isBonus = reps > target;
   const stroke = 5;
   const r = (size - stroke*2) / 2;
   const circ = 2 * Math.PI * r;
+  const GRACE_MS = 110;   // nothing lights up or buzzes before this
+  const SLOP_PX  = 11;    // travel past this and we hand the gesture to the scroller
+  const TAP_MS   = 400;   // a release later than this is an abandoned hold, not a tap
+
+  const stop = () => { cancelAnimationFrame(raf.current); setProg(0); };
 
   const begin = (e) => {
-    e.stopPropagation(); e.preventDefault();
-    fired.current = false;
+    // No preventDefault here — that's what used to kill the page scroll.
+    e.stopPropagation();
+    fired.current = false; moved.current = false; buzzed.current = false;
+    startXY.current = { x:e.clientX, y:e.clientY };
     startT.current = performance.now();
-    try { navigator.vibrate && navigator.vibrate(8); } catch {}
     const tick = (t) => {
-      const p = Math.min(1, (t - startT.current) / holdMs);
-      setProg(p);
+      if (moved.current) return;
+      const el = t - startT.current;
+      const p = Math.min(1, el / holdMs);
+      if (el > GRACE_MS) {
+        if (!buzzed.current) { buzzed.current = true; try { navigator.vibrate && navigator.vibrate(8); } catch {} }
+        setProg(p);
+      }
       if (p >= 1) {
         if (!fired.current) {
           fired.current = true;
@@ -1483,22 +1497,35 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
     };
     raf.current = requestAnimationFrame(tick);
   };
+
+  // Any real travel means the user is scrolling past this ring — bail out silently.
+  const move = (e) => {
+    if (moved.current || fired.current || !startXY.current) return;
+    const dx = e.clientX - startXY.current.x, dy = e.clientY - startXY.current.y;
+    if (dx*dx + dy*dy > SLOP_PX*SLOP_PX) { moved.current = true; stop(); }
+  };
+
   const end = (e) => {
     if (e) e.stopPropagation();
     cancelAnimationFrame(raf.current);
-    if (!fired.current) {
-      if (prog > 0 && prog < 0.25 && onShortTap) onShortTap();
-      setProg(0);
-    }
+    const el = performance.now() - startT.current;
+    const scrolled = moved.current;
+    moved.current = false; startXY.current = null;
+    if (!fired.current && !scrolled && el < TAP_MS && onShortTap) onShortTap();
+    setProg(0);
   };
+
+  // Finger left the ring, or the browser claimed the gesture for scrolling.
+  const cancel = () => { moved.current = true; startXY.current = null; stop(); };
 
   const ringPct = prog > 0 ? prog : (done ? 1 : Math.min(1, reps/target));
   return (
     <div ref={boxRef}
-      onPointerDown={begin} onPointerUp={end} onPointerLeave={end} onPointerCancel={end}
+      onPointerDown={begin} onPointerMove={move} onPointerUp={end}
+      onPointerLeave={cancel} onPointerCancel={cancel}
       onContextMenu={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();e.preventDefault();}}
       style={{ width:size, height:size, position:"relative", flexShrink:0, cursor:"pointer",
-        touchAction:"none", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none",
+        touchAction:"pan-y", WebkitUserSelect:"none", userSelect:"none", WebkitTouchCallout:"none",
         transform: prog>0 ? "scale(1.08)" : "scale(1)", transition:"transform .15s" }}
     >
       <svg width={size} height={size}>
