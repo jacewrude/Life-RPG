@@ -66,6 +66,12 @@ const THEMES = {
     m1:"#571423", m2:"#380c18", m3:"#20060e",
     accent:"#ff8f5e", glass:"28,8,12",
   },
+  voxel: {
+    name:"Blockland", swatch:"#5d9e3c", blocky:true,
+    sky:["#16233d","#2f629a","#63a8d8"], sun:"#ffe98a", stars:false,
+    m1:"#4a7699", m2:"#2e4c6b", m3:"#5d9e3c",
+    accent:"#5fd04a", glass:"32,32,40",
+  },
   forge: {
     name:"Forge", swatch:"#ec5e23",
     sky:["#070609","#161219","#2a1c10"], sun:"#ff7a2e", stars:false, ember:true,
@@ -74,6 +80,54 @@ const THEMES = {
   },
 };
 const THEME_KEYS = Object.keys(THEMES);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BLOCKLAND — an original voxel skin. Hard edges, bevelled panels, dithered
+// stone, and a chunky hotbar instead of a floating glass nav.
+// ══════════════════════════════════════════════════════════════════════════════
+const BLK = {
+  panel:"#3b3b44", panelL:"#6d6d79", panelD:"#1b1b21",
+  btn:"#8b8b96",   btnL:"#c2c2cd",   btnD:"#4a4a55",
+  slot:"#26262e",  slotL:"#54545f",  slotD:"#101014",
+  ink:"#14141a",   accent:"#5fd04a", gold:"#ffcf4a",
+};
+// Deterministic 16x16 dither, emitted as a CSS data-URI so any surface can wear it.
+function blockTexCSS(base, dark, light, seed) {
+  let st = seed;
+  const rnd = () => { st = (st*1103515245 + 12345) & 0x7fffffff; return st/0x7fffffff; };
+  let r = `<rect width='16' height='16' fill='${base}'/>`;
+  for (let i=0;i<40;i++) {
+    const x = Math.floor(rnd()*16), y = Math.floor(rnd()*16), w = rnd()<0.3 ? 2 : 1;
+    r += `<rect x='${x}' y='${y}' width='${w}' height='${w}' fill='${rnd()<0.55?dark:light}'/>`;
+  }
+  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'>${r}</svg>`)}")`;
+}
+const TEX_STONE = blockTexCSS("#3b3b44","#31313a","#4a4a55",7);
+const TEX_DEEP  = blockTexCSS("#17171d","#101015","#22222a",19);
+const TEX_BTN   = blockTexCSS("#8b8b96","#7a7a85","#9c9ca7",23);
+const TEX_SLOT  = blockTexCSS("#26262e","#1e1e25","#303039",29);
+// Raised bevel (light top-left, dark bottom-right). Pass w for thickness.
+const bevelUp   = (l,d,w=3)=>({borderRadius:0,borderTop:`${w}px solid ${l}`,borderLeft:`${w}px solid ${l}`,borderRight:`${w}px solid ${d}`,borderBottom:`${w}px solid ${d}`});
+// Sunken bevel — used for inputs and empty hotbar slots.
+const bevelIn   = (l,d,w=3)=>({borderRadius:0,borderTop:`${w}px solid ${d}`,borderLeft:`${w}px solid ${d}`,borderRight:`${w}px solid ${l}`,borderBottom:`${w}px solid ${l}`});
+const PX = { backgroundSize:"48px 48px", imageRendering:"pixelated" };
+
+// Same dither, as an SVG <pattern> for the scene's terrain.
+function pxPattern(id, base, dark, light, seed) {
+  let st = seed;
+  const rnd = () => { st = (st*1103515245 + 12345) & 0x7fffffff; return st/0x7fffffff; };
+  const cells = [];
+  for (let i=0;i<40;i++) {
+    const x = Math.floor(rnd()*16), y = Math.floor(rnd()*16), w = rnd()<0.3 ? 2 : 1;
+    cells.push(<rect key={i} x={x} y={y} width={w} height={w} fill={rnd()<0.55?dark:light}/>);
+  }
+  return (
+    <pattern id={id} key={id} width="16" height="16" patternUnits="userSpaceOnUse">
+      <rect width="16" height="16" fill={base}/>
+      {cells}
+    </pattern>
+  );
+}
 // Shared glass / text tokens (constant across skies for guaranteed contrast)
 const GLASS = "rgba(12,10,34,0.42)";
 const GLASS_SOFT = "rgba(12,10,34,0.30)";
@@ -1672,7 +1726,94 @@ function WeekPills({ task, cardColor, tinted }) {
 }
 
 // ── MOUNTAIN SCENE (layered ridges + sun/stars; the Not Boring hero) ──────────
+// ── BLOCKLAND SCENE — a voxel world rendered from a deterministic heightmap ───
+function BlockScene({ H }) {
+  const B = 16, W = 430, cols = Math.ceil(W/B) + 1;
+  const hAt   = (i)=> ((Math.sin(i*0.42) + Math.sin(i*0.19+1.7)) > 0.75 ? 1 : 0);
+  const topAt = (i)=> H - (3 + hAt(i))*B;
+  const idx   = Array.from({length:cols},(_,i)=>i);
+  const sx = 344, sy = Math.round(H*0.17);
+
+  const cloud = (kx,x,y,sc)=> [[0,1,3,1],[1,0,2,1],[3,1,2,1],[0,2,4,1]].map(([a,b,w,h],j)=>(
+    <rect key={`${kx}${j}`} x={x+a*11*sc} y={y+b*11*sc} width={w*11*sc} height={h*11*sc} fill="#ffffff" opacity="0.82"/>
+  ));
+  const tree = (kx,i,th)=>(
+    <g key={kx}>
+      <rect x={i*B}     y={topAt(i)-B*th}      width={B}   height={B*th} fill="url(#pWood)"/>
+      <rect x={(i-2)*B} y={topAt(i)-B*(th+2)}  width={B*5} height={B*2}  fill="url(#pLeaf)"/>
+      <rect x={(i-1)*B} y={topAt(i)-B*(th+3)}  width={B*3} height={B}    fill="url(#pLeaf)"/>
+    </g>
+  );
+
+  const grid = [];
+  idx.forEach(i=>{
+    const top = topAt(i);
+    grid.push(<rect key={`gv${i}`} x={i*B} y={top} width="1" height={H-top} fill="#000" opacity="0.13"/>);
+    for (let y=top; y<H; y+=B) grid.push(<rect key={`gh${i}-${y}`} x={i*B} y={y} width={B} height="1" fill="#000" opacity="0.13"/>);
+  });
+
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice"
+      shapeRendering="crispEdges"
+      style={{display:"block",position:"absolute",bottom:0,left:0,right:0,pointerEvents:"none"}}>
+      <defs>
+        <linearGradient id="bsSky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#16233d"/><stop offset="0.55" stopColor="#2f629a"/><stop offset="1" stopColor="#63a8d8"/>
+        </linearGradient>
+        {pxPattern("pGrass","#5d9e3c","#40782a","#7bbd52",7)}
+        {pxPattern("pDirt", "#8a6141","#6b4830","#a37a55",13)}
+        {pxPattern("pStone","#7b7b84","#5c5c66","#9a9aa3",21)}
+        {pxPattern("pLeaf", "#3f7f2c","#2c5f1e","#55a03b",31)}
+        {pxPattern("pWood", "#6d4a2c","#513620","#8a6240",41)}
+      </defs>
+
+      <rect width={W} height={H} fill="url(#bsSky)"/>
+
+      {/* a square sun with stubby rays */}
+      <g>
+        {[[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy],j)=>(
+          <rect key={j} x={sx+dx*29-4} y={sy+dy*29-4} width="8" height="8" fill="#fff6c0" opacity="0.45"/>
+        ))}
+        <rect x={sx-18} y={sy-18} width="36" height="36" fill="#ffe98a"/>
+        <rect x={sx-11} y={sy-11} width="22" height="22" fill="#fffdf0"/>
+      </g>
+
+      {cloud("c1",24,Math.round(H*0.30),0.9)}
+      {cloud("c2",150,Math.round(H*0.10),0.75)}
+      {cloud("c3",268,Math.round(H*0.36),0.6)}
+
+      {/* far stepped range */}
+      {idx.map(i=>{ const rh=2+Math.round(2.2+2.2*Math.sin(i*0.29+0.6)); const top=H-(4+rh)*B;
+        return <rect key={`r1${i}`} x={i*B} y={top} width={B} height={(4+rh)*B-3*B} fill="#4a7699" opacity="0.62"/>; })}
+      {/* nearer range */}
+      {idx.map(i=>{ const rh=1+Math.round(1.5+1.5*Math.sin(i*0.4+2.4)); const top=H-(3+rh)*B;
+        return <rect key={`r2${i}`} x={i*B} y={top} width={B} height={(3+rh)*B-3*B} fill="#2e4c6b" opacity="0.8"/>; })}
+
+      {tree("t1",5,3)}
+      {tree("t2",22,2)}
+
+      {/* grass / dirt / stone columns */}
+      {idx.map(i=>{ const top=topAt(i); return (
+        <g key={`c${i}`}>
+          <rect x={i*B} y={top}     width={B} height={B}            fill="url(#pGrass)"/>
+          <rect x={i*B} y={top+B}   width={B} height={B}            fill="url(#pDirt)"/>
+          <rect x={i*B} y={top+B*2} width={B} height={H-(top+B*2)}  fill="url(#pStone)"/>
+        </g>); })}
+
+      {/* a little buried ore, because why not */}
+      {[2,11,17,25].map(i=>{ const y=topAt(i)+B*2+4; if (y>=H-10) return null; return (
+        <g key={`o${i}`}>
+          <rect x={i*B+4} y={y}   width="8" height="8" fill="#63cde4"/>
+          <rect x={i*B+6} y={y+2} width="4" height="4" fill="#e0fbff"/>
+        </g>); })}
+
+      {grid}
+    </svg>
+  );
+}
+
 function Scene({ T, height=150 }) {
+  if (T.blocky) return <BlockScene H={height}/>;
   // deterministic star field
   const stars = T.stars ? Array.from({length:26},(_,i)=>{
     const x = ((i*73) % 430); const y = ((i*37) % Math.max(40, height-70));
@@ -3152,7 +3293,11 @@ export default function App() {
   const dateLabel = `${DAYS[nowD.getDay()]}, ${MONTHS[nowD.getMonth()].slice(0,3)} ${nowD.getDate()}`;
 
   // ── STYLES (glass-on-sky system) ────────────────────────────────────────────
-  const FONT = `ui-rounded,'SF Pro Rounded',Nunito,-apple-system,system-ui,sans-serif`;
+  const BLOCK = !!T.blocky;
+  const FONT = BLOCK
+    ? `ui-monospace,'SF Mono',Menlo,Consolas,'Courier New',monospace`
+    : `ui-rounded,'SF Pro Rounded',Nunito,-apple-system,system-ui,sans-serif`;
+  const PXSHADOW = "2px 2px 0 rgba(0,0,0,0.6)";
   // Theme-aware glass tints: surfaces (cards, nav, sheets, modals) pick up the
   // active theme's hue so everything shifts together — warm-dark under Forge,
   // cool under Night, etc.
@@ -3161,7 +3306,45 @@ export default function App() {
   const GLASS_SOFT = `rgba(${_gb},0.30)`;
   const GLASS_HEAVY = `rgba(${_gb},0.72)`;
   const skyGradient = `linear-gradient(180deg,${T.sky[0]} 0%,${T.sky[1]} 52%,${T.sky[2]} 100%)`;
-  const C = {
+  const C = BLOCK ? {
+    // ── BLOCKLAND SKIN ────────────────────────────────────────────────────────
+    app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,letterSpacing:0.3,
+      textShadow:PXSHADOW,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 116px)",position:"relative"},
+    header:{padding:"calc(env(safe-area-inset-top, 0px) + 14px) 16px 10px",position:"sticky",top:0,zIndex:5,
+      background:`linear-gradient(180deg,${BLK.ink}f2,${BLK.ink}00)`},
+    glass:{backgroundColor:BLK.panel,backgroundImage:TEX_STONE,...PX,...bevelUp(BLK.panelL,BLK.panelD,3),
+      padding:"14px 15px",marginBottom:11,boxShadow:"0 4px 0 rgba(0,0,0,0.45)"},
+    label:{fontSize:10.5,letterSpacing:1.4,color:"#b9b9c4",marginBottom:9,fontWeight:700,textTransform:"uppercase",textShadow:PXSHADOW},
+    input:{backgroundColor:BLK.ink,backgroundImage:TEX_DEEP,...PX,...bevelIn(BLK.slotL,BLK.slotD,3),
+      padding:"12px 13px",color:TXT,fontSize:14,width:"100%",boxSizing:"border-box",fontFamily:FONT,fontWeight:700,outline:"none",textShadow:PXSHADOW},
+    select:{backgroundColor:BLK.ink,backgroundImage:TEX_DEEP,...PX,...bevelIn(BLK.slotL,BLK.slotD,3),
+      padding:"12px 13px",color:TXT,fontSize:14,width:"100%",boxSizing:"border-box",fontFamily:FONT,fontWeight:700,outline:"none",WebkitAppearance:"none",textShadow:PXSHADOW},
+    btn:{backgroundColor:BLK.btn,backgroundImage:TEX_BTN,...PX,...bevelUp(BLK.btnL,BLK.btnD,3),
+      color:"#ffffff",padding:"12px 18px",fontSize:12.5,cursor:"pointer",fontFamily:FONT,fontWeight:700,
+      letterSpacing:1,textShadow:PXSHADOW,boxShadow:"0 4px 0 rgba(0,0,0,0.4)"},
+    btnSm:{backgroundColor:BLK.slot,backgroundImage:TEX_SLOT,...PX,...bevelUp(BLK.slotL,BLK.slotD,2),
+      color:TXT,padding:"9px 13px",fontSize:11,cursor:"pointer",fontFamily:FONT,fontWeight:700,letterSpacing:0.8,textShadow:PXSHADOW},
+    // the hotbar
+    nav:{position:"fixed",bottom:"calc(env(safe-area-inset-bottom, 0px) + 8px)",left:"50%",transform:"translateX(-50%)",
+      width:"calc(100% - 16px)",maxWidth:414,backgroundColor:BLK.panel,backgroundImage:TEX_STONE,...PX,
+      ...bevelUp(BLK.panelL,BLK.panelD,3),display:"flex",justifyContent:"space-around",padding:"5px 4px",zIndex:10,
+      boxShadow:"0 5px 0 rgba(0,0,0,0.5)"},
+    navBtn:a=>({backgroundColor:a?"#5a5a66":BLK.slot,backgroundImage:a?"none":TEX_SLOT,...PX,
+      ...(a?bevelUp("#9d9daa","#33333c",2):bevelIn(BLK.slotL,BLK.slotD,2)),
+      color:a?"#ffffff":"rgba(255,255,255,0.5)",fontSize:6.5,fontWeight:700,cursor:"pointer",fontFamily:FONT,
+      display:"flex",flexDirection:"column",alignItems:"center",gap:1,padding:"5px 3px",letterSpacing:0.3,textShadow:PXSHADOW}),
+    dayBtn:on=>({width:38,height:38,...(on?bevelUp(BLK.btnL,BLK.btnD,2):bevelIn(BLK.slotL,BLK.slotD,2)),
+      backgroundColor:on?BLK.btn:BLK.slot,backgroundImage:on?TEX_BTN:TEX_SLOT,...PX,
+      color:on?"#fff":DIM,fontSize:10,cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",textShadow:PXSHADOW}),
+    modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.62)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
+    sheet:{backgroundColor:BLK.panel,backgroundImage:TEX_STONE,...PX,...bevelUp(BLK.panelL,BLK.panelD,4),
+      borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"88vh",overflowY:"auto",
+      padding:"16px 18px calc(env(safe-area-inset-bottom, 0px) + 30px)"},
+    chip:(on)=>({flex:1,padding:"11px 0",...(on?bevelUp(BLK.btnL,BLK.btnD,2):bevelIn(BLK.slotL,BLK.slotD,2)),
+      backgroundColor:on?BLK.btn:BLK.slot,backgroundImage:on?TEX_BTN:TEX_SLOT,...PX,
+      color:on?"#fff":DIM,fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",fontFamily:FONT,letterSpacing:0.6,textShadow:PXSHADOW}),
+    sectionTitle:{fontSize:14,fontWeight:700,color:TXT,letterSpacing:1.2,textTransform:"uppercase",textShadow:"2px 2px 0 #000"},
+  } : {
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative"},
     header:{padding:"calc(env(safe-area-inset-top, 0px) + 14px) 18px 10px",position:"sticky",top:0,zIndex:5,background:`linear-gradient(180deg,${T.sky[0]}f0,${T.sky[0]}00)`,backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)"},
     glass:{background:GLASS,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",border:`1px solid ${LINE}`,borderRadius:26,padding:"16px 17px",marginBottom:12,boxShadow:"0 8px 28px rgba(0,0,0,0.35)"},
@@ -3377,7 +3560,16 @@ export default function App() {
   );
 
   return (
-    <div style={C.app}>
+    <div style={C.app} className={BLOCK ? "blockmode" : ""}>
+      {/* One rule squares off every corner in the app when Blockland is active,
+          so cards, rings, chips and sheets all become blocks without touching
+          six thousand lines of inline styles. */}
+      {BLOCK && <style>{`
+        .blockmode *, .blockmode *::before, .blockmode *::after { border-radius: 0 !important; }
+        .blockmode * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+        .blockmode img, .blockmode svg { image-rendering: pixelated; }
+        .blockmode input, .blockmode button, .blockmode select { letter-spacing: 0.5px; }
+      `}</style>}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap');
         @keyframes popIn { 0%{transform:scale(.6);opacity:0} 70%{transform:scale(1.08)}
@@ -3399,7 +3591,11 @@ export default function App() {
         body { background: ${T.sky[0]}; }
       `}</style>
       {/* FULL-BLEED SKY */}
-      <div style={{position:"fixed",inset:0,background:skyGradient,zIndex:0}}/>
+      <div style={{position:"fixed",inset:0,zIndex:0,
+        background: BLOCK ? "#14141a" : skyGradient,
+        backgroundImage: BLOCK ? TEX_DEEP : undefined,
+        backgroundSize: BLOCK ? "64px 64px" : undefined,
+        imageRendering: BLOCK ? "pixelated" : undefined}}/>
 
       {/* CONFETTI SHOWER (full screen) */}
       {confetti.length>0 && (
