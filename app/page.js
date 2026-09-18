@@ -79,6 +79,9 @@ const THEMES = {
     accent:"#ff7a2e", glass:"26,16,10",
   },
 };
+const QUEST_ICONS = ["🏋️","🏃","🚴","🚶","🤸","🧘","💧","💊","🥗","🍳","😴","🛏️","📖","📚","✍️","📝","🙏","⛪","✝️","💼","💻","📞","📊","💰","🧹","🧺","🧼","🍽️","🚿","🪥","💈","🧴","🐕","🌱","🎸","🎨","🎯","🎮","☀️","🌙","⏰","🧠","❤️","👨‍👩‍👧","🎓","🔧","📵","🚭"];
+const iconFor = (task, cat) => (task && task.icon) || (cat && cat.icon) || "⭐";
+
 const THEME_KEYS = Object.keys(THEMES);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -148,6 +151,7 @@ const DEFAULT_SETTINGS = {
   statStyle: "radar", // "radar" | "bars" | "none"
   theme: "ember",
   cardStyle: "vivid", // "vivid" | "tinted"
+  questLayout: "list", // "list" | "circles"
   casinoEnabled: true,
   shopEnabled: true,
   questsEnabled: true,
@@ -556,6 +560,7 @@ function migrate(d) {
   if (!THEMES[settings.theme]) settings.theme = "ember";
   if (!["radar","bars","none"].includes(settings.statStyle)) settings.statStyle = "radar";
   if (!["vivid","tinted"].includes(settings.cardStyle)) settings.cardStyle = "vivid";
+  if (!["list","circles"].includes(settings.questLayout)) settings.questLayout = "list";
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
   if (!["m","f"].includes(chr.body)) chr.body = "m";
@@ -1443,7 +1448,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
 }
 
 // ── HOLD-TO-COMPLETE BUTTON (chunky Not Boring style) ─────────────────────────
-function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255,255,0.35)", reps, target, onComplete, onShortTap, size=54, holdMs=650 }) {
+function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255,255,0.35)", reps, target, onComplete, onShortTap, size=54, holdMs=650, icon=null }) {
   const [prog, setProg] = useState(0);
   const raf = useRef(null);
   const startT = useRef(0);
@@ -1510,11 +1515,16 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
         justifyContent:"center", pointerEvents:"none" }}>
         {done
           ? <span style={{ color:checkColor, fontSize:size*0.44, fontWeight:900 }}>✓</span>
-          : target > 1
-            ? <span style={{ color:"rgba(255,255,255,0.9)", fontSize:size*0.26, fontWeight:800 }}>{reps}/{target}</span>
-            : prog > 0
-              ? <span style={{ color, fontSize:size*0.3 }}>●</span>
-              : null
+          : icon
+            ? <span style={{ display:"flex", flexDirection:"column", alignItems:"center", lineHeight:1 }}>
+                <span style={{ fontSize:size*0.36, filter:prog>0?`drop-shadow(0 0 6px ${color})`:"none" }}>{icon}</span>
+                {target > 1 && <span style={{ color:"rgba(255,255,255,0.9)", fontSize:size*0.17, fontWeight:800, marginTop:size*0.04 }}>{reps}/{target}</span>}
+              </span>
+            : target > 1
+              ? <span style={{ color:"rgba(255,255,255,0.9)", fontSize:size*0.26, fontWeight:800 }}>{reps}/{target}</span>
+              : prog > 0
+                ? <span style={{ color, fontSize:size*0.3 }}>●</span>
+                : null
         }
       </div>
       {isBonus && (
@@ -2219,6 +2229,13 @@ export default function App() {
   const barPreviewRef = useRef(null);
   const [listEdit, setListEdit] = useState(null);  // {kind:"list"|"item", listId, itemId, parentId, text}
   const [recCursor, setRecCursor] = useState({y:new Date().getFullYear(), m:new Date().getMonth()});
+  const [vw, setVw] = useState(390);
+  useEffect(()=>{
+    const measure = () => setVw(Math.min(window.innerWidth || 390, 430));
+    measure();
+    window.addEventListener("resize", measure);
+    return ()=>window.removeEventListener("resize", measure);
+  },[]);
   useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
@@ -2228,7 +2245,7 @@ export default function App() {
   const [editingTitleLvl, setEditingTitleLvl] = useState(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [currentDay, setCurrentDay] = useState(dateKey());
-  const [newTask, setNewTask] = useState({name:"",catId:"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3});
+  const [newTask, setNewTask] = useState({name:"",catId:"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
@@ -2645,7 +2662,7 @@ export default function App() {
       targetReps: isWk ? 1 : (newTask.targetReps || 1),
       points: calcPoints(newTask.importance), decayRate: calcDecay(newTask.importance), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
-    setNewTask({name:"",catId:data.categories[0]?.id||"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3});
+    setNewTask({name:"",catId:data.categories[0]?.id||"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
     setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
   };
 
@@ -4385,7 +4402,61 @@ export default function App() {
               {todayTasks.length===0 && (
                 <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>No quests scheduled today.</div>
               )}
-              {(()=>{
+              {S.questLayout==="circles" ? (()=>{
+                const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
+                const n = byOrder.length;
+                if (!n) return null;
+                const prioN = Math.max(0, Math.min(n, priBarPos));
+                const prio  = new Set(byOrder.slice(0,prioN).map(t=>t.id));
+                // Must-dos lead, then whatever's still open, then the finished ones.
+                const shown = [...byOrder].sort((x,y)=>{
+                  const px = prio.has(x.id)?0:1, py = prio.has(y.id)?0:1;
+                  if (px!==py) return px-py;
+                  const xd = isCompletedOn(x,today)?1:0, yd = isCompletedOn(y,today)?1:0;
+                  if (xd!==yd) return xd-yd;
+                  return (x.order??0)-(y.order??0);
+                });
+                // Circles stay as large as the count allows — no paging, nothing hidden.
+                const cols = n<=6 ? 2 : n<=12 ? 3 : n<=20 ? 4 : 5;
+                const gap  = cols<=2 ? 20 : cols===3 ? 15 : 11;
+                const cell = Math.floor((Math.min(vw,430) - 32 - gap*(cols-1)) / cols);
+                const ring = Math.max(46, Math.min(118, cell - (cols<=2 ? 20 : 8)));
+                const fs   = cols<=2 ? 12.5 : cols===3 ? 10.5 : 9.2;
+                return (
+                  <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,
+                    gap:`${gap+16}px ${gap}px`,justifyItems:"center",padding:"4px 0 14px"}}>
+                    {shown.map(t=>{
+                      const cat    = data.categories.find(c=>c.id===t.catId);
+                      const color  = t.color || cat?.color || "#8b8b96";
+                      const reps   = getReps(t,today);
+                      const target = t.targetReps||1;
+                      const must   = prio.has(t.id);
+                      const done   = reps >= target;
+                      return (
+                        <div key={t.id} style={{display:"flex",flexDirection:"column",alignItems:"center",
+                          gap:8,width:"100%"}}>
+                          <div style={{position:"relative"}}>
+                            <HoldRing color={color} checkColor="#fff" trackColor="rgba(255,255,255,0.22)"
+                              reps={reps} target={target} size={ring} icon={iconFor(t,cat)}
+                              onComplete={(bx,by)=>{ addRep(t.id, today);
+                                fireBurst(bx, by, color, S.showXP?`+${(t.points/target).toFixed(3)}`:"✦ NICE"); }}
+                              onShortTap={()=>{ setDetailTaskId(t.id);
+                                setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}/>
+                            {must && (
+                              <div style={{position:"absolute",top:-3,left:-3,background:PRI,color:"#2a1a00",
+                                fontSize:10,fontWeight:900,padding:"1px 5px",borderRadius:8,
+                                boxShadow:`0 0 8px ${PRI}99`,pointerEvents:"none"}}>⚑</div>
+                            )}
+                          </div>
+                          <div style={{fontSize:fs,fontWeight:800,color:"#fff",textAlign:"center",
+                            lineHeight:1.2,width:"100%",wordBreak:"break-word",opacity:done?0.5:1,
+                            textDecoration:done?"line-through":"none"}}>{t.name}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })() : (()=>{
                 // True running order — independent of what's checked off, so the bar can't drift.
                 const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
                 const ids = byOrder.map(t=>t.id);
@@ -4636,6 +4707,21 @@ export default function App() {
                 <div style={C.label}>QUEST NAME</div>
                 <input style={C.input} value={t.name} placeholder="e.g. Morning run"
                   onChange={e=>set({name:e.target.value})}/>
+                <div style={{...C.label,marginTop:16}}>ICON <span style={{color:FAINT}}>· shown on the circle view</span></div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:132,overflowY:"auto",
+                  background:"rgba(0,0,0,0.2)",padding:8,borderRadius:BLOCK?0:14}}>
+                  <button onClick={()=>set({icon:""})}
+                    style={{height:34,padding:"0 10px",borderRadius:BLOCK?0:10,cursor:"pointer",fontFamily:FONT,
+                      fontSize:9.5,fontWeight:900,color:"#fff",background:"rgba(255,255,255,0.08)",
+                      border:!t.icon?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>AUTO</button>
+                  {QUEST_ICONS.map(ic=>(
+                    <button key={ic} onClick={()=>set({icon:ic})}
+                      style={{width:34,height:34,borderRadius:BLOCK?0:10,cursor:"pointer",fontSize:17,padding:0,
+                        background:"rgba(255,255,255,0.08)",lineHeight:1,
+                        border:t.icon===ic?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>{ic}</button>
+                  ))}
+                </div>
+                <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>AUTO uses the category's icon</div>
                 <div style={{...C.label,marginTop:16}}>CATEGORY</div>
                 <select style={C.select} value={t.catId||""} onChange={e=>set({catId:e.target.value})}>
                   {data.categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
@@ -5755,6 +5841,13 @@ export default function App() {
                   <button key={v} style={C.chip(S.statStyle===v)} onClick={()=>setSetting("statStyle",v)}>{l}</button>
                 ))}
               </div>
+              <div style={C.label}>HOME QUEST LAYOUT</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                {[["list","LIST"],["circles","CIRCLES"]].map(([v,l])=>(
+                  <button key={v} style={C.chip(S.questLayout===v)} onClick={()=>setSetting("questLayout",v)}>{l}</button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:16}}>Circles = big tappable rings with icons, spaced out. They shrink as you add quests so everything stays on one page.</div>
               <div style={C.label}>QUEST CARD STYLE</div>
               <div style={{display:"flex",gap:8,marginBottom:16}}>
                 {[["vivid","VIVID"],["tinted","TINTED"]].map(([v,l])=>(
