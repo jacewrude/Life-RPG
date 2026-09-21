@@ -152,6 +152,7 @@ const DEFAULT_SETTINGS = {
   theme: "ember",
   cardStyle: "vivid", // "vivid" | "tinted"
   questLayout: "list", // "list" | "circles"
+  questWeekView: "last7", // "last7" | "week" (Mon→Sun)
   casinoEnabled: true,
   shopEnabled: true,
   questsEnabled: true,
@@ -561,6 +562,7 @@ function migrate(d) {
   if (!["radar","bars","none"].includes(settings.statStyle)) settings.statStyle = "radar";
   if (!["vivid","tinted"].includes(settings.cardStyle)) settings.cardStyle = "vivid";
   if (!["list","circles"].includes(settings.questLayout)) settings.questLayout = "list";
+  if (!["last7","week"].includes(settings.questWeekView)) settings.questWeekView = "last7";
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
   if (!["m","f"].includes(chr.body)) chr.body = "m";
@@ -4590,7 +4592,8 @@ export default function App() {
 
         {/* ══ QUESTS (HabitKit-style grid) ══ */}
         {view==="tasks" && (()=>{
-          const wk7 = last7Keys();
+          const wkMode = S.questWeekView==="week" ? "week" : "last7";
+          const wk7 = wkMode==="week" ? weekDateKeys() : last7Keys();
           const todayK = dateKey();
           const sortedTasks = [...data.tasks]
             .filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t))
@@ -4609,7 +4612,16 @@ export default function App() {
             </div>
             {/* Day header (HabitKit style) */}
             <div style={{display:"flex",alignItems:"flex-end",gap:10,marginBottom:8,padding:"0 13px"}}>
-              <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"6px 12px",fontSize:10.5,fontWeight:800,color:"#fff"}}>Last 7 days</div>
+              <div style={{display:"flex",background:"rgba(0,0,0,0.35)",borderRadius:12,padding:3,gap:2}}>
+                {[["last7","Last 7"],["week","Mon–Sun"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setSetting("questWeekView",v)}
+                    style={{border:"none",cursor:"pointer",fontFamily:FONT,borderRadius:9,padding:"5px 10px",
+                      fontSize:10,fontWeight:900,letterSpacing:0.3,
+                      background: wkMode===v ? "rgba(255,255,255,0.9)" : "transparent",
+                      color: wkMode===v ? "#111" : "rgba(255,255,255,0.6)",
+                      textShadow: wkMode===v ? "none" : undefined}}>{l}</button>
+                ))}
+              </div>
               <div style={{flex:1}}/>
               <div style={{display:"flex",gap:4}}>
                 {wk7.map(dk=>{
