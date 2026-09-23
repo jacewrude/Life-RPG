@@ -369,6 +369,8 @@ const INIT = {
   combo: { count:0, lastAt:0 },
   challengeClaims: {},
   bossClaims: {},
+  rival: { power:0, rate:0, tick:"", arc:1, wins:0, born:"" },
+  story: { unlocked:0, last:"" },
   priorityBar: [0,0,0,0,0,0,0],
   trophies: {},
   flags: {},
@@ -591,6 +593,12 @@ function migrate(d) {
       Object.entries(src).forEach(([wk,v])=>{ if (typeof v==="string") out[wk]=v;
         else { const seed=String(wk).split("").reduce((x,c)=>x+c.charCodeAt(0),0); out[wk]=ids[seed%ids.length]; } });
       return out; })(),
+    rival: (()=>{ const r=(d.rival && typeof d.rival==="object")?d.rival:{};
+      return { power:Math.max(0,Number(r.power)||0), rate:Math.max(0,Number(r.rate)||0),
+               tick:typeof r.tick==="string"?r.tick:"", arc:Math.max(1,parseInt(r.arc)||1),
+               wins:Math.max(0,parseInt(r.wins)||0), born:typeof r.born==="string"?r.born:"" }; })(),
+    story: (()=>{ const st=(d.story && typeof d.story==="object")?d.story:{};
+      return { unlocked:Math.max(0,parseInt(st.unlocked)||0), last:typeof st.last==="string"?st.last:"" }; })(),
     priorityBar: (()=>{ const src=Array.isArray(d.priorityBar)?d.priorityBar:[];
       return [0,1,2,3,4,5,6].map(i=>Math.max(0, parseInt(src[i])||0)); })(),
     flags: (d.flags && typeof d.flags === "object") ? d.flags : {},
@@ -2238,6 +2246,131 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// THE RIVAL — he trains every day whether you do or not.
+// ══════════════════════════════════════════════════════════════════════════════
+const RIVAL_NAME = "KAEDO";
+const ARC_TITLES = ["the Unproven","the Relentless","the Ashen","the Undimmed","the Inevitable"];
+const arcTitle = (arc) => ARC_TITLES[Math.min(ARC_TITLES.length-1, Math.max(0,(arc||1)-1))];
+const arcStage = (arc) => Math.min(4, Math.max(0, (arc||1)-1));
+
+function kaedoArtSVG(stage) {
+  const A  = ["#7a3fd6","#9a3fd6","#c23fa8","#e0432f","#ffb020"][stage] || "#7a3fd6";
+  const A2 = ["#2a1050","#331055","#560f42","#5c1208","#6b3d04"][stage] || "#2a1050";
+  return `
+<defs>
+ <radialGradient id="au" cx="0.5" cy="0.55" r="0.52"><stop offset="0" stop-color="${A}" stop-opacity="0.5"/><stop offset="0.45" stop-color="${A}" stop-opacity="0.2"/><stop offset="1" stop-color="${A2}" stop-opacity="0"/></radialGradient>
+ <linearGradient id="hg" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#eef0f7"/><stop offset="0.45" stop-color="#b3b9cc"/><stop offset="1" stop-color="#5e6479"/></linearGradient>
+ <linearGradient id="cg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#2b2f45"/><stop offset="0.55" stop-color="#181b2a"/><stop offset="1" stop-color="#0b0d15"/></linearGradient>
+ <linearGradient id="pg" x1="0" y1="0" x2="0.5" y2="1"><stop offset="0" stop-color="#5a6180"/><stop offset="0.5" stop-color="#343a52"/><stop offset="1" stop-color="#191d2c"/></linearGradient>
+ <linearGradient id="sg" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#e8c4a2"/><stop offset="1" stop-color="#b98a66"/></linearGradient>
+ <linearGradient id="kg" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#78202e"/><stop offset="1" stop-color="#280910"/></linearGradient>
+</defs>
+<ellipse cx="190" cy="160" rx="165" ry="145" fill="url(#au)"/>
+${[[86,246,4],[108,270,3],[272,250,4],[294,272,3],[70,206,3],[308,212,4],[128,288,3],[252,292,3]].map(([x,y,s],i)=>`<rect x="${x}" y="${y}" width="${s}" height="${s}" fill="${A}" opacity="${0.45+0.06*i}"/>`).join("")}
+<path d="M190 118 L302 170 L320 294 L256 278 L190 252 L124 278 L60 294 L78 170 Z" fill="url(#kg)"/>
+<path d="M190 128 L288 174 L302 288 L252 272 L190 248 Z" fill="#000" opacity="0.25"/>
+<path d="M190 124 L268 160 L284 294 L96 294 L112 160 Z" fill="url(#cg)"/>
+<path d="M146 152 L190 132 L234 152 L228 190 L190 170 L152 190 Z" fill="url(#pg)" stroke="#080a10" stroke-width="2"/>
+<path d="M94 162 C102 142 134 138 146 152 L140 200 C118 204 98 192 94 174 Z" fill="url(#pg)" stroke="#080a10" stroke-width="2"/>
+<path d="M286 162 C278 142 246 138 234 152 L240 200 C262 204 282 192 286 174 Z" fill="url(#pg)" stroke="#080a10" stroke-width="2"/>
+<path d="M102 168 L138 160 M278 168 L242 160" stroke="${A}" stroke-width="3.5" opacity="0.9"/>
+<path d="M190 198 L205 215 L190 246 L175 215 Z" fill="${A}"/>
+<path d="M190 206 L198 216 L190 234 L182 216 Z" fill="#fff" opacity="0.5"/>
+<path d="M172 116 h36 v28 h-36 z" fill="#a87a58"/>
+<!-- head: longer jaw, pointed chin -->
+<path d="M190 36 C219 36 237 58 237 86 C237 104 232 120 222 130 L190 142 L158 130 C148 120 143 104 143 86 C143 58 161 36 190 36 Z" fill="url(#sg)"/>
+<!-- hair cap, swept back -->
+<path d="M141 104 C134 56 157 26 190 26 C223 26 246 56 239 104 L233 80 C219 68 161 68 147 80 Z" fill="url(#hg)"/>
+<!-- upward-swept spikes -->
+<path d="M152 40 L128 8 L174 30 Z" fill="url(#hg)"/>
+<path d="M176 30 L166 2 L200 24 Z" fill="url(#hg)"/>
+<path d="M204 28 L218 2 L224 34 Z" fill="url(#hg)"/>
+<path d="M226 38 L252 10 L238 48 Z" fill="url(#hg)"/>
+<!-- long side strands -->
+<path d="M144 88 L128 156 L148 146 L153 98 Z" fill="url(#hg)"/>
+<path d="M236 88 L252 156 L232 146 L227 98 Z" fill="url(#hg)"/>
+<!-- heavy brow shadow -->
+<path d="M147 80 C165 70 215 70 233 80 L231 96 C214 84 166 84 149 96 Z" fill="#000" opacity="0.42"/>
+<!-- narrow angled eyes -->
+<path d="M152 88 L183 94 L181 103 L154 99 Z" fill="#100c18"/>
+<path d="M228 88 L197 94 L199 103 L226 99 Z" fill="#100c18"/>
+<rect x="163" y="93" width="12" height="6.5" fill="${A}"/>
+<rect x="205" y="93" width="12" height="6.5" fill="${A}"/>
+<rect x="167" y="93" width="3" height="6.5" fill="#07050c"/>
+<rect x="210" y="93" width="3" height="6.5" fill="#07050c"/>
+<!-- hard angled brows -->
+<path d="M148 76 L186 88 L184 94 L147 83 Z" fill="#5e6479"/>
+<path d="M232 76 L194 88 L196 94 L233 83 Z" fill="#5e6479"/>
+<!-- scar across the right eye -->
+<path d="M222 62 L214 116" stroke="#9c5d44" stroke-width="3.5" opacity="0.9"/>
+<path d="M222 62 L214 116" stroke="#c98a6d" stroke-width="1.2" opacity="0.7"/>
+<path d="M190 100 L185 114 h10 z" fill="#a8734f" opacity="0.65"/>
+<!-- flat hard mouth, faint downturn -->
+<path d="M173 126 L207 122" stroke="#6b3f2c" stroke-width="3.5" stroke-linecap="round"/>
+<path d="M173 126 L170 122 M207 122 L210 127" stroke="#6b3f2c" stroke-width="3" stroke-linecap="round"/>
+<g transform="rotate(-24 300 200)">
+ <rect x="294" y="86" width="15" height="134" fill="#c6cde0"/>
+ <rect x="294" y="86" width="5" height="134" fill="#ffffff" opacity="0.65"/>
+ <path d="M294 86 L301.5 62 L309 86 Z" fill="#eaf0fa"/>
+ <rect x="281" y="220" width="41" height="10" rx="3" fill="${A}"/>
+ <rect x="297" y="230" width="9" height="26" fill="#252a3c"/>
+</g>`;
+}
+function KaedoArt({ stage, style }) {
+  return (
+    <svg viewBox="0 0 380 300" style={style} preserveAspectRatio="xMidYMid meet"
+      dangerouslySetInnerHTML={{ __html: kaedoArtSVG(stage) }}/>
+  );
+}
+
+// Your strength is every rep you have ever actually done. Nothing else moves it.
+function playerPowerOf(d) {
+  let reps = 0;
+  (d.tasks||[]).forEach(t=>{
+    Object.values(t.completions||{}).forEach(v=>{ reps += (v===true ? 1 : (Number(v)||0)); });
+  });
+  return Math.round(reps * 14);
+}
+// What you've earned per day lately — used to keep him just barely ahead.
+function recentDailyGain(d) {
+  const today = new Date();
+  let reps = 0;
+  for (let i=0;i<14;i++) {
+    const k = dateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate()-i));
+    (d.tasks||[]).forEach(t=>{ const v=(t.completions||{})[k]; reps += (v===true?1:(Number(v)||0)); });
+  }
+  return (reps * 14) / 14;
+}
+
+// ── TRANSFORMATIONS ───────────────────────────────────────────────────────────
+const FORMS = [
+  { n:0, at:0,     name:"SQUIRE",      aura:null,      line:"Untested." },
+  { n:1, at:1200,  name:"KINDLED",     aura:"#ff8a3c", line:"Something caught." },
+  { n:2, at:3600,  name:"TEMPERED",    aura:"#4fc3f7", line:"The shaking stopped." },
+  { n:3, at:8000,  name:"ASCENDANT",   aura:"#b06bff", line:"The air moves around you now." },
+  { n:4, at:16000, name:"RADIANT",     aura:"#ffd24a", line:"They can see you from the wall." },
+  { n:5, at:32000, name:"TRANSCENDENT",aura:"#ffffff", line:"There is no one left above you." },
+];
+const formFor = (pw) => { let f = FORMS[0]; FORMS.forEach(x=>{ if (pw >= x.at) f = x; }); return f; };
+const nextForm = (pw) => FORMS.find(x=>x.at > pw) || null;
+
+// ── THE ARC — one chapter for each day you clear everything ────────────────────
+const STORY = [
+  { t:"The Notice Board", b:"You were not the only one reading it.\n\nHe stood at the far end of the board with his arms folded, silver hair catching the torchlight, and he did not look at you once. He read the same posting you did. He tore it down before you could reach for it.\n\n\"You were slow,\" he said, not unkindly. \"That's all it was.\"\n\nBy the time you found your voice he was already through the gate." },
+  { t:"What He Left Behind", b:"The training yard was empty at dawn, but the dummies were splintered and the sand was churned in a wide arc, over and over, the same six steps.\n\nThe quartermaster shrugged. \"He's been here since the fourth bell.\"\n\n\"Every day?\"\n\n\"Every day you haven't.\"" },
+  { t:"The First Word", b:"He caught you on the stair and looked you over like a blade he was deciding whether to buy.\n\n\"Kaedo,\" he said. \"You'll want the name. You'll be saying it a lot.\"\n\n\"Why would I say it?\"\n\n\"Because you'll be explaining to people why you're behind me.\" He shrugged. \"Or you won't. Either way, I'll be up before you tomorrow.\"" },
+  { t:"The Gap", b:"There is a board in the hall where they chalk the numbers.\n\nYou stopped looking at yours weeks ago. You looked tonight. His was higher, and it had been higher long enough that someone had stopped bothering to erase the space between.\n\nSomeone had drawn a small line through the gap, the way you mark a distance on a map. A day's walk. That is all it was. A day's walk." },
+  { t:"He Trains in the Rain", b:"You went to the yard expecting it empty.\n\nHe was there in it, soaked through, running the same six steps. He did not stop when he saw you. He did not speed up either. He just kept going, like the weather was a rumour he had not heard.\n\n\"You came out in this,\" he said eventually. It was not a compliment. It was a data point, and he filed it." },
+  { t:"The Honest Question", b:"\"Do you ever not want to?\" you asked him.\n\nHe stopped. Actually stopped, for the first time.\n\n\"Every morning,\" he said. \"Every single one. I used to wait until I wanted to.\" He picked his sword back up. \"I was very weak for a very long time.\"" },
+  { t:"Closing", b:"The chalk line got shorter.\n\nNobody announced it. The hall did not go quiet. But the quartermaster looked at the board twice, and when he caught you watching he pretended he had not.\n\nKaedo said nothing at all that week, which was its own kind of announcement." },
+  { t:"The Bad Week", b:"You lost four days. It happens.\n\nHe did not gloat. That was somehow worse. He simply trained, and the gap reopened, and when you finally came back to the yard he handed you a practice blade without comment.\n\n\"You think I am angry,\" he said.\n\n\"Aren't you?\"\n\n\"I am relieved. I thought you had stopped.\"" },
+  { t:"Within Reach", b:"The numbers are close enough now that people have started watching the board in the evenings.\n\nHe has noticed. He has begun rising earlier. You have begun rising earlier than that.\n\nNeither of you has said a word about it. There is nothing to say about it. There is only the yard, and the six steps, and the chalk." },
+  { t:"The Duel", b:"He was waiting at the gate with two blades and no expression.\n\n\"Today,\" he said.\n\n\"Today.\"\n\nHe threw you one. \"I want you to know something before we start. I did not train to beat you.\" He set his feet. \"I trained so that beating me would be worth something.\"" },
+  { t:"After", b:"You won.\n\nYou sat in the churned sand a long while afterward and it did not feel the way you thought it would. It felt quiet. It felt like a Tuesday.\n\nHe sat down next to you, breathing hard, and laughed once, a short surprised sound, like he had found money in an old coat.\n\n\"Right,\" he said. \"Again, then. From higher up.\"" },
+  { t:"From Higher Up", b:"He is training again. Of course he is.\n\nThe difference is that now you know exactly what it cost him to get where he was, because you paid the same price to get there.\n\nHe is further ahead than he was when you started. He is also, for the first time, looking over his shoulder." },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -2252,6 +2385,53 @@ export default function App() {
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
+  const [duel, setDuel] = useState(null);        // {stage:"fight"|"won", pw, rp}
+  const [formUp, setFormUp] = useState(null);    // transformation overlay
+  const [storyOpen, setStoryOpen] = useState(null);
+
+  // He trains every day. This catches him up for every day since you last looked.
+  useEffect(()=>{
+    if (!data) return;
+    const todayK = currentDay;
+    const R = data.rival || { power:0, rate:0, tick:"", arc:1, wins:0, born:"" };
+    if (R.tick === todayK) return;
+    const basePow = playerPowerOf(data);
+    // First meeting: he starts a day's walk ahead.
+    if (!R.born) {
+      const rate = Math.max(28, Math.round(Math.max(recentDailyGain(data), 28) * 1.06));
+      setData(cur=>{ const n = {...cur, rival:{ power: basePow + Math.round(rate*2.5), rate,
+        tick: todayK, arc:1, wins:0, born: todayK }}; persistRaw(n); return n; });
+      return;
+    }
+    const days = Math.max(0, Math.min(400, Math.round(
+      (Date.parse(todayK+"T00:00:00") - Date.parse((R.tick||todayK)+"T00:00:00")) / 86400000)));
+    if (days <= 0) { setData(cur=>{ const n={...cur, rival:{...cur.rival, tick:todayK}}; persistRaw(n); return n; }); return; }
+    const rate = Math.max(28, Math.round(Math.max(recentDailyGain(data), 28) * 1.06));
+    setData(cur=>{
+      const cr = cur.rival || R;
+      const n = {...cur, rival:{ ...cr, power: Math.round((cr.power||0) + rate*days), rate, tick: todayK }};
+      persistRaw(n); return n;
+    });
+  }, [currentDay, data]);
+
+  // Clear everything scheduled and the next chapter opens.
+  useEffect(()=>{
+    if (!data) return;
+    const st = data.story || {unlocked:0,last:""};
+    if (st.last === currentDay) return;
+    if (st.unlocked >= STORY.length) return;
+    const due = (data.tasks||[]).filter(t=>t.catId && (data.categories||[]).find(c=>c.id===t.catId)
+      && !isWeekly(t) && isScheduledOn(t, currentDay));
+    if (!due.length) return;
+    if (due.filter(t=>isCompletedOn(t, currentDay)).length < due.length) return;
+    setData(cur=>{
+      const cs = cur.story || {unlocked:0,last:""};
+      if (cs.last === currentDay || cs.unlocked >= STORY.length) return cur;
+      const n = {...cur, story:{ unlocked: cs.unlocked+1, last: currentDay }};
+      persistRaw(n); return n;
+    });
+  }, [currentDay, data]);
+
   const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
   const barDragRef = useRef(false);
   const [barPreview, setBarPreview] = useState(null); // live position while dragging
@@ -2365,8 +2545,11 @@ export default function App() {
     prevLevelRef.current = lvl;
   }, [data?.categories]);
 
-  // ── BOSS SETTLEMENT: when the week turns, judge last week's boss ───────────
+  // ── RETIRED: weekly bosses were replaced by the rival. The hook stays (hook
+  //    order must never change) but it no longer judges anything.
   useEffect(() => {
+    return;
+    // eslint-disable-next-line no-unreachable
     if (!data) return;
     const wk0 = new Date(weekKeysFor(dateKey())[0]+"T00:00:00"); wk0.setDate(wk0.getDate()-7);
     const prevMon = dateKey(wk0);
@@ -3273,6 +3456,43 @@ export default function App() {
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
   const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
   const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
+  // ── THE RIVAL ───────────────────────────────────────────────────────────────
+  const R          = data.rival || { power:0, rate:0, tick:"", arc:1, wins:0, born:"" };
+  const playerPow  = playerPowerOf(data);
+  const rivalPow   = Math.round(R.power || 0);
+  const gap        = rivalPow - playerPow;
+  const myForm     = formFor(playerPow);
+  const upNextForm = nextForm(playerPow);
+  const stage      = arcStage(R.arc);
+
+  // Crossing into a new form is an event, not a stat change.
+  const maxFormSeen = (data.flags||{}).maxForm || 0;
+  if (myForm.n > maxFormSeen && !formUp) {
+    setTimeout(()=>{
+      setFormUp(myForm);
+      setData(cur=>{ const n={...cur, flags:{...(cur.flags||{}), maxForm: myForm.n},
+        wallet:{...cur.wallet, gems:(cur.wallet?.gems||0) + 25 + myForm.n*15}}; persistRaw(n); return n; });
+      try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
+    }, 0);
+  }
+
+  // Beat him and he comes back from higher up.
+  const winDuel = () => {
+    const pw = playerPowerOf(data);
+    setData(cur=>{
+      const cr = cur.rival || {};
+      const arc = Math.min(99, (cr.arc||1) + 1);
+      const rate = Math.round(Math.max(28, (cr.rate||28)) * 1.09);
+      const cats = cur.categories.map(c=>({...c, value: Math.min(10, c.value + 0.45)}));
+      const n = {...cur, categories:cats,
+        wallet:{...cur.wallet, gems:(cur.wallet?.gems||0) + 40 + arc*10},
+        rival:{ ...cr, power: pw + Math.round(rate*3.2), rate, arc, wins:(cr.wins||0)+1, tick: currentDay }};
+      persistRaw(n); return n;
+    });
+    setDuel({stage:"won"});
+    try { navigator.vibrate && navigator.vibrate([30,60,30,60,90]); } catch {}
+  };
+
   // ── DAILY BADGE MATH — what share of that day's quest load got cleared ──────
   // Returns pct:null when nothing was even scheduled (a genuine rest day).
   const dayPct = (dk) => {
@@ -3420,7 +3640,7 @@ export default function App() {
   const navItems = [
     { v:"dashboard", icon:"⛰", label:"HOME" },
     ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
-    ...(S.bossEnabled !== false ? [{ v:"boss", icon:"👹", label:"BOSS" }] : []),
+    ...(S.bossEnabled !== false ? [{ v:"boss", icon:"⚔️", label:"RIVAL" }] : []),
     ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
     ...(S.kanbanEnabled   ? [{ v:"board", icon:"📋", label:"BOARD" }] : []),
     ...(S.pomodoroEnabled ? [{ v:"focus", icon:"⏱️", label:"FOCUS" }] : []),
@@ -4251,7 +4471,24 @@ export default function App() {
                 })}
               </div>
               <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)"}}>
+                {myForm.aura && (
+                  <div style={{position:"absolute",left:"50%",top:"52%",transform:"translate(-50%,-50%)",
+                    width:160,height:160,borderRadius:"50%",pointerEvents:"none",
+                    background:`radial-gradient(circle, ${myForm.aura}5e 0%, ${myForm.aura}22 42%, transparent 70%)`,
+                    animation:"forgeGlow 2.4s ease-in-out infinite"}}/>
+                )}
                 <PixelCharacter level={level.lvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={pet}/>
+              </div>
+              <div onClick={()=>setView("boss")}
+                style={{position:"absolute",right:10,bottom:14,textAlign:"right",cursor:"pointer"}}>
+                <div style={{fontSize:8,fontWeight:900,letterSpacing:1.2,color:FAINT,
+                  textShadow:"0 1px 6px rgba(0,0,0,0.8)"}}>POWER</div>
+                <div style={{fontSize:19,fontWeight:900,lineHeight:1.05,
+                  color: myForm.aura || "#fff", textShadow:`0 0 14px ${myForm.aura||"#000"}aa, 0 1px 6px rgba(0,0,0,0.9)`}}>
+                  {playerPow.toLocaleString()}
+                </div>
+                <div style={{fontSize:8,fontWeight:900,letterSpacing:1,color:myForm.aura||FAINT,
+                  textShadow:"0 1px 6px rgba(0,0,0,0.8)"}}>{myForm.name}</div>
               </div>
             </div>
 
@@ -4371,28 +4608,29 @@ export default function App() {
                   </div>
                 );
               })()}
-              {(()=>{
-                if (S.bossEnabled === false) return null;
-                const boss = bossForWeek(data, today);
-                if (!boss) return null;
-                const claimed = !!(data.bossClaims||{})[boss.wkStart];
-                const dead = boss.dmg >= boss.hp;
-                const pct = Math.max(0,((boss.hp-boss.dmg)/boss.hp)*100);
+              {S.bossEnabled === false ? null : (()=>{
+                const caught = playerPow >= rivalPow;
+                const aur = ["#7a3fd6","#9a3fd6","#c23fa8","#e0432f","#ffb020"][stage];
                 return (
-                  <div onClick={()=>setView("boss")} style={{...C.glass, marginBottom:11, padding:"10px 14px", cursor:"pointer",
-                    display:"flex",alignItems:"center",gap:11, border:`1px solid ${claimed?LINE:dead?"#34d39966":"#ef444455"}`}}>
-                    <span style={{fontSize:19,filter:(dead||claimed)?"grayscale(1)":"none"}}>{boss.icon}</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:11.5,fontWeight:900,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                        {boss.title} {claimed && <span style={{color:GOOD}}>· slain ✓</span>}{!claimed && dead && <span style={{color:GOOD}}>· defeated — claim!</span>}
-                      </div>
-                      {!claimed && (
-                        <div style={{height:5,borderRadius:3,background:"rgba(0,0,0,0.35)",marginTop:5,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#ef4444,#f87171)",borderRadius:3}}/>
-                        </div>
-                      )}
+                  <div onClick={()=>setView("boss")} style={{...C.glass, marginBottom:11, padding:"11px 14px", cursor:"pointer",
+                    display:"flex",alignItems:"center",gap:12,
+                    border:`1.5px solid ${caught?T.accent:aur}66`,
+                    ...(caught?{animation:"glowPulse 1.6s ease-in-out infinite"}:{})}}>
+                    <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,overflow:"hidden",
+                      background:`radial-gradient(circle,${aur}55,transparent 70%)`,
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <KaedoArt stage={stage} style={{width:74,height:74,marginTop:14}}/>
                     </div>
-                    <span style={{color:FAINT,fontSize:15}}>›</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:900,color:"#fff"}}>
+                        {caught ? <span style={{color:T.accent}}>YOU'VE CAUGHT {RIVAL_NAME} — FIGHT HIM</span>
+                                : <>{RIVAL_NAME} is <span style={{color:aur}}>{gap.toLocaleString()}</span> ahead</>}
+                      </div>
+                      <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:2}}>
+                        {caught ? "he's waiting at the gate" : `he trains ${Math.round(R.rate||28)} a day · you're at ${playerPow.toLocaleString()}`}
+                      </div>
+                    </div>
+                    <div style={{fontSize:18,color:FAINT}}>›</div>
                   </div>
                 );
               })()}
@@ -5421,137 +5659,244 @@ export default function App() {
         )}
 
         {/* ══ SETTINGS ══ */}
+        {/* ══ THE RIVAL ══ */}
         {view==="boss" && (()=>{
-          const boss = bossForWeek(data, today);
-          const victories = Object.keys(data.bossClaims||{}).length;
-          if (!boss) return (
-            <div style={{padding:"14px 16px"}}>
-              <div style={C.sectionTitle}>Boss Arena</div>
-              <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600,marginTop:12}}>
-                Add some quests first — a boss rises to match your week.
+          const canFight = playerPow >= rivalPow;
+          const pct = rivalPow > 0 ? Math.max(0, Math.min(100, (playerPow/rivalPow)*100)) : 100;
+          const aura = ["#7a3fd6","#9a3fd6","#c23fa8","#e0432f","#ffb020"][stage];
+          // He only speaks when the standings change enough to be worth a word.
+          const line = canFight
+            ? "You caught me. Pick up a blade."
+            : gap > (R.rate||28) * 6
+              ? "You stopped. I didn't."
+              : gap > (R.rate||28) * 2
+                ? "Still ahead. Comfortably."
+                : "Don't. You're close.";
+          const daysBehind = Math.max(1, Math.ceil(gap / Math.max(1, R.rate||28)));
+          return (
+          <div style={{padding:"14px 16px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={C.sectionTitle}>The Rival</div>
+              <div style={{fontSize:10,fontWeight:900,color:FAINT,letterSpacing:1}}>ARC {R.arc||1}</div>
+            </div>
+
+            {/* THE GAP — the only number that matters */}
+            <div style={{...C.glass,padding:"16px 16px 14px",textAlign:"center",
+              border:canFight?`2px solid ${T.accent}`:undefined}}>
+              <div style={{fontSize:9.5,fontWeight:900,letterSpacing:1.6,color:FAINT}}>
+                {canFight ? "YOU HAVE CAUGHT HIM" : "HE IS AHEAD BY"}
+              </div>
+              <div style={{fontSize:52,fontWeight:900,lineHeight:1.05,marginTop:2,
+                color: canFight ? T.accent : aura,
+                textShadow:`0 0 26px ${canFight?T.accent:aura}77`}}>
+                {canFight ? "—" : gap.toLocaleString()}
+              </div>
+              {!canFight && (
+                <div style={{fontSize:10.5,color:DIM,fontWeight:700,marginTop:2}}>
+                  about {daysBehind} {daysBehind===1?"day":"days"} of training
+                </div>
+              )}
+              <div style={{height:12,background:"rgba(0,0,0,0.35)",borderRadius:7,overflow:"hidden",marginTop:13,
+                border:`1px solid ${LINE}`}}>
+                <div style={{width:`${pct}%`,height:"100%",
+                  background:`linear-gradient(90deg,${T.accent},${aura})`,
+                  boxShadow:`0 0 14px ${aura}`,transition:"width .5s"}}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:7}}>
+                <div style={{textAlign:"left"}}>
+                  <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:1}}>YOU</div>
+                  <div style={{fontSize:17,fontWeight:900,color:"#fff"}}>{playerPow.toLocaleString()}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:1}}>{RIVAL_NAME}</div>
+                  <div style={{fontSize:17,fontWeight:900,color:aura}}>{rivalPow.toLocaleString()}</div>
+                </div>
               </div>
             </div>
-          );
-          const claimed = !!(data.bossClaims||{})[boss.wkStart];
-          const dead = boss.dmg >= boss.hp;
-          const hpLeft = boss.hp - boss.dmg;
-          const pct = (hpLeft/boss.hp)*100;
-          const wkEnd = new Date(weekKeysFor(today)[6]+"T00:00:00");
-          return (
-            <div style={{padding:"14px 16px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                <div style={C.sectionTitle}>Boss Arena</div>
-                <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 12px"}}>
-                  <span style={{fontSize:12}}>🏆</span><span style={{fontSize:12.5,fontWeight:900,color:"#ffc46b"}}>{victories}</span>
-                  <span style={{fontSize:9,fontWeight:800,color:DIM}}>SLAIN</span>
+
+            {/* HIM */}
+            <div style={{...C.glass,padding:0,overflow:"hidden"}}>
+              <div style={{position:"relative",background:`radial-gradient(circle at 50% 55%, ${aura}22, rgba(0,0,0,0.45) 70%)`}}>
+                <KaedoArt stage={stage} style={{width:"100%",height:250,display:"block"}}/>
+                <div style={{position:"absolute",left:0,right:0,bottom:0,padding:"22px 14px 11px",
+                  background:"linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,0.82) 62%)"}}>
+                  <div style={{fontSize:19,fontWeight:900,color:"#fff",letterSpacing:1}}>
+                    {RIVAL_NAME} <span style={{fontSize:12,fontWeight:800,color:aura}}>{arcTitle(R.arc)}</span>
+                  </div>
+                  <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>
+                    trains {Math.round(R.rate||28)} power a day · beaten {R.wins||0}×
+                  </div>
                 </div>
               </div>
-
-              <div style={{...C.glass, padding:0, overflow:"hidden", border:`1.5px solid ${claimed?LINE:dead?"#34d39966":"#ef444466"}`}}>
-                {/* portrait */}
-                <div style={{background:"radial-gradient(ellipse at 50% 70%, rgba(239,68,68,0.16), rgba(0,0,0,0.25) 70%)",
-                  padding:"18px 10px 4px", filter: (dead||claimed) ? "grayscale(0.9)" : "none", transition:"filter .5s"}}>
-                  <BossArt id={boss.id} style={{maxWidth:330, margin:"0 auto"}}/>
+              <div style={{padding:"13px 15px",borderTop:`1px solid ${LINE}`}}>
+                <div style={{fontSize:13.5,fontWeight:700,color:"#fff",fontStyle:"italic",lineHeight:1.45}}>
+                  “{line}”
                 </div>
-                <div style={{padding:"14px 17px 17px"}}>
-                  <div style={{fontSize:9,fontWeight:900,letterSpacing:2,color:"#ff8f5e"}}>WEEKLY BOSS</div>
-                  <div style={{fontSize:21,fontWeight:900,color:"#fff",marginTop:3}}>{boss.title}</div>
-                  {boss.gen>1 && <div style={{fontSize:9,fontWeight:800,color:"#ff8f5e",marginTop:2}}>💀 You've slain this line {boss.gen-1} time{boss.gen>2?"s":""} — it returns stronger in name only.</div>}
-                  <div style={{fontSize:12,color:DIM,fontWeight:600,lineHeight:1.55,marginTop:7}}>{boss.desc}</div>
+              </div>
+            </div>
 
-                  {claimed ? (
-                    <div style={{marginTop:16,background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.4)",borderRadius:14,
-                      padding:"13px 15px",textAlign:"center"}}>
-                      <div style={{fontSize:13,fontWeight:900,color:GOOD}}>SLAIN ✓</div>
-                      <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:3}}>A new foe rises Monday.</div>
+            {canFight ? (
+              <button onClick={()=>setDuel({stage:"fight"})}
+                style={{...C.btn,width:"100%",padding:"17px",fontSize:14.5,letterSpacing:1.4,
+                  background:`linear-gradient(135deg,${T.accent},${aura})`,
+                  boxShadow:`0 0 26px ${aura}88`,animation:"glowPulse 1.5s ease-in-out infinite"}}>
+                ⚔ CHALLENGE HIM
+              </button>
+            ) : (
+              <div style={{...C.glass,textAlign:"center",padding:"14px"}}>
+                <div style={{fontSize:11.5,color:DIM,fontWeight:700,lineHeight:1.5}}>
+                  You can't challenge him from behind.<br/>Close the gap by finishing quests.
+                </div>
+              </div>
+            )}
+
+            {/* YOUR FORM */}
+            <div style={{...C.glass,padding:"14px 15px"}}>
+              <div style={{...C.label,marginBottom:10}}>YOUR FORM</div>
+              <div style={{display:"flex",alignItems:"center",gap:13}}>
+                <div style={{width:58,height:58,borderRadius:"50%",flexShrink:0,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  background: myForm.aura ? `radial-gradient(circle, ${myForm.aura}66, transparent 72%)` : "rgba(255,255,255,0.05)",
+                  boxShadow: myForm.aura ? `0 0 22px ${myForm.aura}88` : "none"}}>
+                  <div style={{fontSize:25}}>{myForm.n>=5?"✷":myForm.n>=3?"✦":myForm.n>=1?"✧":"·"}</div>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:16,fontWeight:900,letterSpacing:1.2,
+                    color: myForm.aura || "#fff"}}>{myForm.name}</div>
+                  <div style={{fontSize:10,color:DIM,fontWeight:700,fontStyle:"italic",marginTop:1}}>{myForm.line}</div>
+                  {upNextForm && (
+                    <div style={{fontSize:9.5,color:FAINT,fontWeight:800,marginTop:4}}>
+                      {(upNextForm.at - playerPow).toLocaleString()} to {upNextForm.name}
                     </div>
-                  ) : (
-                    <>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:16}}>
-                        <div style={{fontSize:10,fontWeight:900,color:dead?GOOD:"#ff8f5e",letterSpacing:1}}>{dead?"DEFEATED":"HP"}</div>
-                        <div style={{fontSize:12,fontWeight:900,color:"#fff"}}>{hpLeft}<span style={{color:DIM}}>/{boss.hp}</span></div>
-                      </div>
-                      <div style={{height:12,borderRadius:7,background:"rgba(0,0,0,0.4)",marginTop:6,overflow:"hidden",border:`1px solid ${LINE}`}}>
-                        <div style={{height:"100%",width:`${pct}%`,borderRadius:7,background:"linear-gradient(90deg,#ef4444,#f87171)",transition:"width .5s"}}/>
-                      </div>
-                      <div style={{display:"flex",gap:8,marginTop:14}}>
-                        <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:13,padding:"10px 0",textAlign:"center"}}>
-                          <div style={{fontSize:16,fontWeight:900,color:"#ff8f5e"}}>{boss.dmg}</div>
-                          <div style={{fontSize:8,fontWeight:800,color:FAINT}}>DAMAGE DEALT</div>
-                        </div>
-                        <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:13,padding:"10px 0",textAlign:"center"}}>
-                          <div style={{fontSize:14,fontWeight:900,color:"#c084fc"}}>+{boss.gems} 💎</div>
-                          <div style={{fontSize:9.5,fontWeight:900,color:GOOD,marginTop:1}}>+{boss.xp.toFixed(2)} XP</div>
-                          <div style={{fontSize:8,fontWeight:800,color:FAINT}}>BOUNTY</div>
-                        </div>
-                        <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:13,padding:"10px 0",textAlign:"center"}}>
-                          <div style={{fontSize:16,fontWeight:900,color:"#fff"}}>{DAYS[wkEnd.getDay()].slice(0,3)}</div>
-                          <div style={{fontSize:8,fontWeight:800,color:FAINT}}>DEADLINE</div>
-                        </div>
-                      </div>
-                      {dead ? (
-                        <button onClick={()=>claimBoss(boss)}
-                          style={{...C.btn,width:"100%",padding:"15px",marginTop:14,fontSize:13,animation:"glowPulse 1.6s ease-in-out infinite"}}>
-                          ⚔ CLAIM BOUNTY +{boss.gems} 💎
-                        </button>
-                      ) : (
-                        <div style={{fontSize:9.5,color:FAINT,fontWeight:700,textAlign:"center",marginTop:13,lineHeight:1.5}}>
-                          EVERY QUEST COMPLETION & WEEKLY REP THIS WEEK DEALS 1 DAMAGE.<br/>SLAY IT BY SUNDAY MIDNIGHT — <span style={{color:"#ef8f8f"}}>IF IT ESCAPES, IT TAKES {boss.xp.toFixed(2)} XP FROM EVERY STAT.</span>
-                        </div>
-                      )}
-                    </>
                   )}
                 </div>
               </div>
-
-              {/* UP NEXT — the rotation guarantees every boss appears before any repeats */}
-              <div style={{...C.sectionTitle, fontSize:14, margin:"18px 2px 10px"}}>Up Next</div>
-              <div style={{display:"flex",gap:8,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:4}}>
-                {nextBosses(data, today, 4).map(nb=>(
-                  <div key={nb.wkStart} style={{...C.glass,flexShrink:0,padding:"10px 13px",marginBottom:0,display:"flex",alignItems:"center",gap:9}}>
-                    <div>
-                      <div style={{fontSize:11,fontWeight:900,color:"#fff",whiteSpace:"nowrap"}}>{nb.title}</div>
-                      <div style={{fontSize:8,fontWeight:800,color:FAINT,whiteSpace:"nowrap",marginTop:1}}>{nb.when}</div>
-                    </div>
-                  </div>
+              <div style={{display:"flex",gap:4,marginTop:12}}>
+                {FORMS.slice(1).map(f=>(
+                  <div key={f.n} style={{flex:1,height:5,borderRadius:3,
+                    background: playerPow>=f.at ? (f.aura||"#fff") : "rgba(255,255,255,0.1)",
+                    boxShadow: playerPow>=f.at ? `0 0 8px ${f.aura}` : "none"}}/>
                 ))}
               </div>
+            </div>
 
-              {/* BESTIARY — every boss, its lore, and your kill tally */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"16px 2px 10px"}}>
-                <div style={{...C.sectionTitle, fontSize:14}}>Bestiary</div>
-                <div style={{fontSize:9.5,fontWeight:800,color:FAINT}}>💀 = ONE KILL</div>
+            {/* THE ARC */}
+            <div style={{...C.glass,padding:"14px 15px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+                <div style={C.label}>THE ARC</div>
+                <div style={{fontSize:9.5,fontWeight:900,color:FAINT}}>
+                  {Math.min(STORY.length,(data.story||{}).unlocked||0)}/{STORY.length}
+                </div>
               </div>
-              {BOSSES.map(b=>{
-                const kills = Object.values(data.bossClaims||{}).filter(v=>v===b.id).length;
-                const isCurrent = b.id===boss.id;
+              <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:11,lineHeight:1.5}}>
+                One chapter opens each day you finish everything you scheduled.
+              </div>
+              {STORY.map((ch,i)=>{
+                const open = i < ((data.story||{}).unlocked||0);
                 return (
-                  <div key={b.id} style={{...C.glass, padding:0, overflow:"hidden", marginBottom:10,
-                    border: isCurrent ? "1.5px solid #ff8f5e66" : `1px solid ${LINE}`}}>
-                    <div style={{display:"flex",alignItems:"center"}}>
-                      <div style={{width:120,flexShrink:0, filter: kills>0||isCurrent ? "none" : "saturate(0.45) brightness(0.85)"}}>
-                        <BossArt id={b.id}/>
-                      </div>
-                      <div style={{flex:1,minWidth:0,padding:"12px 14px 12px 4px"}}>
-                        <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>
-                          {kills>0 ? `${b.name} ${roman(kills+1)}` : b.name}
-                          {isCurrent && <span style={{fontSize:8.5,fontWeight:900,color:"#ff8f5e",marginLeft:6,letterSpacing:1}}>· NOW</span>}
-                        </div>
-                        <div style={{fontSize:10.5,color:DIM,fontWeight:600,lineHeight:1.5,marginTop:4}}>{b.desc}</div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
-                          <div style={{fontSize:11,fontWeight:900,color: kills>0 ? "#ff8f5e" : FAINT,letterSpacing:1}}>
-                            {kills>0 ? ("💀".repeat(Math.min(kills,5)) + (kills>5 ? ` ×${kills}` : "")) : "NOT YET SLAIN"}
-                          </div>
-                          {!isCurrent && <div style={{fontSize:8,fontWeight:800,color:FAINT,marginLeft:"auto",whiteSpace:"nowrap"}}>RETURNS {nextAppearance(data, today, b.id)}</div>}
-                        </div>
-                      </div>
+                  <div key={i} onClick={()=>open && setStoryOpen(i)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",
+                      borderBottom: i<STORY.length-1?`1px solid ${LINE}`:"none",
+                      cursor: open?"pointer":"default", opacity: open?1:0.35}}>
+                    <div style={{width:24,height:24,flexShrink:0,borderRadius:"50%",
+                      background: open?`${aura}33`:"rgba(255,255,255,0.05)",
+                      border:`1px solid ${open?aura:"rgba(255,255,255,0.1)"}`,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:9.5,fontWeight:900,color:open?"#fff":FAINT}}>{open?i+1:"🔒"}</div>
+                    <div style={{flex:1,fontSize:12.5,fontWeight:800,color:open?"#fff":FAINT}}>
+                      {open ? ch.t : "————"}
                     </div>
+                    {open && <div style={{fontSize:13,color:FAINT}}>›</div>}
                   </div>
                 );
               })}
+              {((data.story||{}).unlocked||0) >= STORY.length && (
+                <div style={{fontSize:10,color:DIM,fontWeight:700,textAlign:"center",marginTop:10}}>
+                  The arc is finished. He isn't.
+                </div>
+              )}
             </div>
+          </div>
           );
         })()}
+
+        {/* CHAPTER READER */}
+        {storyOpen !== null && STORY[storyOpen] && (
+          <div style={C.modal} onClick={()=>setStoryOpen(null)}>
+            <div style={C.sheet} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:9.5,fontWeight:900,letterSpacing:1.6,color:FAINT}}>CHAPTER {storyOpen+1}</div>
+              <div style={{fontSize:21,fontWeight:900,color:"#fff",marginTop:3,marginBottom:14}}>{STORY[storyOpen].t}</div>
+              <div style={{fontSize:14,lineHeight:1.72,color:"rgba(255,255,255,0.9)",fontWeight:500,whiteSpace:"pre-wrap"}}>
+                {STORY[storyOpen].b}
+              </div>
+              <button style={{...C.btn,width:"100%",marginTop:20,padding:"14px"}} onClick={()=>setStoryOpen(null)}>CLOSE</button>
+            </div>
+          </div>
+        )}
+
+        {/* TRANSFORMATION */}
+        {formUp && (
+          <div onClick={()=>setFormUp(null)}
+            style={{position:"fixed",inset:0,zIndex:950,display:"flex",alignItems:"center",justifyContent:"center",
+              background:`radial-gradient(circle at 50% 50%, ${formUp.aura}44 0%, rgba(0,0,0,0.94) 62%)`,
+              cursor:"pointer",animation:"popIn .45s ease-out"}}>
+            <div style={{textAlign:"center",padding:"0 24px"}}>
+              <div style={{width:150,height:150,margin:"0 auto 18px",borderRadius:"50%",
+                background:`radial-gradient(circle, #ffffff 0%, ${formUp.aura} 34%, transparent 72%)`,
+                boxShadow:`0 0 90px ${formUp.aura}`,
+                animation:"glowPulse 1.1s ease-in-out infinite",
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:60}}>
+                {formUp.n>=5?"✷":formUp.n>=3?"✦":"✧"}
+              </div>
+              <div style={{fontSize:10,fontWeight:900,letterSpacing:3,color:FAINT}}>A NEW FORM</div>
+              <div style={{fontSize:36,fontWeight:900,letterSpacing:3,color:formUp.aura,marginTop:4,
+                textShadow:`0 0 40px ${formUp.aura}`}}>{formUp.name}</div>
+              <div style={{fontSize:14,fontWeight:700,fontStyle:"italic",color:"#fff",marginTop:12,lineHeight:1.5}}>
+                {formUp.line}
+              </div>
+              <div style={{fontSize:11.5,color:DIM,fontWeight:800,marginTop:16}}>
+                +{25 + formUp.n*15} 💎
+              </div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginTop:22}}>tap anywhere</div>
+            </div>
+          </div>
+        )}
+
+        {/* THE DUEL */}
+        {duel && (
+          <div style={{...C.modal,alignItems:"center",background:"rgba(0,0,0,0.9)"}}
+            onClick={()=>{ if (duel.stage==="won") setDuel(null); }}>
+            <div style={{width:"100%",maxWidth:430,padding:"0 18px",textAlign:"center"}}>
+              {duel.stage==="fight" ? (
+                <>
+                  <KaedoArt stage={stage} style={{width:"100%",height:250,display:"block"}}/>
+                  <div style={{fontSize:14,fontWeight:700,color:"#fff",fontStyle:"italic",lineHeight:1.5,margin:"12px 0 20px"}}>
+                    “I did not train to beat you.<br/>I trained so that beating me would be worth something.”
+                  </div>
+                  <button onClick={winDuel}
+                    style={{...C.btn,width:"100%",padding:"18px",fontSize:16,letterSpacing:2,
+                      background:`linear-gradient(135deg,${T.accent},${["#7a3fd6","#9a3fd6","#c23fa8","#e0432f","#ffb020"][stage]})`,
+                      boxShadow:"0 0 34px rgba(255,255,255,0.35)"}}>⚔ STRIKE</button>
+                  <button onClick={()=>setDuel(null)}
+                    style={{...C.btnSm,width:"100%",padding:"13px",marginTop:10}}>NOT YET</button>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:64,marginBottom:6}}>⚔</div>
+                  <div style={{fontSize:32,fontWeight:900,color:T.accent,letterSpacing:3,
+                    textShadow:`0 0 30px ${T.accent}`}}>VICTORY</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#fff",fontStyle:"italic",lineHeight:1.6,margin:"16px 0"}}>
+                    “Right,” he said. “Again, then.<br/>From higher up.”
+                  </div>
+                  <div style={{fontSize:12,color:DIM,fontWeight:800,marginBottom:20}}>
+                    +{40 + ((data.rival||{}).arc||2)*10} gems · every attribute raised
+                  </div>
+                  <button onClick={()=>setDuel(null)} style={{...C.btn,width:"100%",padding:"16px"}}>CONTINUE</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {view==="plan" && (()=>{
           const todayK = dateKey();
