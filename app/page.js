@@ -2389,6 +2389,30 @@ export default function App() {
   const [formUp, setFormUp] = useState(null);    // transformation overlay
   const [storyOpen, setStoryOpen] = useState(null);
 
+
+  const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
+  const barDragRef = useRef(false);
+  const [barPreview, setBarPreview] = useState(null); // live position while dragging
+  const barPreviewRef = useRef(null);
+  const [listEdit, setListEdit] = useState(null);  // {kind:"list"|"item", listId, itemId, parentId, text}
+  const [recCursor, setRecCursor] = useState({y:new Date().getFullYear(), m:new Date().getMonth()});
+  const [vw, setVw] = useState(390);
+  useEffect(()=>{
+    const measure = () => setVw(Math.min(window.innerWidth || 390, 430));
+    measure();
+    window.addEventListener("resize", measure);
+    return ()=>window.removeEventListener("resize", measure);
+  },[]);
+  useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
+  const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
+  const [toast, setToast] = useState(null);
+  const [confirmBox, setConfirmBox] = useState(null);
+  const [showLevelUp, setShowLevelUp] = useState(null);
+  const [editingCat, setEditingCat] = useState(null);
+  const [editingTitleLvl, setEditingTitleLvl] = useState(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [currentDay, setCurrentDay] = useState(dateKey());
+
   // He trains every day. This catches him up for every day since you last looked.
   useEffect(()=>{
     if (!data) return;
@@ -2432,28 +2456,21 @@ export default function App() {
     });
   }, [currentDay, data]);
 
-  const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
-  const barDragRef = useRef(false);
-  const [barPreview, setBarPreview] = useState(null); // live position while dragging
-  const barPreviewRef = useRef(null);
-  const [listEdit, setListEdit] = useState(null);  // {kind:"list"|"item", listId, itemId, parentId, text}
-  const [recCursor, setRecCursor] = useState({y:new Date().getFullYear(), m:new Date().getMonth()});
-  const [vw, setVw] = useState(390);
+  // Crossing into a new form is an event, not a stat change. Once per form, ever.
   useEffect(()=>{
-    const measure = () => setVw(Math.min(window.innerWidth || 390, 430));
-    measure();
-    window.addEventListener("resize", measure);
-    return ()=>window.removeEventListener("resize", measure);
-  },[]);
-  useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
-  const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
-  const [toast, setToast] = useState(null);
-  const [confirmBox, setConfirmBox] = useState(null);
-  const [showLevelUp, setShowLevelUp] = useState(null);
-  const [editingCat, setEditingCat] = useState(null);
-  const [editingTitleLvl, setEditingTitleLvl] = useState(null);
-  const [titleDraft, setTitleDraft] = useState("");
-  const [currentDay, setCurrentDay] = useState(dateKey());
+    if (!data) return;
+    const f = formFor(playerPowerOf(data));
+    if (f.n <= ((data.flags||{}).maxForm || 0)) return;
+    setFormUp(f);
+    setData(cur=>{
+      if (f.n <= ((cur.flags||{}).maxForm || 0)) return cur;
+      const n = {...cur, flags:{...(cur.flags||{}), maxForm:f.n},
+        wallet:{...cur.wallet, gems:(cur.wallet?.gems||0) + 25 + f.n*15}};
+      persistRaw(n); return n;
+    });
+    try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
+  }, [data]);
+
   const [newTask, setNewTask] = useState({name:"",catId:"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
@@ -3464,17 +3481,6 @@ export default function App() {
   const myForm     = formFor(playerPow);
   const upNextForm = nextForm(playerPow);
   const stage      = arcStage(R.arc);
-
-  // Crossing into a new form is an event, not a stat change.
-  const maxFormSeen = (data.flags||{}).maxForm || 0;
-  if (myForm.n > maxFormSeen && !formUp) {
-    setTimeout(()=>{
-      setFormUp(myForm);
-      setData(cur=>{ const n={...cur, flags:{...(cur.flags||{}), maxForm: myForm.n},
-        wallet:{...cur.wallet, gems:(cur.wallet?.gems||0) + 25 + myForm.n*15}}; persistRaw(n); return n; });
-      try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
-    }, 0);
-  }
 
   // Beat him and he comes back from higher up.
   const winDuel = () => {
