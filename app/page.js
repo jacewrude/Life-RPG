@@ -369,6 +369,7 @@ const INIT = {
   combo: { count:0, lastAt:0 },
   challengeClaims: {},
   bossClaims: {},
+  rev: 0,           // bumped on every successful save — guards against cross-device clobbering
   rival: { power:0, rate:0, tick:"", arc:1, wins:0, born:"" },
   story: { unlocked:0, last:"" },
   priorityBar: [0,0,0,0,0,0,0],
@@ -593,6 +594,7 @@ function migrate(d) {
       Object.entries(src).forEach(([wk,v])=>{ if (typeof v==="string") out[wk]=v;
         else { const seed=String(wk).split("").reduce((x,c)=>x+c.charCodeAt(0),0); out[wk]=ids[seed%ids.length]; } });
       return out; })(),
+    rev: Math.max(0, Number(d.rev)||0),
     rival: (()=>{ const r=(d.rival && typeof d.rival==="object")?d.rival:{};
       return { power:Math.max(0,Number(r.power)||0), rate:Math.max(0,Number(r.rate)||0),
                tick:typeof r.tick==="string"?r.tick:"", arc:Math.max(1,parseInt(r.arc)||1),
@@ -2388,6 +2390,7 @@ export default function App() {
   const [duel, setDuel] = useState(null);        // {stage:"fight"|"won", pw, rp}
   const [formUp, setFormUp] = useState(null);    // transformation overlay
   const [storyOpen, setStoryOpen] = useState(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
 
   const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
@@ -2506,6 +2509,7 @@ export default function App() {
         const json = await res.json();
         if (json.data && json.data.categories && json.data.tasks) loaded = json.data;
       } catch {}
+      revRef.current = Math.max(0, Number(loaded && loaded.rev) || 0);
       const merged = migrate(loaded);
       const { data: decayed, lost } = applyDecay(merged);
       const { wallet: decayedWallet, lostCoins } = applyCoinDecay(decayed);
@@ -2527,9 +2531,17 @@ export default function App() {
       midnightRef.current = setTimeout(()=>{ setCurrentDay(dateKey()); schedule(); }, mid - now + 1500);
     };
     schedule();
-    const onVis = () => { if (document.visibilityState === "visible") setCurrentDay(dateKey()); };
+    // A tab left open goes stale. Re-read before it's allowed to matter.
+    const onVis = () => {
+      if (document.visibilityState === "visible") { setCurrentDay(dateKey()); pullIfNewer(); }
+    };
+    const onFocus = () => pullIfNewer();
+    const poll = setInterval(()=>{ if (document.visibilityState === "visible") pullIfNewer(); }, 45000);
     document.addEventListener("visibilitychange", onVis);
-    return () => { clearTimeout(midnightRef.current); document.removeEventListener("visibilitychange", onVis); };
+    window.addEventListener("focus", onFocus);
+    return () => { clearTimeout(midnightRef.current); clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus); };
   }, []);
 
   // Decay when the day changes while app is open / resumed
@@ -2630,16 +2642,75 @@ export default function App() {
   const coinBalRef = useRef(0);
 
   // ── PERSIST ─────────────────────────────────────────────────────────────────
-  const persistRaw = async (d) => {
-    if (!d || !d.categories || !d.tasks) return;
+  // ── SYNC SAFETY ─────────────────────────────────────────────────────────────
+  // Every save carries a revision number. Before writing we check what's on the
+  // server: if another device has saved since we loaded, we ADOPT their data
+  // instead of overwriting it. Losing one tap beats losing a week.
+  const revRef   = useRef(0);
+  const saveChain = useRef(Promise.resolve());
+  const lastSyncToast = useRef(0);
+
+  const fetchRemote = async () => {
+    const res = await fetch("/api/storage", { cache:"no-store" });
+    const json = await res.json();
+    return (json && json.data && json.data.categories && json.data.tasks) ? json.data : null;
+  };
+
+  // Rolling on-device backups, one per day, last 5 days. Never leaves the phone.
+  const SNAP_KEY = "life-rpg-snapshots";
+  const saveSnapshot = (d) => {
     try {
-      await fetch("/api/storage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(d),
-      });
+      const day = dateKey();
+      const arr = JSON.parse(localStorage.getItem(SNAP_KEY) || "[]").filter(x=>x && x.day !== day);
+      arr.push({ day, at:new Date().toISOString(), data:d });
+      let keep = arr.slice(-5);
+      while (keep.length) {
+        try { localStorage.setItem(SNAP_KEY, JSON.stringify(keep)); break; }
+        catch { keep = keep.slice(1); }   // quota — drop the oldest and retry
+      }
     } catch {}
   };
+
+  const adoptRemote = (remote, rr) => {
+    revRef.current = rr;
+    setData(migrate(remote));
+    const now = Date.now();
+    if (now - lastSyncToast.current > 6000) {
+      lastSyncToast.current = now;
+      toast$("SYNCED FROM YOUR OTHER DEVICE", "#fb923c");
+    }
+  };
+
+  const persistRaw = (d) => {
+    if (!d || !d.categories || !d.tasks) return Promise.resolve();
+    saveChain.current = saveChain.current.then(async () => {
+      try {
+        const remote = await fetchRemote();
+        const rr = Number(remote && remote.rev) || 0;
+        if (remote && rr > revRef.current) { adoptRemote(remote, rr); return; }
+        const next = revRef.current + 1;
+        const body = {...d, rev: next, savedAt: new Date().toISOString()};
+        await fetch("/api/storage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        revRef.current = next;
+        saveSnapshot(body);
+      } catch {}
+    });
+    return saveChain.current;
+  };
+
+  // Pull anything newer from the server — used on resume and on a slow poll.
+  const pullIfNewer = async () => {
+    try {
+      const remote = await fetchRemote();
+      const rr = Number(remote && remote.rev) || 0;
+      if (remote && rr > revRef.current) adoptRemote(remote, rr);
+    } catch {}
+  };
+
   const update = (d) => { setData(d); persistRaw(d); };
 
   const toast$ = (msg, color) => {
@@ -5840,6 +5911,57 @@ export default function App() {
           </div>
         )}
 
+        {/* RESTORE A BACKUP */}
+        {restoreOpen && (()=>{
+          let snaps = [];
+          try { snaps = JSON.parse(localStorage.getItem(SNAP_KEY) || "[]").filter(x=>x && x.data); } catch {}
+          snaps = snaps.slice().reverse();
+          const countDone = (d) => {
+            let n = 0;
+            (d.tasks||[]).forEach(t=>{ n += Object.keys(t.completions||{}).length; });
+            return n;
+          };
+          return (
+            <div style={C.modal} onClick={()=>setRestoreOpen(false)}>
+              <div style={C.sheet} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:19,fontWeight:900,color:"#fff",marginBottom:4}}>Restore a backup</div>
+                <div style={{fontSize:11,color:DIM,fontWeight:700,lineHeight:1.5,marginBottom:14}}>
+                  Snapshots saved on this device. Restoring replaces everything currently
+                  on the server with that snapshot.
+                </div>
+                {snaps.length===0 && (
+                  <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:12.5,fontWeight:600}}>
+                    No backups on this device yet. One is written each day you use the app.
+                  </div>
+                )}
+                {snaps.map(sn=>(
+                  <div key={sn.day} style={{...C.glass,display:"flex",alignItems:"center",gap:11,padding:"12px 14px"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>{sn.day}</div>
+                      <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:1}}>
+                        {countDone(sn.data)} completions · {(sn.data.tasks||[]).length} quests
+                      </div>
+                    </div>
+                    <button style={{...C.btnSm,padding:"9px 13px"}}
+                      onClick={()=>{
+                        const restored = migrate(sn.data);
+                        restored.rev = (revRef.current || 0) + 1;
+                        revRef.current = restored.rev;
+                        setData(restored);
+                        fetch("/api/storage",{method:"POST",headers:{"Content-Type":"application/json"},
+                          body:JSON.stringify(restored)}).catch(()=>{});
+                        setRestoreOpen(false);
+                        toast$(`RESTORED ${sn.day}`, "#fb923c");
+                      }}>RESTORE</button>
+                  </div>
+                ))}
+                <button style={{...C.btn,width:"100%",marginTop:8,padding:"14px"}}
+                  onClick={()=>setRestoreOpen(false)}>CLOSE</button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* TRANSFORMATION */}
         {formUp && (
           <div onClick={()=>setFormUp(null)}
@@ -6420,6 +6542,17 @@ export default function App() {
                   );
                 });
               })()}
+            </div>
+
+            {/* BACKUPS */}
+            <div style={C.glass}>
+              <div style={C.label}>BACKUPS</div>
+              <div style={{fontSize:10.5,color:DIM,fontWeight:700,lineHeight:1.5,marginBottom:11}}>
+                This device keeps a snapshot of the last 5 days it saved. If a sync ever
+                goes wrong, you can roll back to one of them.
+              </div>
+              <button style={{...C.btnSm,width:"100%",padding:"13px"}}
+                onClick={()=>setRestoreOpen(true)}>💾 RESTORE A BACKUP</button>
             </div>
 
             {/* DANGER ZONE */}
