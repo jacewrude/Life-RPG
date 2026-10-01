@@ -66,12 +66,6 @@ const THEMES = {
     m1:"#571423", m2:"#380c18", m3:"#20060e",
     accent:"#ff8f5e", glass:"28,8,12",
   },
-  shinobi: {
-    name:"Hidden Village", swatch:"#e2622a", village:true,
-    sky:["#2a1430","#8a3a1e","#e8863a"], sun:"#ffd27a", stars:false,
-    m1:"#5c2a1c", m2:"#3a1812", m3:"#1f0d0b",
-    accent:"#e2622a", glass:"34,16,14",
-  },
   voxel: {
     name:"Blockland", swatch:"#5d9e3c", blocky:true,
     sky:["#16233d","#2f629a","#63a8d8"], sun:"#ffe98a", stars:false,
@@ -1148,34 +1142,50 @@ function drawPet(els, art, color, cx, cy, s, nk) {
     };
     const A0 = Math.PI*1.04, A1 = Math.PI*1.96;
 
-    if (n===1) {            // SHUKAKU — sand tanuki, blue-black curling tattoos
-      for (let i=0;i<1;i++) { const [x1,y1]=arc(i,1,4.4,1.0,"#d9c89a",A0,A1); C(x1,y1,0.6,"#cdb986"); }
-      L(Q(cx-1.4,cy-3.6,cx-2.8,cy-4.4,cx-3.4,cy-2.6),"#3a4766",0.2,0.8);
-      R(cx-2.1,cy-1.3,4.2,3.5,"#d9c89a",1.5);                       // round heavy body
-      R(cx-1.5,cy-3.3,3.0,2.3,"#d9c89a",1.1);                       // head
-      P(TRI(cx-1.5,cy-3.1,cx-1.8,cy-4.4,cx-0.6,cy-3.4),"#2e3650");  // dark pointed ears
-      P(TRI(cx+1.5,cy-3.1,cx+1.8,cy-4.4,cx+0.6,cy-3.4),"#2e3650");
-      [[-1.5,-0.2],[0.1,0.5],[-1.0,1.1],[1.1,-0.4],[0.6,1.3]].forEach(([dx,dy])=>
-        L(Q(cx+dx,cy+dy,cx+dx+0.5,cy+dy-0.5,cx+dx+0.9,cy+dy+0.2),"#3a4766",0.18,0.85));
-      L(Q(cx-1.2,cy-2.6,cx-0.6,cy-3.0,cx-0.1,cy-2.5),"#3a4766",0.18,0.85);
-      E(cx-0.7,cy-2.25,0.46,"#f0d98a","#1a1206"); E(cx+0.7,cy-2.25,0.46,"#f0d98a","#1a1206");
-      R(cx-0.95,cy-1.65,1.9,0.75,"#1d1710",0.3);                    // wide dark maw
-      R(cx-0.75,cy-1.5,1.5,0.22,"#efe6cf",0.05);
-    } else if (n===2) {     // MATATABI — four-legged cat in blue fire
-      for (let i=0;i<2;i++) { const [x1,y1,ang]=arc(i,2,4.5,0.8,"#1f58b8",A0+0.35,A1-0.35);
-        P(TRI(x1-0.5,y1+0.3,x1+0.1,y1-0.9,x1+0.6,y1+0.35),"#12203c"); }
-      P(`M ${(cx-2.3)*s} ${(cy+2.2)*s} L ${(cx-1.9)*s} ${(cy-0.4)*s} Q ${cx*s} ${(cy-1.6)*s} ${(cx+1.9)*s} ${(cy-0.4)*s} L ${(cx+2.3)*s} ${(cy+2.2)*s} Z`,"#12203c");
-      R(cx-1.9,cy+1.4,0.75,1.5,"#12203c",0.25); R(cx+1.15,cy+1.4,0.75,1.5,"#12203c",0.25);
-      R(cx-0.8,cy+1.5,0.7,1.4,"#12203c",0.25);  R(cx+0.1,cy+1.5,0.7,1.4,"#12203c",0.25);
-      R(cx-1.5,cy-3.1,3.0,2.4,"#1f58b8",1.0);                        // cat head
-      P(TRI(cx-1.5,cy-2.9,cx-1.9,cy-4.6,cx-0.4,cy-3.3),"#12203c");   // tall ears
-      P(TRI(cx+1.5,cy-2.9,cx+1.9,cy-4.6,cx+0.4,cy-3.3),"#12203c");
-      [[-1.3,0.1],[0.7,0.6],[-0.3,1.4]].forEach(([dx,dy])=>
-        L(Q(cx+dx,cy+dy,cx+dx+0.45,cy+dy-0.55,cx+dx+0.85,cy+dy+0.1),"#4f9bff",0.2,0.9));
-      E(cx-0.72,cy-2.3,0.44,"#f6e05a","#141019"); E(cx+0.72,cy-2.3,0.44,"#4fd06a","#141019");
-      R(cx-0.85,cy-1.7,1.7,0.7,"#8a1f28",0.3);                       // open jaw
-      R(cx-0.7,cy-1.62,1.4,0.2,"#ffffff",0.05);
-      R(cx-0.7,cy-1.2,1.4,0.18,"#ffffff",0.05);
+    if (n===1) {            // SHUKAKU — heavy sitting tanuki, one thick segmented tail
+      // the tail is a broad plume curling up behind him
+      for (let i=0;i<5;i++) {
+        const t=i/4, ang=Math.PI*(1.22+0.30*t), rr=2.0+2.4*t;
+        const px=cx+Math.cos(ang)*rr, py=cy-0.2+Math.sin(ang)*rr;
+        C(px,py,0.95-0.1*i,"#d9c89a");
+        L(Q(px-0.35,py+0.1,px,py-0.3,px+0.35,py+0.1),"#3a4766",0.15,0.75);
+      }
+      R(cx-2.3,cy-0.6,4.6,3.2,"#d9c89a",1.7);                        // broad heavy haunches
+      R(cx-1.8,cy-2.6,3.6,2.6,"#d9c89a",1.3);                        // squat shoulders/head
+      P(TRI(cx-1.7,cy-2.5,cx-1.9,cy-4.0,cx-0.7,cy-2.9),"#2e3650");   // small dark ears
+      P(TRI(cx+1.7,cy-2.5,cx+1.9,cy-4.0,cx+0.7,cy-2.9),"#2e3650");
+      R(cx-1.3,cy+0.1,2.6,2.3,"#e4d6ab",1.1);                        // pale belly
+      [[-1.9,0.4],[1.3,0.2],[-1.6,1.6],[1.1,1.5],[-0.4,-2.1],[0.9,-2.0]].forEach(([dx,dy])=>
+        L(Q(cx+dx,cy+dy,cx+dx+0.45,cy+dy-0.55,cx+dx+0.8,cy+dy+0.15),"#3a4766",0.17,0.85));
+      R(cx-2.6,cy+2.0,1.3,0.8,"#d9c89a",0.4); R(cx+1.3,cy+2.0,1.3,0.8,"#d9c89a",0.4);
+      E(cx-0.78,cy-1.95,0.5,"#1d1710","#f0d98a");                     // black sclera, pale iris
+      E(cx+0.78,cy-1.95,0.5,"#1d1710","#f0d98a");
+      R(cx-1.0,cy-1.25,2.0,0.8,"#1d1710",0.3);                        // wide jagged maw
+      [-0.7,-0.1,0.5].forEach(dx=> P(TRI(cx+dx,cy-1.25,cx+dx+0.2,cy-0.75,cx+dx+0.4,cy-1.25),"#efe6cf"));
+    } else if (n===2) {     // MATATABI — lithe blue cat wreathed in flame, two tails
+      for (let i=0;i<2;i++) {
+        const ang=Math.PI*(1.30+0.26*i);
+        const x0=cx+Math.cos(ang)*1.6, y0=cy-0.4+Math.sin(ang)*1.6;
+        const x1=cx+Math.cos(ang)*4.6, y1=cy-0.4+Math.sin(ang)*4.6;
+        const xm=cx+Math.cos(ang+0.3)*3.2, ym=cy-0.4+Math.sin(ang+0.3)*3.2;
+        L(Q(x0,y0,xm,ym,x1,y1),"#2f7fd8",0.62);
+        P(TRI(x1-0.55,y1+0.35,x1+0.15,y1-1.0,x1+0.65,y1+0.4),"#10203c");
+      }
+      // long low cat body with four legs
+      P(`M ${(cx-2.4)*s} ${(cy+2.4)*s} L ${(cx-2.1)*s} ${(cy-0.1)*s} Q ${cx*s} ${(cy-1.5)*s} ${(cx+2.1)*s} ${(cy-0.2)*s} L ${(cx+2.4)*s} ${(cy+2.4)*s} Z`,"#2f7fd8");
+      [-2.0,-0.75,0.5,1.6].forEach(dx=> R(cx+dx,cy+1.8,0.72,1.7,"#10203c",0.25));
+      R(cx-1.7,cy-2.9,3.0,2.5,"#2f7fd8",1.0);                        // head
+      P(TRI(cx-1.7,cy-2.7,cx-2.2,cy-4.7,cx-0.6,cy-3.1),"#2f7fd8");   // tall ears
+      P(TRI(cx+1.3,cy-2.7,cx+1.8,cy-4.7,cx+0.2,cy-3.1),"#2f7fd8");
+      P(TRI(cx-1.55,cy-3.0,cx-1.9,cy-4.2,cx-0.9,cy-3.2),"#10203c");
+      P(TRI(cx+1.15,cy-3.0,cx+1.5,cy-4.2,cx+0.5,cy-3.2),"#10203c");
+      [[-1.9,0.5],[0.9,0.3],[-0.7,1.4],[1.5,1.2]].forEach(([dx,dy])=>  // flame licks
+        P(TRI(cx+dx,cy+dy,cx+dx+0.3,cy+dy-1.1,cx+dx+0.65,cy+dy),"#10203c"));
+      E(cx-0.75,cy-2.1,0.44,"#f6e05a","#141019");
+      E(cx+0.35,cy-2.1,0.44,"#4fd06a","#141019");
+      R(cx-0.75,cy-1.45,1.55,0.62,"#8a1f28",0.3);                    // open fanged jaw
+      [-0.6,-0.1,0.4].forEach(dx=> P(TRI(cx+dx,cy-1.45,cx+dx+0.18,cy-1.0,cx+dx+0.36,cy-1.45),"#ffffff"));
+      C(cx-0.2,cy-1.75,0.2,"#6b5a4a");                               // nose
     } else if (n===3) {     // ISOBU — grey turtle, maroon shell, one red eye
       for (let i=0;i<3;i++) { const [x1,y1]=arc(i,3,4.2,0.78,"#8d9aa4",A0,A1); C(x1,y1,0.4,"#6f7d88"); }
       R(cx-2.4,cy-1.6,4.8,3.8,"#7d2b38",2.0);                        // maroon shell
@@ -1199,26 +1209,30 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       E(cx-0.6,cy-2.5,0.32,"#ffffff","#1b1508"); E(cx+0.6,cy-2.5,0.32,"#ffffff","#1b1508");
       R(cx-0.8,cy-1.95,1.6,0.75,"#6b1410",0.3);
       R(cx-0.65,cy-1.88,1.3,0.2,"#e8dca8",0.05);
-    } else if (n===5) {     // KOKUO — white horse, long muzzle, horns, hooves
-      for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.3,0.62,"#e6e8ee",A0,A1); C(x1,y1,0.3,"#c9a469"); }
-      P(`M ${(cx-2.2)*s} ${(cy+2.2)*s} L ${(cx-1.8)*s} ${(cy-0.6)*s} Q ${cx*s} ${(cy-1.6)*s} ${(cx+2.0)*s} ${(cy-0.5)*s} L ${(cx+2.3)*s} ${(cy+2.2)*s} Z`,"#e6e8ee");
-      R(cx-1.8,cy+1.5,0.7,1.5,"#e6e8ee",0.25); R(cx+1.1,cy+1.5,0.7,1.5,"#e6e8ee",0.25);
-      R(cx-1.8,cy+2.7,0.75,0.6,"#c9a469",0.2); R(cx+1.1,cy+2.7,0.75,0.6,"#c9a469",0.2);
-      R(cx-1.5,cy-2.3,2.0,1.9,"#e6e8ee",0.8);                        // head
-      P(`M ${(cx-1.5)*s} ${(cy-1.6)*s} L ${(cx-3.3)*s} ${(cy-0.9)*s} L ${(cx-3.1)*s} ${(cy-0.1)*s} L ${(cx-1.4)*s} ${(cy-0.4)*s} Z`,"#eef0f4");
-      L(Q(cx-0.9,cy-2.4,cx-1.6,cy-3.8,cx-2.0,cy-4.2),"#c9a469",0.3);  // horns
-      L(Q(cx+0.1,cy-2.5,cx-0.2,cy-4.0,cx-0.5,cy-4.5),"#c9a469",0.3);
-      L(Q(cx+0.6,cy-1.9,cx+1.6,cy-1.0,cx+2.0,cy-0.2),"#cfd3dd",0.42,0.9);  // mane
-      E(cx-0.95,cy-1.5,0.36,"#6fb9d8","#8a2b22");
-      C(cx-3.15,cy-0.45,0.16,"#9aa3b0");
+    } else if (n===5) {     // KOKUO — long-bodied white horse, five tails
+      for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.4,0.6,"#e6e8ee",Math.PI*1.12,Math.PI*1.82); C(x1,y1,0.3,"#c9a469"); }
+      // barrel body, held horizontally like a horse
+      P(`M ${(cx-2.5)*s} ${(cy+1.0)*s} Q ${(cx-2.6)*s} ${(cy-0.9)*s} ${(cx-0.6)*s} ${(cy-1.1)*s} Q ${(cx+2.2)*s} ${(cy-1.2)*s} ${(cx+2.5)*s} ${(cy+0.6)*s} Q ${(cx+2.3)*s} ${(cy+1.6)*s} ${(cx-2.2)*s} ${(cy+1.6)*s} Z`,"#e6e8ee");
+      [-2.0,-0.9,0.9,1.9].forEach(dx=> R(cx+dx,cy+1.3,0.62,1.9,"#e6e8ee",0.22));
+      [-2.0,-0.9,0.9,1.9].forEach(dx=> R(cx+dx,cy+2.9,0.68,0.55,"#c9a469",0.18));
+      // neck rising forward-left, then a long tapering muzzle
+      P(`M ${(cx-1.9)*s} ${(cy-0.6)*s} L ${(cx-2.9)*s} ${(cy-2.9)*s} L ${(cx-1.7)*s} ${(cy-3.1)*s} L ${(cx-0.7)*s} ${(cy-0.8)*s} Z`,"#e6e8ee");
+      P(`M ${(cx-2.95)*s} ${(cy-3.0)*s} L ${(cx-1.55)*s} ${(cy-3.3)*s} L ${(cx-1.75)*s} ${(cy-4.3)*s} L ${(cx-3.5)*s} ${(cy-4.0)*s} Z`,"#eef0f4");
+      P(`M ${(cx-3.5)*s} ${(cy-4.0)*s} L ${(cx-1.95)*s} ${(cy-4.25)*s} L ${(cx-2.4)*s} ${(cy-4.9)*s} L ${(cx-3.7)*s} ${(cy-4.6)*s} Z`,"#eef0f4");
+      C(cx-3.5,cy-4.45,0.18,"#9aa3b0");                              // nostril
+      L(Q(cx-1.9,cy-3.3,cx-1.0,cy-2.3,cx-0.4,cy-1.2),"#cfd3dd",0.46,0.95);  // mane down the neck
+      L(Q(cx-2.1,cy-4.2,cx-2.3,cy-5.4,cx-1.6,cy-6.0),"#c9a469",0.28); // horns
+      L(Q(cx-1.5,cy-4.0,cx-1.0,cy-5.2,cx-0.3,cy-5.6),"#c9a469",0.28);
+      P(TRI(cx-1.75,cy-4.2,cx-1.5,cy-5.0,cx-1.15,cy-4.0),"#eef0f4");  // ear
+      E(cx-2.45,cy-3.75,0.3,"#6fb9d8","#8a2b22");
     } else if (n===6) {     // SAIKEN — pale slug, eyes on stalks, dripping
       for (let i=0;i<6;i++) { const [x1,y1]=arc(i,6,4.1,0.72,"#b9b6c9",A0,A1); C(x1,y1,0.32,"#cfccdd"); }
       R(cx-2.2,cy-0.9,4.4,3.3,"#cfccdd",1.8);                        // fat lower body
       R(cx-1.6,cy-2.9,3.2,2.4,"#cfccdd",1.4);                        // soft head blob
-      L(Q(cx-1.0,cy-3.0,cx-1.5,cy-4.4,cx-1.6,cy-5.0),"#cfccdd",0.26); // eye stalks
-      L(Q(cx+1.0,cy-3.0,cx+1.5,cy-4.4,cx+1.6,cy-5.0),"#cfccdd",0.26);
-      C(cx-1.65,cy-5.1,0.34,"#e4e2ee"); C(cx-1.65,cy-5.1,0.15,"#2a2440");
-      C(cx+1.65,cy-5.1,0.34,"#e4e2ee"); C(cx+1.65,cy-5.1,0.15,"#2a2440");
+      L(Q(cx-0.9,cy-2.2,cx-1.5,cy-3.8,cx-1.6,cy-4.8),"#cfccdd",0.3);  // stalks rooted in the head
+      L(Q(cx+0.9,cy-2.2,cx+1.5,cy-3.8,cx+1.6,cy-4.8),"#cfccdd",0.3);
+      C(cx-1.62,cy-4.9,0.36,"#e4e2ee"); C(cx-1.62,cy-4.9,0.16,"#2a2440");
+      C(cx+1.62,cy-4.9,0.36,"#e4e2ee"); C(cx+1.62,cy-4.9,0.16,"#2a2440");
       [[-0.9,-1.9],[-0.3,-1.85],[0.3,-1.85],[0.9,-1.9]].forEach(([dx,dy])=> C(cx+dx,cy+dy,0.17,"#8e8aa4"));
       [[-1.4,1.0],[0.2,1.4],[1.3,0.8],[-0.4,0.3]].forEach(([dx,dy])=>
         L(Q(cx+dx,cy+dy,cx+dx,cy+dy+0.5,cx+dx+0.1,cy+dy+0.9),"#b2aec4",0.16,0.9));
@@ -1253,7 +1267,7 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       R(cx-1.5,cy-3.2,3.0,2.5,"#c87a74",1.0);
       P(TRI(cx-1.4,cy-3.1,cx-2.4,cy-4.8,cx-0.5,cy-3.7),"#eee6e0");
       P(TRI(cx+1.4,cy-3.1,cx+2.4,cy-4.8,cx+0.5,cy-3.7),"#eee6e0");
-      E(cx-0.72,cy-2.2,0.48,"#f2d23a","#1b1508"); E(cx+0.72,cy-2.2,0.48,"#f2d23a","#1b1508");
+      E(cx-0.72,cy-2.2,0.48,"#ede4de","#2a1410"); E(cx+0.72,cy-2.2,0.48,"#ede4de","#2a1410");
       R(cx-0.45,cy-1.35,0.9,0.42,"#d8cdc6",0.2);
       R(cx-0.9,cy-0.7,1.8,0.34,"#7d3f3a",0.15);
     } else {                // KURAMA — nine-tailed fox, one colour, long snout
@@ -2082,62 +2096,8 @@ function BlockScene({ H }) {
   );
 }
 
-// ── HIDDEN VILLAGE — sunset over the rooftops, the faces watching from the cliff
-function VillageScene({ H }) {
-  const W = 430;
-  const roof = (x, y, w, h, fill) => (
-    <g key={`r${x}-${y}`}>
-      <path d={`M ${x} ${y+h} L ${x+w*0.5} ${y} L ${x+w} ${y+h} Z`} fill={fill}/>
-      <rect x={x+w*0.12} y={y+h} width={w*0.76} height={h*1.5} fill={fill}/>
-      <rect x={x} y={y+h-1.5} width={w} height="2.5" fill={fill} opacity="0.75"/>
-    </g>
-  );
-  // four heads carved into the cliff, in profile, looking out over the valley
-  const head = (x, y, w, h) => (
-    <g key={`h${x}`}>
-      <path d={`M ${x} ${y+h} L ${x} ${y+h*0.34} Q ${x+w*0.06} ${y+h*0.06} ${x+w*0.38} ${y+h*0.04}
-                Q ${x+w*0.78} ${y+h*0.04} ${x+w*0.84} ${y+h*0.3}
-                L ${x+w*0.95} ${y+h*0.52} L ${x+w*0.8} ${y+h*0.58}
-                L ${x+w*0.84} ${y+h*0.76} L ${x+w} ${y+h} Z`} fill="#3f1d14"/>
-      <rect x={x+w*0.52} y={y+h*0.34} width={w*0.3} height={h*0.08} fill="#2b130d"/>
-      <rect x={x+w*0.1} y={y+h*0.16} width={w*0.6} height={h*0.12} fill="#4d2419"/>
-    </g>
-  );
-  return (
-    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice"
-      style={{display:"block",position:"absolute",bottom:0,left:0,right:0,pointerEvents:"none"}}>
-      <defs>
-        <linearGradient id="vgSky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#2a1430"/><stop offset="0.42" stopColor="#8a3a1e"/>
-          <stop offset="0.74" stopColor="#e2742c"/><stop offset="1" stopColor="#f6b45c"/>
-        </linearGradient>
-      </defs>
-      <rect width={W} height={H} fill="url(#vgSky)"/>
-      <circle cx={W*0.5} cy={H*0.63} r={H*0.30} fill="#ffd27a" opacity="0.95"/>
-      <circle cx={W*0.5} cy={H*0.63} r={H*0.40} fill="#ffcf74" opacity="0.18"/>
-      {[0.16,0.3,0.46].map((f,i)=>(
-        <rect key={i} x="0" y={H*f} width={W} height={H*0.022} fill="#f0a05a" opacity={0.16+i*0.05} rx="3"/>
-      ))}
-      {/* the cliff, and the faces */}
-      <path d={`M 0 ${H*0.60} L 46 ${H*0.44} L 150 ${H*0.40} L 268 ${H*0.43} L 360 ${H*0.38} L ${W} ${H*0.52} L ${W} ${H} L 0 ${H} Z`}
-        fill="#4a2217" opacity="0.92"/>
-      {[0,1,2,3].map(i=> head(78 + i*62, H*0.44, 52, H*0.26))}
-      {/* valley haze */}
-      <rect x="0" y={H*0.66} width={W} height={H*0.1} fill="#f0a05a" opacity="0.14"/>
-      {/* rooftops, far then near */}
-      <g opacity="0.8">{[[-10,0.70,96],[86,0.72,78],[176,0.69,104],[286,0.72,86],[376,0.70,96]]
-        .map(([x,f,w])=> roof(x, H*f, w, H*0.085, "#35150f"))}</g>
-      <g>{[[-26,0.80,128],[92,0.83,112],[200,0.80,136],[320,0.83,118]]
-        .map(([x,f,w])=> roof(x, H*f, w, H*0.11, "#24100b"))}</g>
-      <g>{[[-40,0.93,170],[128,0.96,156],[282,0.93,186]]
-        .map(([x,f,w])=> roof(x, H*f, w, H*0.13, "#160907"))}</g>
-    </svg>
-  );
-}
-
 function Scene({ T, height=150 }) {
   if (T.blocky) return <BlockScene H={height}/>;
-  if (T.village) return <VillageScene H={height}/>;
   // deterministic star field
   const stars = T.stars ? Array.from({length:26},(_,i)=>{
     const x = ((i*73) % 430); const y = ((i*37) % Math.max(40, height-70));
@@ -3809,7 +3769,7 @@ export default function App() {
 
   // ── COMPUTED ────────────────────────────────────────────────────────────────
   const S = data.settings;
-  const T = THEMES[S.theme] || THEMES.ember;
+  const T = THEMES[S.theme] || THEMES.ember;   // removed themes fall back
   const cz = data.character;
   const today = currentDay;
   const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t) && isScheduledOn(t,today));
@@ -6983,21 +6943,11 @@ export default function App() {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
               <div style={C.sectionTitle}>Summons</div>
               <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 12px"}}>
-                <span style={{fontSize:13}}>💎</span><span style={{fontSize:13,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
+                <span style={{fontSize:13}}>🔥</span><span style={{fontSize:13,fontWeight:900,color:"#ffc46b"}}>{perfectStreak}</span>
               </div>
             </div>
             <div style={{fontSize:10.5,color:DIM,fontWeight:700,marginBottom:10}}>
-              🔥 Best perfect-day streak: <b style={{color:"#ffc46b"}}>{perfectStreak}</b> — some gear unlocks at higher streaks.
-            </div>
-            {/* STREAK SHIELD (consumable) */}
-            <div style={{...C.glass, border:"1.5px solid rgba(157,180,255,0.45)", marginBottom:12, padding:"13px 15px",
-              display:"flex",alignItems:"center",gap:12}}>
-              <div style={{fontSize:26}}>🛡</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>Streak Shield <span style={{fontSize:10,color:"#9db4ff",fontWeight:800}}>· owned: {data.wallet.shields||0}</span></div>
-                <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:2}}>Protect a missed day — streak survives, no decay. Use it from that quest's calendar.</div>
-              </div>
-              <button onClick={buyShield} style={{...C.btn,padding:"11px 13px",fontSize:11,whiteSpace:"nowrap"}}>{SHIELD_COST} 💎</button>
+              Each beast answers to a longer perfect-day streak. One tail for one day, all the way to Kurama at nine.
             </div>
             {/* Filter chips */}
             <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:10,WebkitOverflowScrolling:"touch"}}>
