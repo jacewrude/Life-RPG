@@ -484,7 +484,7 @@ function getLevel(rating) {
   return { ...LEVELS[lvl], lvl, ratingForNext:(lvl+1)*4.2, ratingFloor:lvl*4.2 };
 }
 function getTitle(data, lvl) {
-  return (data.customTitles && data.customTitles[lvl]) || LEVELS[lvl].name;
+  return (data.customTitles && data.customTitles[lvl]) || (LEVELS[lvl] ? LEVELS[lvl].name : "");
 }
 function projectRating(categories, tasks, dateStr, scenario) {
   const cats = categories.map(c=>({...c}));
@@ -2826,7 +2826,7 @@ export default function App() {
       const best = data.flags?.maxLevel || 0;
       const isNewBest = lvl > best;
       const gems = isNewBest ? 10 + lvl * 2 : 0;   // scale a little with level
-      setShowLevelUp({ lvl, name: getTitle(data, lvl), unlock: LEVELS[lvl].unlock, gems });
+      setShowLevelUp({ lvl, name: getTitle(data, lvl), unlock: (LEVELS[lvl]||{}).unlock || "", gems });
       if (isNewBest) {
         setData(cur=>{ const n={...cur, flags:{...(cur.flags||{}), maxLevel:lvl},
           wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+gems}}; persistRaw(n); return n; });
@@ -3801,9 +3801,6 @@ export default function App() {
   const S = data.settings;
   const T = THEMES[S.theme] || THEMES.ember;   // removed themes fall back
   const cz = data.character;
-  // You keep your rank; you can choose to wear the look of any rank you've passed.
-  const wornLvl = (cz && cz.appearLevel != null && cz.appearLevel <= level.lvl)
-    ? cz.appearLevel : level.lvl;
   const today = currentDay;
   const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t) && isScheduledOn(t,today));
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
@@ -3868,6 +3865,9 @@ export default function App() {
   const rating = getRating(data.categories);
   const tier = getTier(rating);
   const level = getLevel(rating);
+  // You keep your rank; you can choose to wear the look of any rank you've passed.
+  const wornLvl = (cz && cz.appearLevel != null && cz.appearLevel <= level.lvl)
+    ? cz.appearLevel : level.lvl;
   const lvlProgress = ((rating - level.ratingFloor) / 7) * 100;
   const ghostCategories = data.categories.map(c=>{
     let val = c.value;
@@ -4827,14 +4827,14 @@ export default function App() {
               {/* LEVEL PROGRESS */}
               <div style={{...C.glass,padding:"13px 16px"}}>
                 <div style={{height:11,background:"rgba(0,0,0,0.3)",borderRadius:6,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${level.lvl===14?100:lvlProgress}%`,background:"linear-gradient(90deg,rgba(255,255,255,0.75),#ffffff)",borderRadius:6,boxShadow:"0 0 12px rgba(255,255,255,0.6)",transition:"width .6s ease"}}/>
+                  <div style={{height:"100%",width:`${level.lvl>=LEVELS.length-1?100:lvlProgress}%`,background:"linear-gradient(90deg,rgba(255,255,255,0.75),#ffffff)",borderRadius:6,boxShadow:"0 0 12px rgba(255,255,255,0.6)",transition:"width .6s ease"}}/>
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginTop:6,fontWeight:800}}>
                   <span>LV {level.lvl}</span>
-                  {level.lvl<14
-                    ? <span style={{color:"#fff"}}>{level.ratingForNext - rating} pts to {getTitle(data, level.lvl+1)}</span>
-                    : <span style={{color:T.accent}}>MAX LEVEL</span>}
-                  <span>LV {level.lvl===14?"MAX":level.lvl+1}</span>
+                  {level.lvl < LEVELS.length-1
+                    ? <span style={{color:"#fff"}}>{Math.max(0, Math.ceil(level.ratingForNext - rating))} pts to {getTitle(data, level.lvl+1)}</span>
+                    : <span style={{color:T.accent}}>HIGHEST RANK</span>}
+                  <span>LV {level.lvl>=LEVELS.length-1?"MAX":level.lvl+1}</span>
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:10}}>
                   <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:14,padding:"8px 11px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
