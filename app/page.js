@@ -559,6 +559,8 @@ function migrate(d) {
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
   if (!["m","f"].includes(chr.body)) chr.body = "m";
   if (!HAIRSTYLES.some(h=>h[0]===chr.hairstyle)) chr.hairstyle = "classic";
+  chr.appearLevel = (typeof chr.appearLevel === "number" && chr.appearLevel >= 0
+                     && chr.appearLevel < LEVELS.length) ? chr.appearLevel : null;
   return {
     ...d,
     settings,
@@ -1181,11 +1183,18 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       P(TRI(cx+1.15,cy-3.0,cx+1.5,cy-4.2,cx+0.5,cy-3.2),"#10203c");
       [[-1.9,0.5],[0.9,0.3],[-0.7,1.4],[1.5,1.2]].forEach(([dx,dy])=>  // flame licks
         P(TRI(cx+dx,cy+dy,cx+dx+0.3,cy+dy-1.1,cx+dx+0.65,cy+dy),"#10203c"));
-      E(cx-0.75,cy-2.1,0.44,"#f6e05a","#141019");
-      E(cx+0.35,cy-2.1,0.44,"#4fd06a","#141019");
-      R(cx-0.75,cy-1.45,1.55,0.62,"#8a1f28",0.3);                    // open fanged jaw
-      [-0.6,-0.1,0.4].forEach(dx=> P(TRI(cx+dx,cy-1.45,cx+dx+0.18,cy-1.0,cx+dx+0.36,cy-1.45),"#ffffff"));
-      C(cx-0.2,cy-1.75,0.2,"#6b5a4a");                               // nose
+      // narrow slanted eyes under heavy brows
+      P(`M ${(cx-1.35)*s} ${(cy-2.35)*s} L ${(cx-0.25)*s} ${(cy-2.05)*s} L ${(cx-0.35)*s} ${(cy-1.7)*s} L ${(cx-1.4)*s} ${(cy-1.95)*s} Z`,"#f6e05a");
+      P(`M ${(cx+1.0)*s} ${(cy-2.35)*s} L ${(cx-0.1)*s} ${(cy-2.05)*s} L ${cx*s} ${(cy-1.7)*s} L ${(cx+1.05)*s} ${(cy-1.95)*s} Z`,"#4fd06a");
+      R(cx-1.0,cy-2.15,0.32,0.42,"#141019",0.05);
+      R(cx+0.5,cy-2.15,0.32,0.42,"#141019",0.05);
+      P(`M ${(cx-1.5)*s} ${(cy-2.7)*s} L ${(cx-0.2)*s} ${(cy-2.25)*s} L ${(cx-0.25)*s} ${(cy-2.5)*s} L ${(cx-1.5)*s} ${(cy-2.95)*s} Z`,"#10203c");
+      P(`M ${(cx+1.15)*s} ${(cy-2.7)*s} L ${(cx-0.15)*s} ${(cy-2.25)*s} L ${(cx-0.1)*s} ${(cy-2.5)*s} L ${(cx+1.15)*s} ${(cy-2.95)*s} Z`,"#10203c");
+      C(cx-0.2,cy-1.5,0.2,"#6b5a4a");                                // nose
+      // a snarl, wider at the fangs
+      P(`M ${(cx-0.95)*s} ${(cy-1.25)*s} L ${(cx+0.6)*s} ${(cy-1.25)*s} L ${(cx+0.25)*s} ${(cy-0.55)*s} L ${(cx-0.6)*s} ${(cy-0.55)*s} Z`,"#8a1f28");
+      P(TRI(cx-0.95,cy-1.25,cx-0.72,cy-0.62,cx-0.5,cy-1.25),"#ffffff");
+      P(TRI(cx+0.15,cy-1.25,cx+0.38,cy-0.62,cx+0.6,cy-1.25),"#ffffff");
     } else if (n===3) {     // ISOBU — grey turtle, maroon shell, one red eye
       for (let i=0;i<3;i++) { const [x1,y1]=arc(i,3,4.2,0.78,"#8d9aa4",A0,A1); C(x1,y1,0.4,"#6f7d88"); }
       R(cx-2.4,cy-1.6,4.8,3.8,"#7d2b38",2.0);                        // maroon shell
@@ -1196,7 +1205,16 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       [-0.9,0,0.9].forEach(dx=> P(TRI(cx+dx-0.3,cy+0.5,cx+dx,cy-0.4,cx+dx+0.3,cy+0.5),"#cfd9e0"));
       E(cx,cy+1.3,0.62,"#e04a3a","#2a0d0a");
     } else if (n===4) {     // SON GOKU — red ape, pale green face and belly, horns
-      for (let i=0;i<4;i++) { const [x1,y1]=arc(i,4,4.3,0.72,"#b8311f",A0,A1); C(x1,y1,0.34,"#d8c08a"); }
+      // four thick tails fanning right, each banded near the tip
+      for (let i=0;i<4;i++) {
+        const ang = Math.PI*(1.62 + 0.20*i);
+        const x0=cx+Math.cos(ang)*1.7, y0=cy+0.4+Math.sin(ang)*1.7;
+        const x1=cx+Math.cos(ang)*5.0, y1=cy+0.4+Math.sin(ang)*5.0;
+        const xm=cx+Math.cos(ang+0.22)*3.5, ym=cy+0.4+Math.sin(ang+0.22)*3.5;
+        L(Q(x0,y0,xm,ym,x1,y1),"#b8311f",0.95);
+        const bx=cx+Math.cos(ang)*4.2, by=cy+0.4+Math.sin(ang)*4.2;
+        C(bx,by,0.42,"#d8c08a"); C(x1,y1,0.3,"#8e2416");
+      }
       R(cx-2.1,cy-1.1,4.2,3.4,"#b8311f",1.3);
       R(cx-1.2,cy-0.7,2.4,2.9,"#bcd9ac",1.0);                        // pale green belly
       R(cx-2.7,cy-0.6,0.9,2.4,"#b8311f",0.5); R(cx+1.8,cy-0.6,0.9,2.4,"#b8311f",0.5);
@@ -1209,22 +1227,26 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       E(cx-0.6,cy-2.5,0.32,"#ffffff","#1b1508"); E(cx+0.6,cy-2.5,0.32,"#ffffff","#1b1508");
       R(cx-0.8,cy-1.95,1.6,0.75,"#6b1410",0.3);
       R(cx-0.65,cy-1.88,1.3,0.2,"#e8dca8",0.05);
-    } else if (n===5) {     // KOKUO — long-bodied white horse, five tails
-      for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.4,0.6,"#e6e8ee",Math.PI*1.12,Math.PI*1.82); C(x1,y1,0.3,"#c9a469"); }
-      // barrel body, held horizontally like a horse
-      P(`M ${(cx-2.5)*s} ${(cy+1.0)*s} Q ${(cx-2.6)*s} ${(cy-0.9)*s} ${(cx-0.6)*s} ${(cy-1.1)*s} Q ${(cx+2.2)*s} ${(cy-1.2)*s} ${(cx+2.5)*s} ${(cy+0.6)*s} Q ${(cx+2.3)*s} ${(cy+1.6)*s} ${(cx-2.2)*s} ${(cy+1.6)*s} Z`,"#e6e8ee");
-      [-2.0,-0.9,0.9,1.9].forEach(dx=> R(cx+dx,cy+1.3,0.62,1.9,"#e6e8ee",0.22));
-      [-2.0,-0.9,0.9,1.9].forEach(dx=> R(cx+dx,cy+2.9,0.68,0.55,"#c9a469",0.18));
-      // neck rising forward-left, then a long tapering muzzle
-      P(`M ${(cx-1.9)*s} ${(cy-0.6)*s} L ${(cx-2.9)*s} ${(cy-2.9)*s} L ${(cx-1.7)*s} ${(cy-3.1)*s} L ${(cx-0.7)*s} ${(cy-0.8)*s} Z`,"#e6e8ee");
-      P(`M ${(cx-2.95)*s} ${(cy-3.0)*s} L ${(cx-1.55)*s} ${(cy-3.3)*s} L ${(cx-1.75)*s} ${(cy-4.3)*s} L ${(cx-3.5)*s} ${(cy-4.0)*s} Z`,"#eef0f4");
-      P(`M ${(cx-3.5)*s} ${(cy-4.0)*s} L ${(cx-1.95)*s} ${(cy-4.25)*s} L ${(cx-2.4)*s} ${(cy-4.9)*s} L ${(cx-3.7)*s} ${(cy-4.6)*s} Z`,"#eef0f4");
-      C(cx-3.5,cy-4.45,0.18,"#9aa3b0");                              // nostril
-      L(Q(cx-1.9,cy-3.3,cx-1.0,cy-2.3,cx-0.4,cy-1.2),"#cfd3dd",0.46,0.95);  // mane down the neck
-      L(Q(cx-2.1,cy-4.2,cx-2.3,cy-5.4,cx-1.6,cy-6.0),"#c9a469",0.28); // horns
-      L(Q(cx-1.5,cy-4.0,cx-1.0,cy-5.2,cx-0.3,cy-5.6),"#c9a469",0.28);
-      P(TRI(cx-1.75,cy-4.2,cx-1.5,cy-5.0,cx-1.15,cy-4.0),"#eef0f4");  // ear
-      E(cx-2.45,cy-3.75,0.3,"#6fb9d8","#8a2b22");
+    } else if (n===5) {     // KOKUO — long white horse, neck reaching forward
+      for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.4,0.6,"#e6e8ee",Math.PI*1.20,Math.PI*1.86); C(x1,y1,0.3,"#c9a469"); }
+      // barrel
+      P(`M ${(cx-2.3)*s} ${(cy+0.9)*s} Q ${(cx-2.5)*s} ${(cy-0.9)*s} ${(cx-0.4)*s} ${(cy-1.1)*s} Q ${(cx+2.2)*s} ${(cy-1.2)*s} ${(cx+2.5)*s} ${(cy+0.5)*s} Q ${(cx+2.4)*s} ${(cy+1.5)*s} ${(cx-2.1)*s} ${(cy+1.5)*s} Z`,"#e6e8ee");
+      // legs — tucked inside the barrel's footprint so they all connect
+      [[-1.75,1.1],[-0.75,1.2],[0.85,1.2],[1.75,1.1]].forEach(([dx,dy])=>{
+        R(cx+dx,cy+dy,0.62,1.9,"#e6e8ee",0.22);
+        R(cx+dx-0.03,cy+dy+1.8,0.68,0.55,"#c9a469",0.18);
+      });
+      // neck sweeping forward and down-left, not straight up
+      P(`M ${(cx-1.7)*s} ${(cy-0.9)*s} L ${(cx-3.5)*s} ${(cy-2.4)*s} L ${(cx-2.9)*s} ${(cy-3.3)*s} L ${(cx-0.7)*s} ${(cy-1.2)*s} Z`,"#e6e8ee");
+      // head, then a long tapering muzzle continuing the same line
+      P(`M ${(cx-3.6)*s} ${(cy-2.35)*s} L ${(cx-2.85)*s} ${(cy-3.4)*s} L ${(cx-4.3)*s} ${(cy-4.1)*s} L ${(cx-4.9)*s} ${(cy-3.0)*s} Z`,"#eef0f4");
+      P(`M ${(cx-4.5)*s} ${(cy-3.5)*s} L ${(cx-4.1)*s} ${(cy-4.15)*s} L ${(cx-5.5)*s} ${(cy-4.5)*s} L ${(cx-5.7)*s} ${(cy-3.8)*s} Z`,"#eef0f4");
+      C(cx-5.5,cy-4.1,0.18,"#9aa3b0");                               // nostril
+      L(Q(cx-3.1,cy-3.1,cx-1.9,cy-2.2,cx-0.9,cy-1.3),"#cfd3dd",0.5,0.95);  // mane along the neck
+      L(Q(cx-4.0,cy-3.9,cx-4.3,cy-5.2,cx-3.5,cy-5.7),"#c9a469",0.28);      // horns
+      L(Q(cx-3.4,cy-3.6,cx-3.0,cy-5.0,cx-2.2,cy-5.3),"#c9a469",0.28);
+      P(TRI(cx-3.5,cy-3.7,cx-3.1,cy-4.5,cx-2.75,cy-3.4),"#eef0f4");        // ear
+      E(cx-4.25,cy-3.5,0.3,"#6fb9d8","#8a2b22");
     } else if (n===6) {     // SAIKEN — pale slug, eyes on stalks, dripping
       for (let i=0;i<6;i++) { const [x1,y1]=arc(i,6,4.1,0.72,"#b9b6c9",A0,A1); C(x1,y1,0.32,"#cfccdd"); }
       R(cx-2.2,cy-0.9,4.4,3.3,"#cfccdd",1.8);                        // fat lower body
@@ -1267,30 +1289,38 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       R(cx-1.5,cy-3.2,3.0,2.5,"#c87a74",1.0);
       P(TRI(cx-1.4,cy-3.1,cx-2.4,cy-4.8,cx-0.5,cy-3.7),"#eee6e0");
       P(TRI(cx+1.4,cy-3.1,cx+2.4,cy-4.8,cx+0.5,cy-3.7),"#eee6e0");
-      E(cx-0.72,cy-2.2,0.48,"#ede4de","#2a1410"); E(cx+0.72,cy-2.2,0.48,"#ede4de","#2a1410");
+      C(cx-0.72,cy-2.2,0.5,"#ede4de"); C(cx+0.72,cy-2.2,0.5,"#ede4de");
+      els.push(<circle key={nk()} cx={(cx-0.72)*s} cy={(cy-2.2)*s} r={0.34*s} fill="none" stroke="#1a0f0c" strokeWidth={0.17*s}/>);
+      els.push(<circle key={nk()} cx={(cx+0.72)*s} cy={(cy-2.2)*s} r={0.34*s} fill="none" stroke="#1a0f0c" strokeWidth={0.17*s}/>);
       R(cx-0.45,cy-1.35,0.9,0.42,"#d8cdc6",0.2);
       R(cx-0.9,cy-0.7,1.8,0.34,"#7d3f3a",0.15);
-    } else {                // KURAMA — nine-tailed fox, one colour, long snout
+    } else {                // KURAMA — nine-tailed fox
       for (let i=0;i<9;i++) {
         const ang=A0+(A1-A0)*(i/8);
-        const x0=cx+Math.cos(ang)*1.3, y0=cy-0.4+Math.sin(ang)*1.3;
-        const x1=cx+Math.cos(ang)*4.7, y1=cy-0.4+Math.sin(ang)*4.7;
-        const xm=cx+Math.cos(ang+0.3)*3.2, ym=cy-0.4+Math.sin(ang+0.3)*3.2;
-        const px=cx+Math.cos(ang+0.62)*4.0, py=cy-0.4+Math.sin(ang+0.62)*4.0;
+        const x0=cx+Math.cos(ang)*1.3, y0=cy-0.2+Math.sin(ang)*1.3;
+        const x1=cx+Math.cos(ang)*5.0, y1=cy-0.2+Math.sin(ang)*5.0;
+        const xm=cx+Math.cos(ang+0.34)*3.3, ym=cy-0.2+Math.sin(ang+0.34)*3.3;
+        const px=cx+Math.cos(ang+0.80)*4.2, py=cy-0.2+Math.sin(ang+0.80)*4.2;
         P(`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s} Q ${px*s} ${py*s} ${x0*s} ${y0*s} Z`,"#ef6a22");
       }
-      P(`M ${(cx-2.2)*s} ${(cy+2.3)*s} L ${(cx-1.9)*s} ${(cy-0.5)*s} Q ${cx*s} ${(cy-1.5)*s} ${(cx+2.0)*s} ${(cy-0.4)*s} L ${(cx+2.3)*s} ${(cy+2.3)*s} Z`,"#ef6a22");
-      R(cx-1.85,cy+1.5,0.8,1.6,"#ef6a22",0.25); R(cx+1.1,cy+1.5,0.8,1.6,"#ef6a22",0.25);
-      R(cx-1.5,cy-2.5,2.1,2.1,"#ef6a22",0.8);                        // head
-      P(`M ${(cx-1.4)*s} ${(cy-1.7)*s} L ${(cx-3.4)*s} ${(cy-0.9)*s} L ${(cx-3.2)*s} ${(cy-0.05)*s} L ${(cx-1.3)*s} ${(cy-0.3)*s} Z`,"#ef6a22");
-      P(TRI(cx-1.4,cy-2.4,cx-1.9,cy-4.5,cx-0.5,cy-3.0),"#ef6a22");   // tall fox ears
-      P(TRI(cx+0.5,cy-2.4,cx+0.9,cy-4.4,cx-0.1,cy-2.9),"#ef6a22");
-      P(TRI(cx-1.3,cy-2.7,cx-1.65,cy-4.0,cx-0.75,cy-3.0),"#2b1008");
-      P(TRI(cx+0.55,cy-2.7,cx+0.8,cy-3.9,cx+0.05,cy-2.9),"#2b1008");
-      L(Q(cx-1.5,cy-1.95,cx-0.9,cy-2.25,cx-0.2,cy-2.1),"#2b1008",0.2,0.9);
-      E(cx-1.1,cy-1.5,0.36,"#e8333a","#1b0608");
-      C(cx-3.25,cy-0.45,0.18,"#2b1008");                             // nose
-      R(cx-2.9,cy-0.2,1.5,0.22,"#f7e0c8",0.05);                      // bared teeth
+      // low prowling body
+      P(`M ${(cx-2.3)*s} ${(cy+2.3)*s} L ${(cx-2.0)*s} ${(cy-0.3)*s} Q ${cx*s} ${(cy-1.4)*s} ${(cx+2.1)*s} ${(cy-0.2)*s} L ${(cx+2.4)*s} ${(cy+2.3)*s} Z`,"#ef6a22");
+      [-1.95,-0.8,0.6,1.6].forEach(dx=> R(cx+dx,cy+1.5,0.72,1.7,"#e05c18",0.22));
+      // head as a wedge, snout reaching left
+      P(`M ${(cx+0.5)*s} ${(cy-2.9)*s} L ${(cx+1.1)*s} ${(cy-0.9)*s} L ${(cx-1.6)*s} ${(cy-0.5)*s} L ${(cx-3.9)*s} ${(cy-1.0)*s} L ${(cx-3.6)*s} ${(cy-2.0)*s} L ${(cx-1.4)*s} ${(cy-2.5)*s} Z`,"#ef6a22");
+      P(`M ${(cx-3.9)*s} ${(cy-1.0)*s} L ${(cx-3.6)*s} ${(cy-2.0)*s} L ${(cx-2.4)*s} ${(cy-2.25)*s} L ${(cx-2.6)*s} ${(cy-0.75)*s} Z`,"#f7e0c8");
+      C(cx-3.85,cy-1.5,0.26,"#2b1008");                                  // nose
+      P(`M ${(cx-3.5)*s} ${(cy-0.95)*s} L ${(cx-1.9)*s} ${(cy-0.6)*s} L ${(cx-1.95)*s} ${(cy-0.35)*s} L ${(cx-3.5)*s} ${(cy-0.72)*s} Z`,"#f7e0c8");
+      [[-3.3,-0.9],[-2.9,-0.82],[-2.5,-0.74]].forEach(([dx,dy])=> P(TRI(cx+dx,cy+dy,cx+dx+0.17,cy+dy+0.45,cx+dx+0.34,cy+dy),"#ffffff"));
+      // tall ears swept back
+      P(TRI(cx-0.9,cy-2.5,cx-1.5,cy-4.7,cx+0.1,cy-2.9),"#ef6a22");
+      P(TRI(cx+0.35,cy-2.7,cx+0.3,cy-4.9,cx+1.2,cy-3.0),"#ef6a22");
+      P(TRI(cx-0.95,cy-2.8,cx-1.3,cy-4.1,cx-0.35,cy-3.0),"#2b1008");
+      P(TRI(cx+0.45,cy-3.0,cx+0.45,cy-4.3,cx+0.95,cy-3.1),"#2b1008");
+      // angular red eye with the dark streak behind it
+      P(`M ${(cx-2.3)*s} ${(cy-1.95)*s} L ${(cx-0.95)*s} ${(cy-2.2)*s} L ${(cx-0.85)*s} ${(cy-1.75)*s} L ${(cx-2.25)*s} ${(cy-1.6)*s} Z`,"#e8333a");
+      R(cx-1.75,cy-2.0,0.42,0.42,"#1b0608",0.05);
+      P(`M ${(cx-2.5)*s} ${(cy-2.35)*s} L ${(cx+0.3)*s} ${(cy-2.9)*s} L ${(cx+0.25)*s} ${(cy-2.45)*s} L ${(cx-2.45)*s} ${(cy-2.1)*s} Z`,"#2b1008");
     }
   } else if (art==="slime") {
     R(cx-2.2,cy-1.4,4.4,3.8,color,1.8);
@@ -3771,6 +3801,9 @@ export default function App() {
   const S = data.settings;
   const T = THEMES[S.theme] || THEMES.ember;   // removed themes fall back
   const cz = data.character;
+  // You keep your rank; you can choose to wear the look of any rank you've passed.
+  const wornLvl = (cz && cz.appearLevel != null && cz.appearLevel <= level.lvl)
+    ? cz.appearLevel : level.lvl;
   const today = currentDay;
   const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t) && isScheduledOn(t,today));
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
@@ -4775,7 +4808,7 @@ export default function App() {
                     background:`radial-gradient(circle, ${myForm.aura}5e 0%, ${myForm.aura}22 42%, transparent 70%)`,
                     animation:"forgeGlow 2.4s ease-in-out infinite"}}/>
                 )}
-                <PixelCharacter level={level.lvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={pet}/>
+                <PixelCharacter level={wornLvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={pet}/>
               </div>
               <div onClick={()=>setView("boss")}
                 style={{position:"absolute",right:10,bottom:14,textAlign:"right",cursor:"pointer"}}>
@@ -6656,7 +6689,26 @@ export default function App() {
             <div style={C.glass}>
               <div style={C.label}>YOUR CHAMPION</div>
               <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-                <PixelCharacter level={level.lvl} character={cz} scale={6.5} idle cosmetics={cosmetics} pet={pet}/>
+                <PixelCharacter level={wornLvl} character={cz} scale={6.5} idle cosmetics={cosmetics} pet={pet}/>
+              </div>
+              <div style={{...C.label,marginBottom:6}}>OUTFIT</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+                {LEVELS.filter(L=>L.lvl<=level.lvl).map(L=>{
+                  const on = wornLvl === L.lvl;
+                  return (
+                    <button key={L.lvl} onClick={()=>setChar("appearLevel", L.lvl===level.lvl ? null : L.lvl)}
+                      style={{padding:"8px 11px",borderRadius:12,cursor:"pointer",fontFamily:FONT,
+                        fontSize:10.5,fontWeight:900,letterSpacing:0.3,
+                        border: on ? `2px solid ${T.accent}` : `1px solid ${LINE}`,
+                        background: on ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.05)",
+                        color: on ? "#fff" : DIM}}>
+                      {getTitle(data, L.lvl)}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:14,lineHeight:1.5}}>
+                Wear any rank you have already earned. Your actual rank never changes.
               </div>
               <div style={{...C.label,marginBottom:6}}>BODY</div>
               <div style={{display:"flex",gap:8,marginBottom:14}}>
