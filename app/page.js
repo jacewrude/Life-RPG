@@ -169,8 +169,8 @@ const DEFAULT_SETTINGS = {
   devMode: false,
 };
 const DEFAULT_EQUIPPED = {
-  headband:true, vest:true, blade:true, gloves:true,
-  mask:true, cloak:true, hat:true, aura:true,
+  headband:true, vest:true, gloves:true, anbu:true,
+  cloak:true, hat:true, sage:true,
 };
 const DEFAULT_CHARACTER = {
   skin:"#9c6b3c", hair:"#1a0e08", shirt:"#a16207", pants:"#1f2937",
@@ -242,15 +242,15 @@ const AURA_COLORS = METALS.map(m=>m.color); // legacy ref (free recolor disabled
 
 // ── PET DEFINITIONS (hand-drawn SVG creatures; streak tiers 3/7/14/30/60/90) ──
 const PETS = [
-  { id:"pet_cat",     name:"Nekomata",        rarity:"common",    gems:55,  art:"cat",    color:"#3f3f46" },
-  { id:"pet_owl",     name:"Messenger Hawk",  rarity:"common",    gems:75,  art:"owl",    color:"#92580f" },
-  { id:"pet_dog",     name:"Ninken Hound",    rarity:"uncommon",  gems:95,  art:"dog",    color:"#b45309" },
-  { id:"pet_fox",     name:"Kitsune",         rarity:"rare",      gems:130, art:"fox",    color:"#ea580c", gate:{streak:3}  },
-  { id:"pet_wolf",    name:"Fanged Wolf",     rarity:"rare",      gems:170, art:"wolf",   color:"#64748b", gate:{streak:7}  },
-  { id:"pet_stag",    name:"Forest Spirit",   rarity:"epic",      gems:230, art:"stag",   color:"#0ea5a0", gate:{streak:14} },
-  { id:"pet_dragon",  name:"Serpent Hatchling", rarity:"epic",    gems:300, art:"dragon", color:"#16a34a", gate:{streak:30} },
-  { id:"pet_griffin", name:"Great Hawk",      rarity:"legendary", gems:420, art:"griffin",color:"#d4a017", gate:{streak:60} },
-  { id:"pet_phoenix", name:"Phoenix Summon",  rarity:"legendary", gems:500, art:"phoenix",color:"#f97316", gate:{streak:90} },
+  { id:"pet_cat",     name:"One-Tail · Sand Tanuki",  rarity:"common",    gems:55,  art:"tb1", color:"#d8bd84" },
+  { id:"pet_owl",     name:"Two-Tails · Flame Cat",   rarity:"common",    gems:75,  art:"tb2", color:"#3fa9e0" },
+  { id:"pet_dog",     name:"Three-Tails · Shell Turtle", rarity:"uncommon", gems:95, art:"tb3", color:"#7f9aa8" },
+  { id:"pet_fox",     name:"Four-Tails · Lava Ape",   rarity:"rare",      gems:130, art:"tb4", color:"#c23a22", gate:{streak:3}  },
+  { id:"pet_wolf",    name:"Five-Tails · Steam Horse",rarity:"rare",      gems:170, art:"tb5", color:"#e3e0d6", gate:{streak:7}  },
+  { id:"pet_stag",    name:"Six-Tails · Mist Slug",   rarity:"epic",      gems:230, art:"tb6", color:"#cfe3c0", gate:{streak:14} },
+  { id:"pet_dragon",  name:"Seven-Tails · Horned Beetle", rarity:"epic",  gems:300, art:"tb7", color:"#e08b2a", gate:{streak:30} },
+  { id:"pet_griffin", name:"Eight-Tails · Great Ox",  rarity:"legendary", gems:420, art:"tb8", color:"#8e86c4", gate:{streak:60} },
+  { id:"pet_phoenix", name:"Nine-Tails · Fox",        rarity:"legendary", gems:500, art:"tb9", color:"#f2622a", gate:{streak:90} },
 ];
 
 // ── SHOP CATALOG (auras [shape×metal], pets, capes [metal]) ───────────────────
@@ -269,33 +269,31 @@ const CAPE_ITEMS = METALS.map(m=>({
   rarity:m.rarity, gems:m.gems, gate:m.gate, color:m.color,
 }));
 const SHOP = [
-  ...AURA_ITEMS,
   ...PETS.map(p=>({ id:p.id, type:"pet", name:p.name, rarity:p.rarity, gems:p.gems, gate:p.gate, art:p.art, color:p.color })),
-  ...CAPE_ITEMS,
 ];
-const SHOP_TYPES = [["all","ALL"],["aura","CHAKRA"],["pet","SUMMONS"],["cape","CLOAKS"]];
+const SHOP_TYPES = [["all","ALL"],["pet","SUMMONS"]];
 const SPIN_GAMES = ["slot","wheel","blackjack"];
 const CAT_COLORS = ["#f59e0b","#ef4444","#38bdf8","#34d399","#a78bfa","#f472b6","#fb923c","#22c55e","#e879f9","#fbbf24"];
 
 const GEAR = [
-  { slot:"headband", lvl:1, name:"Village Headband" },
-  { slot:"vest",     lvl:2, name:"Flak Vest" },
-  { slot:"blade",    lvl:3, name:"Kunai (becomes a tanto at LV5)" },
-  { slot:"gloves",   lvl:4, name:"Armoured Gloves & Sash" },
-  { slot:"mask",     lvl:5, name:"Operative Mask" },
-  { slot:"cloak",    lvl:6, name:"Ember Cloak" },
-  { slot:"hat",      lvl:7, name:"Kage Robe & Hat" },
+  { slot:"headband", lvl:1, name:"Village Headband & Sandals" },
+  { slot:"vest",     lvl:2, name:"Green Flak Vest" },
+  { slot:"gloves",   lvl:3, name:"Gloves, Sash & Tanto" },
+  { slot:"anbu",     lvl:4, name:"ANBU Mask & Black Ops Gear" },
+  { slot:"cloak",    lvl:5, name:"Akatsuki Cloak" },
+  { slot:"hat",      lvl:6, name:"Kage Haori & Hat" },
+  { slot:"sage",     lvl:7, name:"Sage Robe & Halo" },
 ];
 
 const LEVELS = [
-  { lvl:0, name:"Academy Student",  unlock:"No rank yet" },
-  { lvl:1, name:"Genin",            unlock:"Village headband" },
-  { lvl:2, name:"Chunin",           unlock:"Flak vest" },
-  { lvl:3, name:"Tokubetsu Jonin",  unlock:"Kunai & holster" },
-  { lvl:4, name:"Jonin",            unlock:"Armoured gloves & sash" },
-  { lvl:5, name:"Shadow Corps",     unlock:"Operative mask & tanto" },
-  { lvl:6, name:"Crimson Dawn",     unlock:"Ember cloak" },
-  { lvl:7, name:"Kage",             unlock:"Kage robe & hat" },
+  { lvl:0, name:"Academy Student",     unlock:"No rank yet" },
+  { lvl:1, name:"Genin",               unlock:"Village headband & sandals" },
+  { lvl:2, name:"Chunin",              unlock:"Green flak vest" },
+  { lvl:3, name:"Jonin",               unlock:"Gloves, sash & tanto" },
+  { lvl:4, name:"ANBU",                unlock:"Porcelain mask & black ops gear" },
+  { lvl:5, name:"Akatsuki",            unlock:"Long red-cloud cloak" },
+  { lvl:6, name:"Kage",                unlock:"Kage haori & hat" },
+  { lvl:7, name:"Sage of Six Paths",   unlock:"Golden robe & halo" },
 ];
 
 const QUOTES = [
@@ -1130,7 +1128,49 @@ function drawPet(els, art, color, cx, cy, s, nk) {
   const eyeW = "#ffffff", eyeB = "#16131f";
   // shadow
   els.push(<ellipse key={nk()} cx={cx*s} cy={(cy+2.6)*s} rx={2.4*s} ry={0.6*s} fill="#000" opacity="0.25"/>);
-  if (art==="slime") {
+  // ── TAILED BEASTS — count the tails ──────────────────────────────────────
+  if (art && art[0]==="t" && art[1]==="b") {
+    const n = parseInt(art.slice(2)) || 1;
+    const CFG = {
+      1:{ ear:"round",  mark:"rings" }, 2:{ ear:"cat",   mark:"flame" },
+      3:{ ear:"none",   mark:"shell" }, 4:{ ear:"horn",  mark:"lava"  },
+      5:{ ear:"mane",   mark:"none"  }, 6:{ ear:"stalk", mark:"none"  },
+      7:{ ear:"horn",   mark:"wing"  }, 8:{ ear:"ox",    mark:"none"  },
+      9:{ ear:"fox",    mark:"fox"   },
+    }[n] || {};
+    // tails fan out behind — the whole point is that you can count them
+    const spread = Math.min(2.5, 0.42*n);
+    for (let i=0;i<n;i++) {
+      const t = n===1 ? 0 : (i/(n-1))*2 - 1;             // -1 → 1
+      const ang = t * spread;
+      const bx = cx - 1.7, by = cy + 0.5;
+      els.push(<path key={nk()}
+        d={`M ${bx*s} ${by*s} Q ${(bx-1.5-Math.abs(ang)*0.3)*s} ${(by-0.4-ang*1.1)*s} ${(bx-2.7)*s} ${(by-1.5-ang*1.9)*s}`}
+        stroke={n===9?light:color} strokeWidth={(n>6?0.34:0.52)*s} fill="none" strokeLinecap="round" opacity="0.95"/>);
+      if (n<=5) els.push(<circle key={nk()} cx={(bx-2.7)*s} cy={(by-1.5-ang*1.9)*s} r={0.34*s} fill={light}/>);
+    }
+    R(cx-1.9,cy-1.2,3.9,3.4,color,1.4);                   // body
+    R(cx-1.9,cy+0.9,3.9,1.3,dark,1.0);
+    R(cx-1.5,cy-2.9,3.1,2.3,color,1.1);                   // head
+    if (CFG.ear==="cat")  { R(cx-1.4,cy-3.9,0.9,1.3,color,0.4); R(cx+0.5,cy-3.9,0.9,1.3,color,0.4); }
+    if (CFG.ear==="fox")  { R(cx-1.5,cy-4.2,1.0,1.7,color,0.4); R(cx+0.5,cy-4.2,1.0,1.7,color,0.4);
+                            R(cx-1.25,cy-3.8,0.5,1.0,dark,0.3); R(cx+0.75,cy-3.8,0.5,1.0,dark,0.3); }
+    if (CFG.ear==="horn") { R(cx-1.2,cy-4.0,0.5,1.3,light,0.3); R(cx+0.7,cy-4.0,0.5,1.3,light,0.3); }
+    if (CFG.ear==="ox")   { R(cx-2.0,cy-3.4,1.5,0.5,light,0.2); R(cx+0.5,cy-3.4,1.5,0.5,light,0.2); }
+    if (CFG.ear==="round"){ C(cx-1.2,cy-3.1,0.6,color); C(cx+1.2,cy-3.1,0.6,color); }
+    if (CFG.ear==="mane") { R(cx-1.7,cy-3.4,3.5,0.7,light,0.3); }
+    if (CFG.ear==="stalk"){ C(cx-0.9,cy-3.9,0.4,light); C(cx+0.9,cy-3.9,0.4,light);
+                            R(cx-1.0,cy-3.6,0.25,0.9,light,0.1); R(cx+0.8,cy-3.6,0.25,0.9,light,0.1); }
+    if (CFG.mark==="shell"){ R(cx-1.7,cy-1.0,3.5,2.6,dark,1.2); C(cx,cy+0.2,0.7,light); }
+    if (CFG.mark==="lava") { R(cx-1.4,cy-0.6,2.8,0.4,"#ffb020",0.2); R(cx-0.9,cy+0.2,1.9,0.35,"#ffd46b",0.2); }
+    if (CFG.mark==="rings"){ R(cx-1.5,cy-2.5,1.1,0.9,dark,0.3); R(cx+0.4,cy-2.5,1.1,0.9,dark,0.3); }
+    if (CFG.mark==="flame"){ R(cx-1.6,cy-1.0,3.3,0.5,"#ffd46b",0.2); }
+    if (CFG.mark==="wing") { R(cx-2.4,cy-1.4,1.2,1.8,light,0.5); R(cx+1.3,cy-1.4,1.2,1.8,light,0.5); }
+    if (CFG.mark==="fox")  { R(cx-1.5,cy+0.9,3.1,1.2,"#f7e3c8",0.6); }
+    C(cx-0.72,cy-2.0,0.46,eyeW); C(cx+0.72,cy-2.0,0.46,eyeW);
+    C(cx-0.68,cy-1.95,0.26,n>=4?"#c81e1e":eyeB); C(cx+0.76,cy-1.95,0.26,n>=4?"#c81e1e":eyeB);
+    R(cx-0.35,cy-1.25,0.7,0.3,dark,0.15);
+  } else if (art==="slime") {
     R(cx-2.2,cy-1.4,4.4,3.8,color,1.8);
     R(cx-2.2,cy+0.6,4.4,1.8,dark,1.2);
     C(cx-0.9,cy-0.1,0.45,eyeB); C(cx+0.9,cy-0.1,0.45,eyeB);
@@ -1302,8 +1342,8 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(8.2,10.4,7.6,1.2,shade(capeC.color,28),0.8);
   }
 
-  // Kage rank carries its own chakra halo
-  if (has("hat",7)) {
+  // The Sage radiates
+  if (has("sage",7)) {
     els.push(<circle key={k++} cx={12*s} cy={11*s} r={10.5*s} fill="url(#auraGrad)" />);
   }
 
@@ -1320,9 +1360,11 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   }
 
   const fem = cz.body === "f";
-  const robe   = has("hat",7);
-  const cloak  = !robe && has("cloak",6);
-  const vest   = !robe && !cloak && has("vest",2);
+  const sage   = has("sage",7);
+  const robe   = !sage && has("hat",6);
+  const cloak  = !sage && !robe && has("cloak",5);
+  const anbu   = !sage && !robe && !cloak && has("anbu",4);
+  const vest   = !sage && !robe && !cloak && has("vest",2);
   const steel = false, leather = false;   // retired: knight plate
   let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
   if (fem) {
@@ -1333,38 +1375,69 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(8.7,10.8,6.6,5.4,torsoColor,0.9);
     R(8.7,15.2,6.6,1.0,shade(torsoColor,-26),0.5);
   }
-  // ── FLAK VEST (Chunin) — high collar, chest pouches, shoulder plates
+  // ── GREEN FLAK VEST (Chunin → Jonin) ──────────────────────────────────────
   if (vest) {
     R(8.4,10.6,7.2,4.6,"#1f3b2e",0.6);
-    R(8.4,10.6,7.2,0.9,"#2d5443",0.4);        // collar
-    R(7.9,10.9,1.4,2.4,"#162c22",0.5);        // shoulder pads
+    R(8.4,10.6,7.2,0.9,"#2d5443",0.4);
+    R(7.9,10.9,1.4,2.4,"#162c22",0.5);
     R(14.7,10.9,1.4,2.4,"#162c22",0.5);
-    R(9.4,12.4,1.5,1.5,"#132620",0.3);        // chest pouches
+    R(9.4,12.4,1.5,1.5,"#132620",0.3);
     R(13.1,12.4,1.5,1.5,"#132620",0.3);
-    R(11.4,11.0,1.2,4.0,"#132620",0.3);       // zip
+    R(11.4,11.0,1.2,4.0,"#132620",0.3);
   }
-  // ── EMBER CLOAK (Crimson Dawn) — black with angular ember slashes
+  // ── ANBU BLACK OPS — grey plate vest, bandaged arms, shoulder guard ───────
+  if (anbu) {
+    R(8.4,10.6,7.2,4.8,"#3c4149",0.6);
+    R(8.4,10.6,7.2,0.9,"#555c66",0.4);
+    R(7.7,10.7,1.7,2.8,"#23272e",0.5);        // shoulder guard
+    R(14.6,10.7,1.7,2.8,"#23272e",0.5);
+    R(11.3,11.2,1.4,4.0,"#272b32",0.3);
+    R(8.6,15.0,6.8,0.7,"#1a1d22",0.3);
+  }
+  // ── AKATSUKI CLOAK — full length, past the knees ──────────────────────────
   if (cloak) {
-    R(7.5,10.3,9.0,6.4,"#15131b",0.8);
-    R(7.5,10.3,9.0,0.9,"#2a2633",0.4);
-    [[9.0,11.6],[13.2,12.9],[10.4,14.3]].forEach(([x,y])=>{
-      R(x,y,1.5,0.5,"#c0392b",0.2);
-      R(x+0.5,y+0.5,1.5,0.5,"#e05a3a",0.2);
+    R(7.3,10.0,9.4,9.6,"#15131b",0.9);          // the long body of it
+    R(7.3,10.0,9.4,1.0,"#33303d",0.4);          // high collar
+    R(11.4,10.9,1.2,8.7,"#0b090f",0.2);         // the opening
+    R(7.3,19.0,9.4,0.7,"#0b090f",0.3);          // hem
+    [[8.5,12.2],[13.3,13.6],[8.9,16.0],[13.0,17.4]].forEach(([x,y])=>{
+      // a flat-bottomed cluster reads as a cloud; stacked circles read as a heart
+      els.push(<circle key={k++} cx={(x+0.35)*s} cy={y*s} r={0.46*s} fill="#c7342a"/>);
+      els.push(<circle key={k++} cx={(x+1.05)*s} cy={(y-0.18)*s} r={0.56*s} fill="#c7342a"/>);
+      els.push(<circle key={k++} cx={(x+1.75)*s} cy={y*s} r={0.44*s} fill="#c7342a"/>);
+      R(x+0.3,y,1.8,0.52,"#c7342a",0.22);
+      els.push(<circle key={k++} cx={(x+1.0)*s} cy={(y-0.3)*s} r={0.3*s} fill="#e8604a"/>);
     });
-    R(11.5,10.4,1.0,6.2,"#0c0a10",0.2);       // the opening
   }
-  // ── KAGE ROBE (Kage) — white robe with a red mantle
+  // ── KAGE — long white haori with red trim over dark robes ─────────────────
   if (robe) {
-    R(7.4,10.2,9.2,6.6,"#f2eee4",0.8);
-    R(7.4,10.2,9.2,1.5,"#b3281f",0.5);        // mantle
-    R(11.5,11.6,1.0,5.2,"#d9d2c4",0.2);
-    R(7.4,16.0,9.2,0.8,"#b3281f",0.4);
+    R(8.6,10.6,6.8,6.0,"#39405e",0.6);          // dark under-robe
+    R(7.3,10.2,9.4,9.5,"#f6f3ea",0.9);          // long white haori
+    R(7.3,10.2,9.4,0.85,"#c9c3b4",0.4);         // shoulder line
+    R(10.7,10.5,2.6,9.2,"#39405e",0.3);         // the open front, robe showing through
+    R(10.7,10.5,2.6,0.9,"#b3281f",0.3);         // collar
+    // flame tongues licking up the hem
+    R(7.3,18.3,9.4,1.4,"#b3281f",0.3);
+    [7.8,9.4,11.0,12.6,14.2,15.6].forEach(x=> R(x,17.5,1.0,1.0,"#b3281f",0.3));
+    [8.6,10.2,11.8,13.4,15.0].forEach(x=> R(x,17.9,0.8,0.7,"#d8452f",0.3));
   }
-
-  const armColor = robe ? "#f2eee4" : cloak ? "#15131b" : vest ? "#24402f" : (level>=1 ? shirt : skin);
+  // ── SAGE OF SIX PATHS — gold robe, magatama, halo ─────────────────────────
+  if (sage) {
+    els.push(<circle key={k++} cx={12*s} cy={11*s} r={11*s} fill="#ffd24a" opacity="0.16"/>);
+    R(7.2,10.0,9.6,9.8,"#f7e7b8",0.9);
+    R(7.2,10.0,9.6,1.1,"#e0b23a",0.4);
+    R(11.4,10.9,1.2,8.9,"#d9c27f",0.2);
+    R(7.2,19.2,9.6,0.6,"#e0b23a",0.3);
+    [[9.5,12.2],[11.5,12.2],[13.5,12.2]].forEach(([x,y])=>
+      els.push(<circle key={k++} cx={x*s} cy={y*s} r={0.5*s} fill="#8a6a16"/>));
+    R(17.2,5.0,0.7,14.0,"#c9a227",0.3);          // staff
+    els.push(<circle key={k++} cx={17.55*s} cy={4.4*s} r={1.2*s} fill="none" stroke="#e8c04a" strokeWidth={0.45*s}/>);
+  }
+  const armColor = sage ? "#f7e7b8" : robe ? "#f4f1e8" : cloak ? "#15131b"
+                 : anbu ? "#2b3038" : vest ? "#24402f" : (level>=1 ? shirt : skin);
   R(7.6,11.2,1.3,4.0,armColor,0.6);
   R(15.1,11.2,1.3,4.0,armColor,0.6);
-  if (has("gloves",4)) {
+  if (has("gloves",3)) {
     R(7.5,14.4,1.5,1.5,"#20252e",0.5);
     R(15.0,14.4,1.5,1.5,"#20252e",0.5);
     R(7.6,14.6,1.3,0.4,"#39404e",0.2);
@@ -1412,57 +1485,55 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
   R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
 
-  // ── OPERATIVE MASK (Shadow Corps) — covers nose and mouth
-  if (has("mask",5) && !robe) {
-    R(8.9,7.9,6.2,2.6,"#e8e4db",0.7);
-    R(8.9,7.9,6.2,0.5,"#c9c4b8",0.3);
-    R(10.6,9.0,2.8,0.4,"#b9b3a6",0.2);
+  // ── ANBU PORCELAIN MASK — covers the entire face ──────────────────────────
+  if (anbu) {
+    R(8.0,3.4,8.0,7.0,"#efe9dc",1.8);
+    R(8.0,3.4,8.0,0.9,"#fdfaf2",1.0);
+    R(8.0,9.0,8.0,1.4,"#ddd5c4",1.0);
+    R(9.5,6.0,2.0,1.1,"#8e2b22",0.4);           // slitted eye holes
+    R(12.5,6.0,2.0,1.1,"#8e2b22",0.4);
+    R(11.4,7.4,1.2,2.0,"#c6392a",0.3);          // nose stripe
+    R(9.2,4.4,1.6,1.0,"#c6392a",0.3);           // animal markings
+    R(13.2,4.4,1.6,1.0,"#c6392a",0.3);
+    R(10.2,9.6,3.6,0.5,"#b8ae9b",0.2);
   }
-  // ── VILLAGE HEADBAND (Genin) — metal plate on a dark band
-  if (has("headband",1) && !robe) {
+  // ── VILLAGE HEADBAND ───────────────────────────────────────────────────────
+  if (has("headband",1) && !robe && !sage && !anbu) {
     R(7.9,4.6,8.2,1.7,"#15181f",0.4);
     R(10.2,4.7,3.6,1.5,"#9aa6b4",0.35);
     R(10.2,4.7,3.6,0.4,"#c3ccd8",0.2);
-    R(11.3,5.1,0.6,0.7,"#4a5362",0.2);        // engraved sigil
+    R(11.3,5.1,0.6,0.7,"#4a5362",0.2);
     R(11.0,5.4,1.2,0.25,"#4a5362",0.1);
-    R(15.6,5.0,0.9,3.2,"#15181f",0.3);        // trailing tails
+    R(15.6,5.0,0.9,3.2,"#15181f",0.3);
     R(16.2,5.6,0.7,2.6,"#1d2129",0.3);
   }
-  // ── KAGE HAT (Kage) — wide brim with the rank mark
+  // ── KAGE HAT ───────────────────────────────────────────────────────────────
   if (robe) {
-    R(6.6,2.6,10.8,1.5,"#f2eee4",0.5);
-    R(8.6,0.9,6.8,1.9,"#f2eee4",0.5);
-    R(8.6,0.9,6.8,0.6,"#b3281f",0.3);
-    R(11.3,1.4,1.4,1.4,"#b3281f",0.3);
-    R(6.6,4.0,10.8,0.5,"#d9d2c4",0.2);
+    R(6.4,2.8,11.2,1.4,"#f4f1e8",0.5);
+    R(8.6,1.0,6.8,2.0,"#f4f1e8",0.5);
+    R(8.6,1.0,6.8,0.6,"#b3281f",0.3);
+    R(11.2,1.5,1.6,1.4,"#b3281f",0.3);
+    R(6.4,4.1,11.2,0.5,"#ddd8cb",0.2);
   }
-
-  // ── TOOL POUCH (Tokubetsu Jonin) — strapped to the thigh
-  if (has("blade",3)) {
+  // ── SAGE HALO + HORNS ──────────────────────────────────────────────────────
+  if (sage) {
+    els.push(<circle key={k++} cx={12*s} cy={6.5*s} r={6.6*s} fill="none" stroke="#ffd96b" strokeWidth={0.5*s} opacity="0.85"/>);
+    R(9.4,1.6,1.0,2.2,"#f1dca0",0.3);
+    R(13.6,1.6,1.0,2.2,"#f1dca0",0.3);
+    R(7.9,4.6,8.2,1.3,"#e0b23a",0.4);
+  }
+  // ── TOOL POUCH + TANTO (Jonin onward) ─────────────────────────────────────
+  if (has("gloves",3) && !sage) {
     R(5.6,13.2,2.4,3.0,"#2a211a",0.6);
     R(5.6,13.2,2.4,0.7,"#3d3026",0.3);
     R(6.3,14.3,1.0,1.0,"#8a949f",0.3);
-  }
-  // ── KUNAI → TANTO ─────────────────────────────────────────────────────────
-  if (has("blade",3)) {
     const wc = weaponC ? weaponC.color : null;
-    if (level >= 5) {
-      // tanto worn across the back
-      R(16.2,6.6,0.9,7.6, wc||"#dfe6ef",0.3);
-      R(17.1,6.6,0.5,7.6, wc?shade(wc,30):"#aab6c4",0.3);
-      R(15.8,14.1,2.6,0.8,"#1f2630",0.35);
-      R(16.6,14.8,1.0,2.4,"#5a2f22",0.3);
-      R(16.5,17.0,1.2,0.7,"#2b2f3a",0.3);
-    } else {
-      // plain kunai, point down
-      R(16.6,9.0,1.1,3.6, wc||"#b9c3cf",0.25);
-      R(16.6,12.4,1.1,1.3, wc?shade(wc,-20):"#8e98a4",0.15);
-      R(16.4,8.2,1.5,0.8,"#2b2f3a",0.3);
-      R(16.9,7.0,0.6,1.3,"#2b2f3a",0.3);
-      els.push(<circle key={k++} cx={17.2*s} cy={6.9*s} r={0.6*s} fill="none" stroke="#2b2f3a" strokeWidth={0.3*s}/>);
-    }
+    R(16.2,6.6,0.9,7.6, wc||"#dfe6ef",0.3);
+    R(17.1,6.6,0.5,7.6, wc?shade(wc,30):"#aab6c4",0.3);
+    R(15.8,14.1,2.6,0.8,"#1f2630",0.35);
+    R(16.6,14.8,1.0,2.4,"#5a2f22",0.3);
+    R(16.5,17.0,1.2,0.7,"#2b2f3a",0.3);
   }
-
   // Pet companion (hand-drawn, idle beside the champion)
   if (pet) {
     const petItem = SHOP.find(it=>it.id===pet);
