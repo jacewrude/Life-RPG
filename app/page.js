@@ -1184,20 +1184,30 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       P(TRI(cx+1.3,cy-2.7,cx+1.8,cy-4.7,cx+0.2,cy-3.1),"#2f7fd8");
       P(TRI(cx-1.55,cy-3.0,cx-1.9,cy-4.2,cx-0.9,cy-3.2),"#10203c");
       P(TRI(cx+1.15,cy-3.0,cx+1.5,cy-4.2,cx+0.5,cy-3.2),"#10203c");
-      // the pattern: broad dark flame shapes, not thin lines
-      P(`M ${(cx-2.35)*s} ${(cy+2.4)*s} Q ${(cx-2.1)*s} ${(cy+0.4)*s} ${(cx-0.9)*s} ${(cy-0.5)*s}
-         Q ${(cx-0.1)*s} ${(cy+0.6)*s} ${(cx-0.6)*s} ${(cy+1.5)*s}
-         Q ${(cx-0.2)*s} ${(cy+1.1)*s} ${cx*s} ${(cy+2.4)*s} Z`,"#10203c");
-      P(`M ${(cx+2.4)*s} ${(cy+2.4)*s} Q ${(cx+2.2)*s} ${(cy+0.3)*s} ${(cx+1.1)*s} ${(cy-0.5)*s}
-         Q ${(cx+0.9)*s} ${(cy+0.8)*s} ${(cx+1.5)*s} ${(cy+1.4)*s}
-         Q ${(cx+1.0)*s} ${(cy+1.3)*s} ${(cx+1.1)*s} ${(cy+2.4)*s} Z`,"#10203c");
-      P(`M ${(cx-1.3)*s} ${(cy-0.1)*s} Q ${(cx-0.2)*s} ${(cy-1.1)*s} ${(cx+1.0)*s} ${(cy-0.2)*s}
-         Q ${(cx-0.1)*s} ${(cy-0.45)*s} ${(cx-1.3)*s} ${(cy-0.1)*s} Z`,"#10203c");
-      // and across the head, so he reads as half pattern
-      P(`M ${(cx-1.65)*s} ${(cy-1.0)*s} Q ${(cx-1.4)*s} ${(cy-2.1)*s} ${(cx-0.6)*s} ${(cy-2.6)*s}
-         Q ${(cx-1.0)*s} ${(cy-1.7)*s} ${(cx-0.75)*s} ${(cy-0.95)*s} Z`,"#10203c");
-      P(`M ${(cx+1.25)*s} ${(cy-1.0)*s} Q ${(cx+1.05)*s} ${(cy-2.1)*s} ${(cx+0.3)*s} ${(cy-2.6)*s}
-         Q ${(cx+0.65)*s} ${(cy-1.7)*s} ${(cx+0.4)*s} ${(cy-0.95)*s} Z`,"#10203c");
+      // the pattern: inward-curling spirals, the markings he actually wears
+      const swirl = (sx,sy,rad,wid,turns) => {
+        let d = "", first = true;
+        for (let t=0; t<=1.001; t+=0.05) {
+          const ang = t*Math.PI*2*(turns||1.5);
+          const rr  = rad*(1 - t*0.80);
+          const px  = (sx + Math.cos(ang)*rr)*s, py = (sy + Math.sin(ang)*rr)*s;
+          d += (first ? `M ${px} ${py}` : ` L ${px} ${py}`); first = false;
+        }
+        els.push(<path key={nk()} d={d} stroke="#10203c" strokeWidth={wid*s} fill="none"
+          strokeLinecap="round" strokeLinejoin="round"/>);
+      };
+      // flank, haunch and shoulder
+      swirl(cx-1.35, cy+0.85, 0.95, 0.34, 1.6);
+      swirl(cx+1.30, cy+0.80, 0.95, 0.34, 1.6);
+      swirl(cx-0.05, cy+1.55, 0.72, 0.30, 1.5);
+      swirl(cx+0.55, cy-0.05, 0.62, 0.28, 1.4);
+      swirl(cx-1.75, cy-0.05, 0.55, 0.26, 1.3);
+      // down the legs
+      swirl(cx-1.62, cy+2.15, 0.42, 0.22, 1.2);
+      swirl(cx+1.98, cy+2.15, 0.42, 0.22, 1.2);
+      // and on each cheek, so the pattern carries onto the head
+      swirl(cx-1.15, cy-1.55, 0.58, 0.26, 1.4);
+      swirl(cx+0.85, cy-1.55, 0.58, 0.26, 1.4);
       // narrow slanted eyes under heavy brows
       P(`M ${(cx-1.35)*s} ${(cy-2.35)*s} L ${(cx-0.25)*s} ${(cy-2.05)*s} L ${(cx-0.35)*s} ${(cy-1.7)*s} L ${(cx-1.4)*s} ${(cy-1.95)*s} Z`,"#f6e05a");
       P(`M ${(cx+1.0)*s} ${(cy-2.35)*s} L ${(cx-0.1)*s} ${(cy-2.05)*s} L ${cx*s} ${(cy-1.7)*s} L ${(cx+1.05)*s} ${(cy-1.95)*s} Z`,"#4fd06a");
@@ -1244,10 +1254,11 @@ function drawPet(els, art, color, cx, cy, s, nk) {
     } else if (n===5) {     // KOKUO — white horse, head carried low
       for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.5,0.6,"#e6e8ee",Math.PI*1.46,Math.PI*1.96); C(x1,y1,0.3,"#c9a469"); }
       // barrel
-      P(`M ${(cx-1.9)*s} ${(cy+0.9)*s} Q ${(cx-2.2)*s} ${(cy-0.9)*s} ${cx*s} ${(cy-1.1)*s} Q ${(cx+2.4)*s} ${(cy-1.2)*s} ${(cx+2.7)*s} ${(cy+0.5)*s} Q ${(cx+2.6)*s} ${(cy+1.5)*s} ${(cx-1.7)*s} ${(cy+1.5)*s} Z`,"#e6e8ee");
-      [[-1.35,1.1],[-0.3,1.2],[1.3,1.2],[2.1,1.1]].forEach(([dx,dy])=>{
-        R(cx+dx,cy+dy,0.62,1.9,"#e6e8ee",0.22);
-        R(cx+dx-0.03,cy+dy+1.8,0.68,0.55,"#c9a469",0.18);
+      P(`M ${(cx-2.1)*s} ${(cy+1.5)*s} Q ${(cx-2.3)*s} ${(cy-0.9)*s} ${cx*s} ${(cy-1.1)*s} Q ${(cx+2.3)*s} ${(cy-1.1)*s} ${(cx+2.6)*s} ${(cy+0.4)*s} Q ${(cx+2.65)*s} ${(cy+1.5)*s} ${(cx-2.1)*s} ${(cy+1.5)*s} Z`,"#e6e8ee");
+      // every leg starts inside the barrel's flat underside
+      [-1.5,-0.5,1.05,1.85].forEach(dx=>{
+        R(cx+dx,cy+1.0,0.64,2.0,"#e6e8ee",0.22);
+        R(cx+dx-0.04,cy+2.9,0.72,0.55,"#c9a469",0.18);
       });
       // neck leaving the shoulder and descending to the left
       P(`M ${(cx-1.5)*s} ${(cy-1.0)*s} L ${(cx-3.4)*s} ${(cy-1.5)*s} L ${(cx-3.7)*s} ${(cy-0.1)*s} L ${(cx-1.2)*s} ${(cy+0.3)*s} Z`,"#e6e8ee");
@@ -7036,8 +7047,13 @@ export default function App() {
                     backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",
                     border:equipped?`2px solid ${r.color}`:`1px solid ${r.color}44`,
                     borderRadius:18,padding:"13px 12px",cursor:"pointer",position:"relative",
-                    opacity:gated&&!owned?0.6:1,boxShadow:owned?`0 0 16px ${r.color}33`:"none"}}>
-                    <div style={{position:"absolute",top:8,right:9,fontSize:7.5,fontWeight:900,color:r.color,letterSpacing:.5}}>{r.label}</div>
+                    opacity:1,boxShadow:owned?`0 0 16px ${r.color}33`:"none"}}>
+                    <div style={{position:"absolute",top:8,left:10,fontSize:7.5,fontWeight:900,color:r.color,letterSpacing:.5}}>{r.label}</div>
+                    {gated && !owned && (
+                      <div style={{position:"absolute",top:6,right:7,width:20,height:20,borderRadius:"50%",
+                        background:"rgba(0,0,0,0.55)",border:`1px solid ${LINE}`,display:"flex",
+                        alignItems:"center",justifyContent:"center",fontSize:10}}>🔒</div>
+                    )}
                     <div style={{height:46,display:"flex",alignItems:"center",justifyContent:"center",marginTop:4,marginBottom:6}}>
                       <ShopPreview item={item}/>
                     </div>
@@ -7048,7 +7064,7 @@ export default function App() {
                           {equipped ? "✓ EQUIPPED" : "TAP TO EQUIP"}
                         </div>
                       ) : gated ? (
-                        <div style={{fontSize:10,fontWeight:800,color:"#ffc46b"}}>🔒 {item.gate.streak}-DAY STREAK</div>
+                        <div style={{fontSize:10,fontWeight:800,color:"#ffc46b"}}>{item.gate.streak}-DAY STREAK</div>
                       ) : (
                         <div style={{fontSize:11,fontWeight:900,color:GOOD}}>TAP TO SUMMON</div>
                       )}
