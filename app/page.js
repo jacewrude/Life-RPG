@@ -67,10 +67,10 @@ const THEMES = {
     accent:"#ff8f5e", glass:"28,8,12",
   },
   shinobi: {
-    name:"Hidden Village", swatch:"#c0392b",
-    sky:["#0b0f1c","#1b2440","#3d3357"], sun:"#ffd9a0", stars:true,
-    m1:"#2a2340", m2:"#171a2e", m3:"#0e101c",
-    accent:"#e0503a", glass:"18,16,30",
+    name:"Hidden Village", swatch:"#e2622a", village:true,
+    sky:["#2a1430","#8a3a1e","#e8863a"], sun:"#ffd27a", stars:false,
+    m1:"#5c2a1c", m2:"#3a1812", m3:"#1f0d0b",
+    accent:"#e2622a", glass:"34,16,14",
   },
   voxel: {
     name:"Blockland", swatch:"#5d9e3c", blocky:true,
@@ -242,15 +242,15 @@ const AURA_COLORS = METALS.map(m=>m.color); // legacy ref (free recolor disabled
 
 // ── PET DEFINITIONS (hand-drawn SVG creatures; streak tiers 3/7/14/30/60/90) ──
 const PETS = [
-  { id:"pet_cat",     name:"One-Tail · Sand Tanuki",  rarity:"common",    gems:55,  art:"tb1", color:"#d8bd84" },
-  { id:"pet_owl",     name:"Two-Tails · Flame Cat",   rarity:"common",    gems:75,  art:"tb2", color:"#3fa9e0" },
-  { id:"pet_dog",     name:"Three-Tails · Shell Turtle", rarity:"uncommon", gems:95, art:"tb3", color:"#7f9aa8" },
-  { id:"pet_fox",     name:"Four-Tails · Lava Ape",   rarity:"rare",      gems:130, art:"tb4", color:"#c23a22", gate:{streak:3}  },
-  { id:"pet_wolf",    name:"Five-Tails · Steam Horse",rarity:"rare",      gems:170, art:"tb5", color:"#e3e0d6", gate:{streak:7}  },
-  { id:"pet_stag",    name:"Six-Tails · Mist Slug",   rarity:"epic",      gems:230, art:"tb6", color:"#cfe3c0", gate:{streak:14} },
-  { id:"pet_dragon",  name:"Seven-Tails · Horned Beetle", rarity:"epic",  gems:300, art:"tb7", color:"#e08b2a", gate:{streak:30} },
-  { id:"pet_griffin", name:"Eight-Tails · Great Ox",  rarity:"legendary", gems:420, art:"tb8", color:"#8e86c4", gate:{streak:60} },
-  { id:"pet_phoenix", name:"Nine-Tails · Fox",        rarity:"legendary", gems:500, art:"tb9", color:"#f2622a", gate:{streak:90} },
+  { id:"pet_cat",     name:"Shukaku · One-Tail",  rarity:"common",    gems:55,  art:"tb1", color:"#d8bd84" },
+  { id:"pet_owl",     name:"Matatabi · Two-Tails",   rarity:"common",    gems:75,  art:"tb2", color:"#3fa9e0" },
+  { id:"pet_dog",     name:"Isobu · Three-Tails", rarity:"uncommon", gems:95, art:"tb3", color:"#7f9aa8" },
+  { id:"pet_fox",     name:"Son Goku · Four-Tails",   rarity:"rare",      gems:130, art:"tb4", color:"#c23a22", gate:{streak:3}  },
+  { id:"pet_wolf",    name:"Kokuo · Five-Tails",rarity:"rare",      gems:170, art:"tb5", color:"#e3e0d6", gate:{streak:7}  },
+  { id:"pet_stag",    name:"Saiken · Six-Tails",   rarity:"epic",      gems:230, art:"tb6", color:"#cfe3c0", gate:{streak:14} },
+  { id:"pet_dragon",  name:"Chomei · Seven-Tails", rarity:"epic",  gems:300, art:"tb7", color:"#e08b2a", gate:{streak:30} },
+  { id:"pet_griffin", name:"Gyuki · Eight-Tails",  rarity:"legendary", gems:420, art:"tb8", color:"#8e86c4", gate:{streak:60} },
+  { id:"pet_phoenix", name:"Kurama · Nine-Tails",        rarity:"legendary", gems:500, art:"tb9", color:"#f2622a", gate:{streak:90} },
 ];
 
 // ── SHOP CATALOG (auras [shape×metal], pets, capes [metal]) ───────────────────
@@ -290,7 +290,7 @@ const LEVELS = [
   { lvl:1, name:"Genin",               unlock:"Village headband & sandals" },
   { lvl:2, name:"Chunin",              unlock:"Green flak vest" },
   { lvl:3, name:"Jonin",               unlock:"Gloves, sash & tanto" },
-  { lvl:4, name:"ANBU",                unlock:"Porcelain mask & black ops gear" },
+  { lvl:4, name:"ANBU Black Ops",      unlock:"Porcelain mask & sleeveless armour" },
   { lvl:5, name:"Akatsuki",            unlock:"Long red-cloud cloak" },
   { lvl:6, name:"Kage",                unlock:"Kage haori & hat" },
   { lvl:7, name:"Sage of Six Paths",   unlock:"Golden robe & halo" },
@@ -1138,16 +1138,20 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       7:{ ear:"horn",   mark:"wing"  }, 8:{ ear:"ox",    mark:"none"  },
       9:{ ear:"fox",    mark:"fox"   },
     }[n] || {};
-    // tails fan out behind — the whole point is that you can count them
-    const spread = Math.min(2.5, 0.42*n);
+    // Tails sweep in a full arc around the beast, left side through the top to
+    // the right — the iconic fan, and still countable at thumbnail size.
+    const A0 = Math.PI * 1.02, A1 = Math.PI * 1.98;      // left → over the top → right
     for (let i=0;i<n;i++) {
-      const t = n===1 ? 0 : (i/(n-1))*2 - 1;             // -1 → 1
-      const ang = t * spread;
-      const bx = cx - 1.7, by = cy + 0.5;
+      const ang = (n===1) ? Math.PI*1.35 : A0 + (A1-A0)*(i/(n-1));
+      const ox = cx, oy = cy - 0.3;
+      const r0 = 1.5, r1 = 3.9, rm = 2.8;
+      const x0 = ox + Math.cos(ang)*r0, y0 = oy + Math.sin(ang)*r0;
+      const x1 = ox + Math.cos(ang)*r1, y1 = oy + Math.sin(ang)*r1;
+      const xm = ox + Math.cos(ang+0.17)*rm, ym = oy + Math.sin(ang+0.17)*rm;
       els.push(<path key={nk()}
-        d={`M ${bx*s} ${by*s} Q ${(bx-1.5-Math.abs(ang)*0.3)*s} ${(by-0.4-ang*1.1)*s} ${(bx-2.7)*s} ${(by-1.5-ang*1.9)*s}`}
-        stroke={n===9?light:color} strokeWidth={(n>6?0.34:0.52)*s} fill="none" strokeLinecap="round" opacity="0.95"/>);
-      if (n<=5) els.push(<circle key={nk()} cx={(bx-2.7)*s} cy={(by-1.5-ang*1.9)*s} r={0.34*s} fill={light}/>);
+        d={`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s}`}
+        stroke={color} strokeWidth={(n>6?0.4:0.58)*s} fill="none" strokeLinecap="round" opacity="0.95"/>);
+      els.push(<circle key={nk()} cx={x1*s} cy={y1*s} r={(n>6?0.26:0.34)*s} fill={light}/>);
     }
     R(cx-1.9,cy-1.2,3.9,3.4,color,1.4);                   // body
     R(cx-1.9,cy+0.9,3.9,1.3,dark,1.0);
@@ -1387,12 +1391,16 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   }
   // ── ANBU BLACK OPS — grey plate vest, bandaged arms, shoulder guard ───────
   if (anbu) {
-    R(8.4,10.6,7.2,4.8,"#3c4149",0.6);
-    R(8.4,10.6,7.2,0.9,"#555c66",0.4);
-    R(7.7,10.7,1.7,2.8,"#23272e",0.5);        // shoulder guard
-    R(14.6,10.7,1.7,2.8,"#23272e",0.5);
-    R(11.3,11.2,1.4,4.0,"#272b32",0.3);
-    R(8.6,15.0,6.8,0.7,"#1a1d22",0.3);
+    R(9.0,10.4,6.0,5.0,"#9aa0a8",0.5);          // grey chest plate, narrow: arms stay bare
+    R(9.0,10.4,6.0,0.8,"#b4bac2",0.3);
+    R(9.3,9.6,1.3,1.4,"#9aa0a8",0.4);           // shoulder straps over bare shoulders
+    R(13.4,9.6,1.3,1.4,"#9aa0a8",0.4);
+    R(11.6,11.0,0.8,4.2,"#7d838b",0.25);        // centre seam
+    R(9.5,13.0,1.6,1.1,"#868d95",0.3);          // chest pouches
+    R(12.9,13.0,1.6,1.1,"#868d95",0.3);
+    R(8.9,15.0,6.2,0.8,"#2b3038",0.3);          // dark underlayer at the waist
+    R(7.7,11.6,1.1,2.6,"#6f757d",0.4);          // arm guards on bare arms
+    R(15.2,11.6,1.1,2.6,"#6f757d",0.4);
   }
   // ── AKATSUKI CLOAK — full length, past the knees ──────────────────────────
   if (cloak) {
@@ -1434,7 +1442,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     els.push(<circle key={k++} cx={17.55*s} cy={4.4*s} r={1.2*s} fill="none" stroke="#e8c04a" strokeWidth={0.45*s}/>);
   }
   const armColor = sage ? "#f7e7b8" : robe ? "#f4f1e8" : cloak ? "#15131b"
-                 : anbu ? "#2b3038" : vest ? "#24402f" : (level>=1 ? shirt : skin);
+                 : anbu ? skin : vest ? "#24402f" : (level>=1 ? shirt : skin);
   R(7.6,11.2,1.3,4.0,armColor,0.6);
   R(15.1,11.2,1.3,4.0,armColor,0.6);
   if (has("gloves",3)) {
@@ -1442,7 +1450,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(15.0,14.4,1.5,1.5,"#20252e",0.5);
     R(7.6,14.6,1.3,0.4,"#39404e",0.2);
     R(15.1,14.6,1.3,0.4,"#39404e",0.2);
-    R(8.4,15.6,7.2,0.8,"#2b4a7a",0.3);        // waist sash
+    if (level === 3) R(8.4,15.6,7.2,0.8,"#2b4a7a",0.3);   // the sash belongs to Jonin alone
   } else {
     R(7.6,14.9,1.3,1.2,skin,0.6);
     R(15.1,14.9,1.3,1.2,skin,0.6);
@@ -1485,20 +1493,27 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
   R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
 
-  // ── ANBU PORCELAIN MASK — covers the entire face ──────────────────────────
+  // ── ANBU PORCELAIN MASK — animal face, hair left showing above it ─────────
   if (anbu) {
-    R(8.0,3.4,8.0,7.0,"#efe9dc",1.8);
-    R(8.0,3.4,8.0,0.9,"#fdfaf2",1.0);
-    R(8.0,9.0,8.0,1.4,"#ddd5c4",1.0);
-    R(9.5,6.0,2.0,1.1,"#8e2b22",0.4);           // slitted eye holes
-    R(12.5,6.0,2.0,1.1,"#8e2b22",0.4);
-    R(11.4,7.4,1.2,2.0,"#c6392a",0.3);          // nose stripe
-    R(9.2,4.4,1.6,1.0,"#c6392a",0.3);           // animal markings
-    R(13.2,4.4,1.6,1.0,"#c6392a",0.3);
-    R(10.2,9.6,3.6,0.5,"#b8ae9b",0.2);
+    R(8.4,4.3,7.2,5.9,"#f3ede1",1.9);                 // face plate
+    R(8.4,4.3,7.2,0.7,"#fffdf6",1.1);                 // sheen
+    R(8.4,9.3,7.2,0.9,"#ded5c4",1.0);                 // jaw shadow
+    R(11.1,7.3,1.8,1.5,"#e7dfd0",0.7);                // muzzle
+    R(11.5,7.6,1.0,0.5,"#2b2520",0.25);               // nose
+    R(10.9,9.0,2.2,0.3,"#bdb3a1",0.15);               // mouth line
+    els.push(<circle key={k++} cx={10.35*s} cy={6.5*s} r={0.66*s} fill="#1a1620"/>);
+    els.push(<circle key={k++} cx={13.65*s} cy={6.5*s} r={0.66*s} fill="#1a1620"/>);
+    els.push(<circle key={k++} cx={10.2*s}  cy={6.3*s} r={0.2*s}  fill="#ffffff"/>);
+    els.push(<circle key={k++} cx={13.5*s}  cy={6.3*s} r={0.2*s}  fill="#ffffff"/>);
+    R(9.0,5.2,2.6,0.5,"#c0392b",0.22);                // red sweeps over the brows
+    R(8.7,5.6,0.9,0.5,"#c0392b",0.22);
+    R(12.4,5.2,2.6,0.5,"#c0392b",0.22);
+    R(14.4,5.6,0.9,0.5,"#c0392b",0.22);
+    R(9.1,8.0,1.5,0.45,"#c0392b",0.2);                // cheek marks
+    R(13.4,8.0,1.5,0.45,"#c0392b",0.2);
   }
   // ── VILLAGE HEADBAND ───────────────────────────────────────────────────────
-  if (has("headband",1) && !robe && !sage && !anbu) {
+  if (has("headband",1) && !robe && !sage) {
     R(7.9,4.6,8.2,1.7,"#15181f",0.4);
     R(10.2,4.7,3.6,1.5,"#9aa6b4",0.35);
     R(10.2,4.7,3.6,0.4,"#c3ccd8",0.2);
@@ -1523,10 +1538,12 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(7.9,4.6,8.2,1.3,"#e0b23a",0.4);
   }
   // ── TOOL POUCH + TANTO (Jonin onward) ─────────────────────────────────────
-  if (has("gloves",3) && !sage) {
-    R(5.6,13.2,2.4,3.0,"#2a211a",0.6);
+  if (level >= 3 && !cloak && !robe && !sage) {
+    R(5.6,13.2,2.4,3.0,"#2a211a",0.6);          // thigh pouch
     R(5.6,13.2,2.4,0.7,"#3d3026",0.3);
     R(6.3,14.3,1.0,1.0,"#8a949f",0.3);
+  }
+  if (level === 3) {                             // the tanto is the Jonin's alone
     const wc = weaponC ? weaponC.color : null;
     R(16.2,6.6,0.9,7.6, wc||"#dfe6ef",0.3);
     R(17.1,6.6,0.5,7.6, wc?shade(wc,30):"#aab6c4",0.3);
@@ -1961,8 +1978,62 @@ function BlockScene({ H }) {
   );
 }
 
+// ── HIDDEN VILLAGE — sunset over the rooftops, the faces watching from the cliff
+function VillageScene({ H }) {
+  const W = 430;
+  const roof = (x, y, w, h, fill) => (
+    <g key={`r${x}-${y}`}>
+      <path d={`M ${x} ${y+h} L ${x+w*0.5} ${y} L ${x+w} ${y+h} Z`} fill={fill}/>
+      <rect x={x+w*0.12} y={y+h} width={w*0.76} height={h*1.5} fill={fill}/>
+      <rect x={x} y={y+h-1.5} width={w} height="2.5" fill={fill} opacity="0.75"/>
+    </g>
+  );
+  // four heads carved into the cliff, in profile, looking out over the valley
+  const head = (x, y, w, h) => (
+    <g key={`h${x}`}>
+      <path d={`M ${x} ${y+h} L ${x} ${y+h*0.34} Q ${x+w*0.06} ${y+h*0.06} ${x+w*0.38} ${y+h*0.04}
+                Q ${x+w*0.78} ${y+h*0.04} ${x+w*0.84} ${y+h*0.3}
+                L ${x+w*0.95} ${y+h*0.52} L ${x+w*0.8} ${y+h*0.58}
+                L ${x+w*0.84} ${y+h*0.76} L ${x+w} ${y+h} Z`} fill="#3f1d14"/>
+      <rect x={x+w*0.52} y={y+h*0.34} width={w*0.3} height={h*0.08} fill="#2b130d"/>
+      <rect x={x+w*0.1} y={y+h*0.16} width={w*0.6} height={h*0.12} fill="#4d2419"/>
+    </g>
+  );
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice"
+      style={{display:"block",position:"absolute",bottom:0,left:0,right:0,pointerEvents:"none"}}>
+      <defs>
+        <linearGradient id="vgSky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#2a1430"/><stop offset="0.42" stopColor="#8a3a1e"/>
+          <stop offset="0.74" stopColor="#e2742c"/><stop offset="1" stopColor="#f6b45c"/>
+        </linearGradient>
+      </defs>
+      <rect width={W} height={H} fill="url(#vgSky)"/>
+      <circle cx={W*0.5} cy={H*0.63} r={H*0.30} fill="#ffd27a" opacity="0.95"/>
+      <circle cx={W*0.5} cy={H*0.63} r={H*0.40} fill="#ffcf74" opacity="0.18"/>
+      {[0.16,0.3,0.46].map((f,i)=>(
+        <rect key={i} x="0" y={H*f} width={W} height={H*0.022} fill="#f0a05a" opacity={0.16+i*0.05} rx="3"/>
+      ))}
+      {/* the cliff, and the faces */}
+      <path d={`M 0 ${H*0.60} L 46 ${H*0.44} L 150 ${H*0.40} L 268 ${H*0.43} L 360 ${H*0.38} L ${W} ${H*0.52} L ${W} ${H} L 0 ${H} Z`}
+        fill="#4a2217" opacity="0.92"/>
+      {[0,1,2,3].map(i=> head(78 + i*62, H*0.44, 52, H*0.26))}
+      {/* valley haze */}
+      <rect x="0" y={H*0.66} width={W} height={H*0.1} fill="#f0a05a" opacity="0.14"/>
+      {/* rooftops, far then near */}
+      <g opacity="0.8">{[[-10,0.70,96],[86,0.72,78],[176,0.69,104],[286,0.72,86],[376,0.70,96]]
+        .map(([x,f,w])=> roof(x, H*f, w, H*0.085, "#35150f"))}</g>
+      <g>{[[-26,0.80,128],[92,0.83,112],[200,0.80,136],[320,0.83,118]]
+        .map(([x,f,w])=> roof(x, H*f, w, H*0.11, "#24100b"))}</g>
+      <g>{[[-40,0.93,170],[128,0.96,156],[282,0.93,186]]
+        .map(([x,f,w])=> roof(x, H*f, w, H*0.13, "#160907"))}</g>
+    </svg>
+  );
+}
+
 function Scene({ T, height=150 }) {
   if (T.blocky) return <BlockScene H={height}/>;
+  if (T.village) return <VillageScene H={height}/>;
   // deterministic star field
   const stars = T.stars ? Array.from({length:26},(_,i)=>{
     const x = ((i*73) % 430); const y = ((i*37) % Math.max(40, height-70));
