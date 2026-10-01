@@ -1184,9 +1184,20 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       P(TRI(cx+1.3,cy-2.7,cx+1.8,cy-4.7,cx+0.2,cy-3.1),"#2f7fd8");
       P(TRI(cx-1.55,cy-3.0,cx-1.9,cy-4.2,cx-0.9,cy-3.2),"#10203c");
       P(TRI(cx+1.15,cy-3.0,cx+1.5,cy-4.2,cx+0.5,cy-3.2),"#10203c");
-      // dark markings swept along the flank instead of loose spikes
-      L(Q(cx-1.5,cy+0.5,cx-0.6,cy-0.1,cx+0.3,cy+0.4),"#10203c",0.26,0.9);
-      L(Q(cx+0.3,cy+1.1,cx+1.1,cy+0.5,cx+1.8,cy+0.9),"#10203c",0.22,0.9);
+      // the pattern: broad dark flame shapes, not thin lines
+      P(`M ${(cx-2.35)*s} ${(cy+2.4)*s} Q ${(cx-2.1)*s} ${(cy+0.4)*s} ${(cx-0.9)*s} ${(cy-0.5)*s}
+         Q ${(cx-0.1)*s} ${(cy+0.6)*s} ${(cx-0.6)*s} ${(cy+1.5)*s}
+         Q ${(cx-0.2)*s} ${(cy+1.1)*s} ${cx*s} ${(cy+2.4)*s} Z`,"#10203c");
+      P(`M ${(cx+2.4)*s} ${(cy+2.4)*s} Q ${(cx+2.2)*s} ${(cy+0.3)*s} ${(cx+1.1)*s} ${(cy-0.5)*s}
+         Q ${(cx+0.9)*s} ${(cy+0.8)*s} ${(cx+1.5)*s} ${(cy+1.4)*s}
+         Q ${(cx+1.0)*s} ${(cy+1.3)*s} ${(cx+1.1)*s} ${(cy+2.4)*s} Z`,"#10203c");
+      P(`M ${(cx-1.3)*s} ${(cy-0.1)*s} Q ${(cx-0.2)*s} ${(cy-1.1)*s} ${(cx+1.0)*s} ${(cy-0.2)*s}
+         Q ${(cx-0.1)*s} ${(cy-0.45)*s} ${(cx-1.3)*s} ${(cy-0.1)*s} Z`,"#10203c");
+      // and across the head, so he reads as half pattern
+      P(`M ${(cx-1.65)*s} ${(cy-1.0)*s} Q ${(cx-1.4)*s} ${(cy-2.1)*s} ${(cx-0.6)*s} ${(cy-2.6)*s}
+         Q ${(cx-1.0)*s} ${(cy-1.7)*s} ${(cx-0.75)*s} ${(cy-0.95)*s} Z`,"#10203c");
+      P(`M ${(cx+1.25)*s} ${(cy-1.0)*s} Q ${(cx+1.05)*s} ${(cy-2.1)*s} ${(cx+0.3)*s} ${(cy-2.6)*s}
+         Q ${(cx+0.65)*s} ${(cy-1.7)*s} ${(cx+0.4)*s} ${(cy-0.95)*s} Z`,"#10203c");
       // narrow slanted eyes under heavy brows
       P(`M ${(cx-1.35)*s} ${(cy-2.35)*s} L ${(cx-0.25)*s} ${(cy-2.05)*s} L ${(cx-0.35)*s} ${(cy-1.7)*s} L ${(cx-1.4)*s} ${(cy-1.95)*s} Z`,"#f6e05a");
       P(`M ${(cx+1.0)*s} ${(cy-2.35)*s} L ${(cx-0.1)*s} ${(cy-2.05)*s} L ${cx*s} ${(cy-1.7)*s} L ${(cx+1.05)*s} ${(cy-1.95)*s} Z`,"#4fd06a");
@@ -1209,16 +1220,15 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       [-0.9,0,0.9].forEach(dx=> P(TRI(cx+dx-0.3,cy+0.5,cx+dx,cy-0.4,cx+dx+0.3,cy+0.5),"#cfd9e0"));
       E(cx,cy+1.3,0.62,"#e04a3a","#2a0d0a");
     } else if (n===4) {     // SON GOKU — red ape, pale green face and belly, horns
-      // four thick tails circling him, each banded near the tip
-      for (let i=0;i<4;i++) {
-        const ang = Math.PI*(1.10 + 0.27*i);
-        const x0=cx+Math.cos(ang)*1.7, y0=cy+0.4+Math.sin(ang)*1.7;
-        const x1=cx+Math.cos(ang)*5.0, y1=cy+0.4+Math.sin(ang)*5.0;
-        const xm=cx+Math.cos(ang+0.22)*3.5, ym=cy+0.4+Math.sin(ang+0.22)*3.5;
+      // two tails to each side, kept wide of the horns so all four stay readable
+      [Math.PI*1.00, Math.PI*1.24, Math.PI*1.76, Math.PI*2.00].forEach(ang=>{
+        const x0=cx+Math.cos(ang)*1.9, y0=cy+0.6+Math.sin(ang)*1.9;
+        const x1=cx+Math.cos(ang)*5.6, y1=cy+0.6+Math.sin(ang)*5.6;
+        const xm=cx+Math.cos(ang+0.20)*3.9, ym=cy+0.6+Math.sin(ang+0.20)*3.9;
         L(Q(x0,y0,xm,ym,x1,y1),"#b8311f",0.95);
-        const bx=cx+Math.cos(ang)*4.2, by=cy+0.4+Math.sin(ang)*4.2;
-        C(bx,by,0.42,"#d8c08a"); C(x1,y1,0.3,"#8e2416");
-      }
+        const bx=cx+Math.cos(ang)*4.7, by=cy+0.6+Math.sin(ang)*4.7;
+        C(bx,by,0.44,"#d8c08a"); C(x1,y1,0.3,"#8e2416");
+      });
       R(cx-2.1,cy-1.1,4.2,3.4,"#b8311f",1.3);
       R(cx-1.2,cy-0.7,2.4,2.9,"#bcd9ac",1.0);                        // pale green belly
       R(cx-2.7,cy-0.6,0.9,2.4,"#b8311f",0.5); R(cx+1.8,cy-0.6,0.9,2.4,"#b8311f",0.5);
@@ -1242,11 +1252,11 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       // neck leaving the shoulder and descending to the left
       P(`M ${(cx-1.5)*s} ${(cy-1.0)*s} L ${(cx-3.4)*s} ${(cy-1.5)*s} L ${(cx-3.7)*s} ${(cy-0.1)*s} L ${(cx-1.2)*s} ${(cy+0.3)*s} Z`,"#e6e8ee");
       // head, carried low
-      P(`M ${(cx-3.25)*s} ${(cy-1.65)*s} L ${(cx-4.7)*s} ${(cy-1.35)*s} L ${(cx-5.0)*s} ${(cy+0.25)*s} L ${(cx-3.5)*s} ${(cy+0.05)*s} Z`,"#eef0f4");
-      // muzzle angled down toward the ground
-      P(`M ${(cx-4.95)*s} ${(cy-0.15)*s} L ${(cx-3.75)*s} ${(cy-0.05)*s} L ${(cx-4.15)*s} ${(cy+1.5)*s} L ${(cx-5.25)*s} ${(cy+1.3)*s} Z`,"#eef0f4");
-      P(`M ${(cx-5.2)*s} ${(cy+1.2)*s} L ${(cx-4.2)*s} ${(cy+1.4)*s} L ${(cx-4.4)*s} ${(cy+2.1)*s} L ${(cx-5.3)*s} ${(cy+1.9)*s} Z`,"#e2e5ec");
-      C(cx-4.95,cy+1.75,0.19,"#9aa3b0");                              // nostril
+      P(`M ${(cx-3.25)*s} ${(cy-1.65)*s} L ${(cx-4.5)*s} ${(cy-1.4)*s} L ${(cx-4.75)*s} ${(cy+0.05)*s} L ${(cx-3.5)*s} ${(cy-0.05)*s} Z`,"#eef0f4");
+      // a shorter muzzle, still angled down
+      P(`M ${(cx-4.7)*s} ${(cy-0.3)*s} L ${(cx-3.7)*s} ${(cy-0.2)*s} L ${(cx-3.95)*s} ${(cy+0.95)*s} L ${(cx-4.9)*s} ${(cy+0.8)*s} Z`,"#eef0f4");
+      P(`M ${(cx-4.88)*s} ${(cy+0.7)*s} L ${(cx-3.98)*s} ${(cy+0.85)*s} L ${(cx-4.12)*s} ${(cy+1.35)*s} L ${(cx-4.98)*s} ${(cy+1.2)*s} Z`,"#e2e5ec");
+      C(cx-4.62,cy+1.08,0.18,"#9aa3b0");                              // nostril
       L(Q(cx-3.3,cy-1.6,cx-2.2,cy-1.45,cx-1.3,cy-1.05),"#cfd3dd",0.5,0.95);  // mane along the crest
       L(Q(cx-4.1,cy-1.5,cx-4.0,cy-3.0,cx-3.1,cy-3.6),"#c9a469",0.3);  // horns sweeping up and back
       L(Q(cx-3.4,cy-1.6,cx-2.8,cy-2.9,cx-1.9,cy-3.2),"#c9a469",0.3);
@@ -1313,8 +1323,8 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       [-1.95,-0.8,0.6,1.6].forEach(dx=> R(cx+dx,cy+1.5,0.72,1.7,"#e05c18",0.22));
       // a long lean head: a single tapering wedge, no blocky muzzle
       P(`M ${(cx+0.9)*s} ${(cy-2.7)*s} L ${(cx+1.25)*s} ${(cy-1.0)*s} L ${(cx-0.9)*s} ${(cy-0.45)*s} L ${(cx-4.4)*s} ${(cy-1.15)*s} L ${(cx-4.25)*s} ${(cy-1.85)*s} L ${(cx-1.1)*s} ${(cy-2.45)*s} Z`,"#ef6a22");
-      // pale underjaw, slim
-      P(`M ${(cx-4.35)*s} ${(cy-1.12)*s} L ${(cx-1.0)*s} ${(cy-0.5)*s} L ${(cx-1.05)*s} ${(cy-0.2)*s} L ${(cx-4.2)*s} ${(cy-0.82)*s} Z`,"#f7e0c8");
+      // a single dark line for the closed mouth — no teeth
+      L(Q(cx-4.1,cy-1.08,cx-2.6,cy-0.72,cx-1.15,cy-0.48),"#b84a16",0.17,0.85);
       C(cx-4.4,cy-1.5,0.24,"#2b1008");                                   // nose
       // ears, tall and swept back
       P(TRI(cx-0.6,cy-2.5,cx-1.1,cy-4.9,cx+0.4,cy-2.8),"#ef6a22");
