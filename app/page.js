@@ -152,14 +152,14 @@ const BAD = "#ff7b7b";
 
 const DEFAULT_SETTINGS = {
   kanbanEnabled: true,
-  pomodoroEnabled: true,
+  pomodoroEnabled: false,
   showXP: true,
   statStyle: "radar", // "radar" | "bars" | "none"
   theme: "ember",
   cardStyle: "vivid", // "vivid" | "tinted"
   questLayout: "list", // "list" | "circles"
   questWeekView: "last7", // "last7" | "week" (Mon→Sun)
-  casinoEnabled: true,
+  casinoEnabled: false,
   shopEnabled: true,
   questsEnabled: true,
   statsEnabled: true,
@@ -486,8 +486,8 @@ function getTier(r) {
   return               { label:"NOVICE",   color:"#9ca3af" };
 }
 function getLevel(rating) {
-  const lvl = Math.min(LEVELS.length-1, Math.floor(rating / 8.4));
-  return { ...LEVELS[lvl], lvl, ratingForNext:(lvl+1)*8.4, ratingFloor:lvl*8.4 };
+  const lvl = Math.min(LEVELS.length-1, Math.floor(rating / 4.2));
+  return { ...LEVELS[lvl], lvl, ratingForNext:(lvl+1)*4.2, ratingFloor:lvl*4.2 };
 }
 function getTitle(data, lvl) {
   return (data.customTitles && data.customTitles[lvl]) || LEVELS[lvl].name;
@@ -1128,126 +1128,155 @@ function drawPet(els, art, color, cx, cy, s, nk) {
   const eyeW = "#ffffff", eyeB = "#16131f";
   // shadow
   els.push(<ellipse key={nk()} cx={cx*s} cy={(cy+2.6)*s} rx={2.4*s} ry={0.6*s} fill="#000" opacity="0.25"/>);
-  // ── THE TAILED BEASTS ─────────────────────────────────────────────────────
-  // Each one is drawn individually — shared templates made them all look alike.
+  // ── THE TAILED BEASTS — each built to its own silhouette ──────────────────
   if (art && art[0]==="t" && art[1]==="b") {
     const n = parseInt(art.slice(2)) || 1;
     const P = (d,f,o) => els.push(<path key={nk()} d={d} fill={f} opacity={o===undefined?1:o}/>);
-    const S = (d,st,w,o) => els.push(<path key={nk()} d={d} stroke={st} strokeWidth={w*s} fill="none"
+    const L = (d,st,w,o) => els.push(<path key={nk()} d={d} stroke={st} strokeWidth={w*s} fill="none"
                  strokeLinecap="round" opacity={o===undefined?1:o}/>);
-    const eye = (x,y,r,ic,pc) => { C(x,y,r,ic); C(x,y,r*0.42,pc||"#1a1208"); };
-    // tails sweep from the left, over the top, to the right
-    const tails = (count, len, wid, col, tipCol, tip) => {
-      for (let i=0;i<count;i++) {
-        const a0 = Math.PI*1.03, a1 = Math.PI*1.97;
-        const ang = count===1 ? Math.PI*1.32 : a0 + (a1-a0)*(i/(count-1));
-        const x0 = cx + Math.cos(ang)*1.5,       y0 = cy-0.3 + Math.sin(ang)*1.5;
-        const x1 = cx + Math.cos(ang)*len,       y1 = cy-0.3 + Math.sin(ang)*len;
-        const xm = cx + Math.cos(ang+0.2)*(len*0.72), ym = cy-0.3 + Math.sin(ang+0.2)*(len*0.72);
-        S(`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s}`, col, wid);
-        if (tip) C(x1,y1,tip,tipCol);
-      }
+    const E = (x,y,r,ic,pc) => { C(x,y,r,ic); C(x,y,r*0.4,pc||"#140e06"); };
+    const Q = (x0,y0,xm,ym,x1,y1) => `M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s}`;
+    const TRI = (ax,ay,bx,by,cx2,cy2) => `M ${ax*s} ${ay*s} L ${bx*s} ${by*s} L ${cx2*s} ${cy2*s} Z`;
+    // a tapering tail laid along an arc
+    const arc = (i,count,len,wid,col,a0,a1) => {
+      const ang = count===1 ? Math.PI*1.3 : a0 + (a1-a0)*(i/(count-1));
+      const x0 = cx + Math.cos(ang)*1.3, y0 = cy-0.4 + Math.sin(ang)*1.3;
+      const x1 = cx + Math.cos(ang)*len, y1 = cy-0.4 + Math.sin(ang)*len;
+      const xm = cx + Math.cos(ang+0.26)*(len*0.7), ym = cy-0.4 + Math.sin(ang+0.26)*(len*0.7);
+      L(Q(x0,y0,xm,ym,x1,y1), col, wid);
+      return [x1,y1,ang];
     };
+    const A0 = Math.PI*1.04, A1 = Math.PI*1.96;
 
-    if (n===1) {            // SHUKAKU — sand tanuki, dark curling tattoos
-      tails(1, 4.2, 0.72, "#d9c89a", "#cbb682", 0.42);
-      R(cx-2.0,cy-1.1,4.0,3.3,"#d9c89a",1.3);
-      R(cx-1.6,cy-3.0,3.2,2.2,"#d9c89a",1.0);
-      P(`M ${(cx-1.5)*s} ${(cy-2.7)*s} L ${(cx-1.9)*s} ${(cy-4.2)*s} L ${(cx-0.5)*s} ${(cy-3.1)*s} Z`,"#d9c89a");
-      P(`M ${(cx+1.5)*s} ${(cy-2.7)*s} L ${(cx+1.9)*s} ${(cy-4.2)*s} L ${(cx+0.5)*s} ${(cy-3.1)*s} Z`,"#d9c89a");
-      S(`M ${(cx-1.4)*s} ${(cy-0.4)*s} Q ${cx*s} ${(cy+0.4)*s} ${(cx+1.4)*s} ${(cy-0.4)*s}`,"#2f3a52",0.26);
-      S(`M ${(cx-1.3)*s} ${(cy+0.7)*s} Q ${cx*s} ${(cy+1.4)*s} ${(cx+1.3)*s} ${(cy+0.7)*s}`,"#2f3a52",0.26);
-      R(cx-1.4,cy-2.6,0.9,0.4,"#2f3a52",0.1); R(cx+0.5,cy-2.6,0.9,0.4,"#2f3a52",0.1);
-      eye(cx-0.72,cy-1.95,0.5,"#f2d23a","#1b1508"); eye(cx+0.72,cy-1.95,0.5,"#f2d23a","#1b1508");
-      R(cx-0.3,cy-1.2,0.6,0.3,"#5a4a2a",0.1);
-    } else if (n===2) {     // MATATABI — two-tailed cat wreathed in blue fire
-      tails(2, 4.2, 0.66, "#2f6fd0", "#8fd4ff", 0.4);
-      R(cx-1.9,cy-1.1,3.8,3.2,"#1f2a44",1.3);
-      R(cx-1.6,cy-3.0,3.2,2.2,"#1f2a44",1.0);
-      P(`M ${(cx-1.6)*s} ${(cy-2.6)*s} L ${(cx-1.7)*s} ${(cy-4.3)*s} L ${(cx-0.3)*s} ${(cy-3.0)*s} Z`,"#1f2a44");
-      P(`M ${(cx+1.6)*s} ${(cy-2.6)*s} L ${(cx+1.7)*s} ${(cy-4.3)*s} L ${(cx+0.3)*s} ${(cy-3.0)*s} Z`,"#1f2a44");
-      S(`M ${(cx-1.7)*s} ${(cy-0.8)*s} Q ${(cx-0.6)*s} ${(cy-2.0)*s} ${cx*s} ${(cy-0.3)*s}`,"#3f8fe0",0.3,0.9);
-      S(`M ${(cx+1.7)*s} ${(cy-0.8)*s} Q ${(cx+0.6)*s} ${(cy-2.0)*s} ${cx*s} ${(cy+0.4)*s}`,"#3f8fe0",0.3,0.9);
-      eye(cx-0.72,cy-2.0,0.5,"#f6e05a","#141019"); eye(cx+0.72,cy-2.0,0.5,"#6fe06a","#141019");
-      R(cx-0.3,cy-1.25,0.6,0.28,"#8fd4ff",0.1);
-    } else if (n===3) {     // ISOBU — three-tailed turtle, spiked shell, one great eye
-      tails(3, 3.9, 0.6, "#6f8b9c", "#9db4c2", 0.36);
-      R(cx-2.1,cy-0.9,4.2,3.2,"#8fa4b0",1.4);
-      R(cx-1.9,cy-1.5,3.8,2.6,"#5e7786",1.5);
-      [-1.3,0,1.3].forEach(dx=> P(`M ${(cx+dx-0.45)*s} ${(cy-1.3)*s} L ${(cx+dx)*s} ${(cy-2.6)*s} L ${(cx+dx+0.45)*s} ${(cy-1.3)*s} Z`,"#cfdbe2"));
-      R(cx-1.2,cy-0.1,2.4,1.5,"#a9bcc6",0.8);
-      eye(cx,cy+0.6,0.72,"#e04a3a","#2a0d0a");
-      R(cx-2.5,cy+1.4,1.1,0.7,"#8fa4b0",0.3); R(cx+1.4,cy+1.4,1.1,0.7,"#8fa4b0",0.3);
-    } else if (n===4) {     // SON GOKU — four-tailed ape, red fur, horns
-      tails(4, 3.9, 0.62, "#a52f1e", "#7d2315", 0.34);
-      R(cx-2.0,cy-1.0,4.0,3.2,"#c0392b",1.3);
-      R(cx-1.5,cy-3.1,3.0,2.4,"#c0392b",1.0);
-      R(cx-1.1,cy-2.1,2.2,1.5,"#f0d8b0",0.8);
-      P(`M ${(cx-1.4)*s} ${(cy-3.0)*s} L ${(cx-1.9)*s} ${(cy-4.4)*s} L ${(cx-0.6)*s} ${(cy-3.5)*s} Z`,"#efe3c8");
-      P(`M ${(cx+1.4)*s} ${(cy-3.0)*s} L ${(cx+1.9)*s} ${(cy-4.4)*s} L ${(cx+0.6)*s} ${(cy-3.5)*s} Z`,"#efe3c8");
-      R(cx-1.5,cy-0.6,3.0,0.45,"#2f6b3a",0.15); R(cx-1.1,cy+0.5,2.2,0.4,"#2f6b3a",0.15);
-      eye(cx-0.66,cy-2.2,0.44,"#f6e05a","#1b1508"); eye(cx+0.66,cy-2.2,0.44,"#f6e05a","#1b1508");
-      R(cx-0.5,cy-1.3,1.0,0.35,"#7d2315",0.15);
-    } else if (n===5) {     // KOKUO — five-tailed dolphin-horse, horn, hooves
-      tails(5, 3.8, 0.56, "#d8d2c2", "#efeadd", 0.3);
-      R(cx-2.0,cy-1.0,4.0,3.1,"#e8e2d4",1.3);
-      R(cx-1.4,cy-3.2,2.8,2.6,"#e8e2d4",1.1);
-      P(`M ${cx*s} ${(cy-4.8)*s} L ${(cx+0.42)*s} ${(cy-3.2)*s} L ${(cx-0.42)*s} ${(cy-3.2)*s} Z`,"#f6f2e8");
-      R(cx-1.6,cy-3.5,3.2,0.6,"#c25a3a",0.3);
-      R(cx-1.7,cy-0.3,3.4,0.5,"#c25a3a",0.2);
-      eye(cx-0.62,cy-2.3,0.4,"#2f3340","#0a0a0d"); eye(cx+0.62,cy-2.3,0.4,"#2f3340","#0a0a0d");
-      R(cx-0.4,cy-1.4,0.8,0.4,"#b9b2a0",0.2);
-      R(cx-1.8,cy+1.6,0.9,0.6,"#b9b2a0",0.2);
-    } else if (n===6) {     // SAIKEN — six-tailed slug, soft and pale
-      tails(6, 3.7, 0.5, "#b9cfae", "#dfe9d6", 0.28);
-      R(cx-2.0,cy-1.2,4.0,3.4,"#dfe9d6",1.7);
-      R(cx-1.5,cy-2.9,3.0,2.2,"#dfe9d6",1.3);
-      R(cx-1.2,cy-4.2,0.42,1.5,"#dfe9d6",0.2); R(cx+0.8,cy-4.2,0.42,1.5,"#dfe9d6",0.2);
-      C(cx-1.0,cy-4.3,0.38,"#8fb57f"); C(cx+1.0,cy-4.3,0.38,"#8fb57f");
-      eye(cx-0.66,cy-2.0,0.42,"#ffffff","#1a2416"); eye(cx+0.66,cy-2.0,0.42,"#ffffff","#1a2416");
-      R(cx-0.55,cy-1.15,1.1,0.4,"#9fbd92",0.2);
-      R(cx-1.6,cy+0.6,3.2,0.5,"#c3d6b6",0.2);
-    } else if (n===7) {     // CHOMEI — seven-tailed beetle, hard shell, horn
-      tails(7, 3.7, 0.44, "#3f7a4a", "#8fd46a", 0.26);
-      R(cx-2.0,cy-1.1,4.0,3.3,"#e3a33a",1.2);
-      R(cx-1.9,cy-1.0,3.8,1.6,"#2f6b3a",0.9);
-      R(cx-1.4,cy-3.0,2.8,2.2,"#e3a33a",1.0);
-      P(`M ${cx*s} ${(cy-4.9)*s} L ${(cx+0.4)*s} ${(cy-3.0)*s} L ${(cx-0.4)*s} ${(cy-3.0)*s} Z`,"#2f6b3a");
-      R(cx-2.6,cy-0.4,1.2,1.8,"#cfe8b0",0.5); R(cx+1.4,cy-0.4,1.2,1.8,"#cfe8b0",0.5);
-      eye(cx-0.66,cy-2.1,0.44,"#ffffff","#1b2a14"); eye(cx+0.66,cy-2.1,0.44,"#ffffff","#1b2a14");
-      R(cx-0.4,cy-1.3,0.8,0.3,"#8a5f16",0.15);
-    } else if (n===8) {     // GYUKI — eight-tailed ox, tentacles with pale suckers
+    if (n===1) {            // SHUKAKU — sand tanuki, blue-black curling tattoos
+      for (let i=0;i<1;i++) { const [x1,y1]=arc(i,1,4.4,1.0,"#d9c89a",A0,A1); C(x1,y1,0.6,"#cdb986"); }
+      L(Q(cx-1.4,cy-3.6,cx-2.8,cy-4.4,cx-3.4,cy-2.6),"#3a4766",0.2,0.8);
+      R(cx-2.1,cy-1.3,4.2,3.5,"#d9c89a",1.5);                       // round heavy body
+      R(cx-1.5,cy-3.3,3.0,2.3,"#d9c89a",1.1);                       // head
+      P(TRI(cx-1.5,cy-3.1,cx-1.8,cy-4.4,cx-0.6,cy-3.4),"#2e3650");  // dark pointed ears
+      P(TRI(cx+1.5,cy-3.1,cx+1.8,cy-4.4,cx+0.6,cy-3.4),"#2e3650");
+      [[-1.5,-0.2],[0.1,0.5],[-1.0,1.1],[1.1,-0.4],[0.6,1.3]].forEach(([dx,dy])=>
+        L(Q(cx+dx,cy+dy,cx+dx+0.5,cy+dy-0.5,cx+dx+0.9,cy+dy+0.2),"#3a4766",0.18,0.85));
+      L(Q(cx-1.2,cy-2.6,cx-0.6,cy-3.0,cx-0.1,cy-2.5),"#3a4766",0.18,0.85);
+      E(cx-0.7,cy-2.25,0.46,"#f0d98a","#1a1206"); E(cx+0.7,cy-2.25,0.46,"#f0d98a","#1a1206");
+      R(cx-0.95,cy-1.65,1.9,0.75,"#1d1710",0.3);                    // wide dark maw
+      R(cx-0.75,cy-1.5,1.5,0.22,"#efe6cf",0.05);
+    } else if (n===2) {     // MATATABI — four-legged cat in blue fire
+      for (let i=0;i<2;i++) { const [x1,y1,ang]=arc(i,2,4.5,0.8,"#1f58b8",A0+0.35,A1-0.35);
+        P(TRI(x1-0.5,y1+0.3,x1+0.1,y1-0.9,x1+0.6,y1+0.35),"#12203c"); }
+      P(`M ${(cx-2.3)*s} ${(cy+2.2)*s} L ${(cx-1.9)*s} ${(cy-0.4)*s} Q ${cx*s} ${(cy-1.6)*s} ${(cx+1.9)*s} ${(cy-0.4)*s} L ${(cx+2.3)*s} ${(cy+2.2)*s} Z`,"#12203c");
+      R(cx-1.9,cy+1.4,0.75,1.5,"#12203c",0.25); R(cx+1.15,cy+1.4,0.75,1.5,"#12203c",0.25);
+      R(cx-0.8,cy+1.5,0.7,1.4,"#12203c",0.25);  R(cx+0.1,cy+1.5,0.7,1.4,"#12203c",0.25);
+      R(cx-1.5,cy-3.1,3.0,2.4,"#1f58b8",1.0);                        // cat head
+      P(TRI(cx-1.5,cy-2.9,cx-1.9,cy-4.6,cx-0.4,cy-3.3),"#12203c");   // tall ears
+      P(TRI(cx+1.5,cy-2.9,cx+1.9,cy-4.6,cx+0.4,cy-3.3),"#12203c");
+      [[-1.3,0.1],[0.7,0.6],[-0.3,1.4]].forEach(([dx,dy])=>
+        L(Q(cx+dx,cy+dy,cx+dx+0.45,cy+dy-0.55,cx+dx+0.85,cy+dy+0.1),"#4f9bff",0.2,0.9));
+      E(cx-0.72,cy-2.3,0.44,"#f6e05a","#141019"); E(cx+0.72,cy-2.3,0.44,"#4fd06a","#141019");
+      R(cx-0.85,cy-1.7,1.7,0.7,"#8a1f28",0.3);                       // open jaw
+      R(cx-0.7,cy-1.62,1.4,0.2,"#ffffff",0.05);
+      R(cx-0.7,cy-1.2,1.4,0.18,"#ffffff",0.05);
+    } else if (n===3) {     // ISOBU — grey turtle, maroon shell, one red eye
+      for (let i=0;i<3;i++) { const [x1,y1]=arc(i,3,4.2,0.78,"#8d9aa4",A0,A1); C(x1,y1,0.4,"#6f7d88"); }
+      R(cx-2.4,cy-1.6,4.8,3.8,"#7d2b38",2.0);                        // maroon shell
+      P(`M ${(cx-2.6)*s} ${(cy-0.5)*s} Q ${cx*s} ${(cy-2.9)*s} ${(cx+2.6)*s} ${(cy-0.5)*s} L ${(cx+2.2)*s} ${(cy+0.1)*s} Q ${cx*s} ${(cy-2.1)*s} ${(cx-2.2)*s} ${(cy+0.1)*s} Z`,"#aab6bf");
+      [-1.8,-0.6,0.6,1.8].forEach(dx=> P(TRI(cx+dx-0.4,cy-1.2,cx+dx,cy-2.3,cx+dx+0.4,cy-1.2),"#cfd9e0"));
+      R(cx-2.9,cy+1.2,1.3,0.9,"#9aa6b0",0.4); R(cx+1.6,cy+1.2,1.3,0.9,"#9aa6b0",0.4);
+      R(cx-1.4,cy+0.4,2.8,2.0,"#aab6bf",0.9);                        // head
+      [-0.9,0,0.9].forEach(dx=> P(TRI(cx+dx-0.3,cy+0.5,cx+dx,cy-0.4,cx+dx+0.3,cy+0.5),"#cfd9e0"));
+      E(cx,cy+1.3,0.62,"#e04a3a","#2a0d0a");
+    } else if (n===4) {     // SON GOKU — red ape, pale green face and belly, horns
+      for (let i=0;i<4;i++) { const [x1,y1]=arc(i,4,4.3,0.72,"#b8311f",A0,A1); C(x1,y1,0.34,"#d8c08a"); }
+      R(cx-2.1,cy-1.1,4.2,3.4,"#b8311f",1.3);
+      R(cx-1.2,cy-0.7,2.4,2.9,"#bcd9ac",1.0);                        // pale green belly
+      R(cx-2.7,cy-0.6,0.9,2.4,"#b8311f",0.5); R(cx+1.8,cy-0.6,0.9,2.4,"#b8311f",0.5);
+      R(cx-2.75,cy+1.5,1.0,0.8,"#bcd9ac",0.35); R(cx+1.75,cy+1.5,1.0,0.8,"#bcd9ac",0.35);
+      R(cx-1.6,cy-3.3,3.2,2.5,"#b8311f",1.0);
+      R(cx-1.1,cy-2.6,2.2,1.7,"#bcd9ac",0.8);                        // pale green face
+      P(`M ${(cx-1.6)*s} ${(cy-3.0)*s} Q ${(cx-2.6)*s} ${(cy-4.1)*s} ${(cx-1.1)*s} ${(cy-4.4)*s}`,"none");
+      L(Q(cx-1.5,cy-3.2,cx-2.6,cy-4.1,cx-1.0,cy-4.3),"#e8d9a8",0.34);   // curved horns
+      L(Q(cx+1.5,cy-3.2,cx+2.6,cy-4.1,cx+1.0,cy-4.3),"#e8d9a8",0.34);
+      E(cx-0.6,cy-2.5,0.32,"#ffffff","#1b1508"); E(cx+0.6,cy-2.5,0.32,"#ffffff","#1b1508");
+      R(cx-0.8,cy-1.95,1.6,0.75,"#6b1410",0.3);
+      R(cx-0.65,cy-1.88,1.3,0.2,"#e8dca8",0.05);
+    } else if (n===5) {     // KOKUO — white horse, long muzzle, horns, hooves
+      for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.3,0.62,"#e6e8ee",A0,A1); C(x1,y1,0.3,"#c9a469"); }
+      P(`M ${(cx-2.2)*s} ${(cy+2.2)*s} L ${(cx-1.8)*s} ${(cy-0.6)*s} Q ${cx*s} ${(cy-1.6)*s} ${(cx+2.0)*s} ${(cy-0.5)*s} L ${(cx+2.3)*s} ${(cy+2.2)*s} Z`,"#e6e8ee");
+      R(cx-1.8,cy+1.5,0.7,1.5,"#e6e8ee",0.25); R(cx+1.1,cy+1.5,0.7,1.5,"#e6e8ee",0.25);
+      R(cx-1.8,cy+2.7,0.75,0.6,"#c9a469",0.2); R(cx+1.1,cy+2.7,0.75,0.6,"#c9a469",0.2);
+      R(cx-1.5,cy-2.3,2.0,1.9,"#e6e8ee",0.8);                        // head
+      P(`M ${(cx-1.5)*s} ${(cy-1.6)*s} L ${(cx-3.3)*s} ${(cy-0.9)*s} L ${(cx-3.1)*s} ${(cy-0.1)*s} L ${(cx-1.4)*s} ${(cy-0.4)*s} Z`,"#eef0f4");
+      L(Q(cx-0.9,cy-2.4,cx-1.6,cy-3.8,cx-2.0,cy-4.2),"#c9a469",0.3);  // horns
+      L(Q(cx+0.1,cy-2.5,cx-0.2,cy-4.0,cx-0.5,cy-4.5),"#c9a469",0.3);
+      L(Q(cx+0.6,cy-1.9,cx+1.6,cy-1.0,cx+2.0,cy-0.2),"#cfd3dd",0.42,0.9);  // mane
+      E(cx-0.95,cy-1.5,0.36,"#6fb9d8","#8a2b22");
+      C(cx-3.15,cy-0.45,0.16,"#9aa3b0");
+    } else if (n===6) {     // SAIKEN — pale slug, eyes on stalks, dripping
+      for (let i=0;i<6;i++) { const [x1,y1]=arc(i,6,4.1,0.72,"#b9b6c9",A0,A1); C(x1,y1,0.32,"#cfccdd"); }
+      R(cx-2.2,cy-0.9,4.4,3.3,"#cfccdd",1.8);                        // fat lower body
+      R(cx-1.6,cy-2.9,3.2,2.4,"#cfccdd",1.4);                        // soft head blob
+      L(Q(cx-1.0,cy-3.0,cx-1.5,cy-4.4,cx-1.6,cy-5.0),"#cfccdd",0.26); // eye stalks
+      L(Q(cx+1.0,cy-3.0,cx+1.5,cy-4.4,cx+1.6,cy-5.0),"#cfccdd",0.26);
+      C(cx-1.65,cy-5.1,0.34,"#e4e2ee"); C(cx-1.65,cy-5.1,0.15,"#2a2440");
+      C(cx+1.65,cy-5.1,0.34,"#e4e2ee"); C(cx+1.65,cy-5.1,0.15,"#2a2440");
+      [[-0.9,-1.9],[-0.3,-1.85],[0.3,-1.85],[0.9,-1.9]].forEach(([dx,dy])=> C(cx+dx,cy+dy,0.17,"#8e8aa4"));
+      [[-1.4,1.0],[0.2,1.4],[1.3,0.8],[-0.4,0.3]].forEach(([dx,dy])=>
+        L(Q(cx+dx,cy+dy,cx+dx,cy+dy+0.5,cx+dx+0.1,cy+dy+0.9),"#b2aec4",0.16,0.9));
+    } else if (n===7) {     // CHOMEI — grey beetle, six orange leaf wings + tail
+      for (let i=0;i<6;i++) {
+        const ang = A0 + (A1-A0)*(i/5);
+        const bx = cx + Math.cos(ang)*1.2, by = cy-0.4 + Math.sin(ang)*1.2;
+        const tx = cx + Math.cos(ang)*4.6, ty = cy-0.4 + Math.sin(ang)*4.6;
+        const px = cx + Math.cos(ang+0.26)*3.0, py = cy-0.4 + Math.sin(ang+0.26)*3.0;
+        const qx = cx + Math.cos(ang-0.26)*3.0, qy = cy-0.4 + Math.sin(ang-0.26)*3.0;
+        P(`M ${bx*s} ${by*s} Q ${px*s} ${py*s} ${tx*s} ${ty*s} Q ${qx*s} ${qy*s} ${bx*s} ${by*s} Z`,"#e2762a");
+        L(`M ${bx*s} ${by*s} L ${tx*s} ${ty*s}`,"#e8dc8a",0.14,0.9);
+      }
+      L(Q(cx,cy+2.0,cx+0.9,cy+3.6,cx-0.4,cy+4.4),"#8fbf5a",0.3);     // the seventh, a green tail
+      R(cx-0.95,cy-0.6,1.9,3.0,"#6f7a8c",0.8);                       // segmented abdomen
+      [0.2,0.9,1.6].forEach(dy=> R(cx-0.95,cy+dy,1.9,0.2,"#4c5566",0.05));
+      R(cx-1.2,cy-2.6,2.4,2.1,"#7d8898",0.7);                        // thorax/head
+      [[-1.2,-1.4],[1.2,-1.4],[-1.3,-0.5],[1.3,-0.5]].forEach(([dx,dy])=>
+        L(Q(cx+dx,cy+dy,cx+dx*1.7,cy+dy+0.2,cx+dx*2.1,cy+dy+1.0),"#5b6475",0.16));
+      P(TRI(cx-0.35,cy-2.6,cx-0.1,cy-4.6,cx+0.35,cy-2.6),"#8d98a8"); // horn
+      E(cx-0.55,cy-1.9,0.3,"#f0c23a","#1b1b22"); E(cx+0.55,cy-1.9,0.3,"#f0c23a","#1b1b22");
+    } else if (n===8) {     // GYUKI — ox head, suckered tentacles
       for (let i=0;i<8;i++) {
-        const a0=Math.PI*1.03, a1=Math.PI*1.97;
-        const ang=a0+(a1-a0)*(i/7);
-        const x0=cx+Math.cos(ang)*1.5, y0=cy-0.3+Math.sin(ang)*1.5;
-        const x1=cx+Math.cos(ang)*4.0, y1=cy-0.3+Math.sin(ang)*4.0;
-        const xm=cx+Math.cos(ang+0.22)*2.9, ym=cy-0.3+Math.sin(ang+0.22)*2.9;
-        S(`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s}`,"#c87a74",0.46);
-        C(x1,y1,0.3,"#ede4de");
-        C(xm,ym,0.19,"#ede4de");
+        const ang=A0+(A1-A0)*(i/7);
+        const x0=cx+Math.cos(ang)*1.4, y0=cy-0.3+Math.sin(ang)*1.4;
+        const x1=cx+Math.cos(ang)*4.1, y1=cy-0.3+Math.sin(ang)*4.1;
+        const xm=cx+Math.cos(ang+0.24)*2.9, ym=cy-0.3+Math.sin(ang+0.24)*2.9;
+        L(Q(x0,y0,xm,ym,x1,y1),"#c87a74",0.46);
+        C(x1,y1,0.28,"#ede4de"); C(xm,ym,0.18,"#ede4de");
       }
       R(cx-2.0,cy-1.0,4.0,3.2,"#c87a74",1.3);
       R(cx-1.5,cy-3.2,3.0,2.5,"#c87a74",1.0);
-      P(`M ${(cx-1.4)*s} ${(cy-3.1)*s} L ${(cx-2.3)*s} ${(cy-4.7)*s} L ${(cx-0.5)*s} ${(cy-3.7)*s} Z`,"#eee6e0");
-      P(`M ${(cx+1.4)*s} ${(cy-3.1)*s} L ${(cx+2.3)*s} ${(cy-4.7)*s} L ${(cx+0.5)*s} ${(cy-3.7)*s} Z`,"#eee6e0");
-      eye(cx-0.72,cy-2.2,0.5,"#f2d23a","#1b1508"); eye(cx+0.72,cy-2.2,0.5,"#f2d23a","#1b1508");
+      P(TRI(cx-1.4,cy-3.1,cx-2.4,cy-4.8,cx-0.5,cy-3.7),"#eee6e0");
+      P(TRI(cx+1.4,cy-3.1,cx+2.4,cy-4.8,cx+0.5,cy-3.7),"#eee6e0");
+      E(cx-0.72,cy-2.2,0.48,"#f2d23a","#1b1508"); E(cx+0.72,cy-2.2,0.48,"#f2d23a","#1b1508");
       R(cx-0.45,cy-1.35,0.9,0.42,"#d8cdc6",0.2);
       R(cx-0.9,cy-0.7,1.8,0.34,"#7d3f3a",0.15);
-    } else {                // KURAMA — nine-tailed fox
-      tails(9, 4.2, 0.46, "#e8562a", "#f6a06a", 0.26);
-      R(cx-1.9,cy-1.0,3.8,3.1,"#e8562a",1.3);
-      R(cx-1.5,cy-3.1,3.0,2.4,"#e8562a",1.0);
-      P(`M ${(cx-1.5)*s} ${(cy-2.9)*s} L ${(cx-1.8)*s} ${(cy-4.8)*s} L ${(cx-0.3)*s} ${(cy-3.3)*s} Z`,"#e8562a");
-      P(`M ${(cx+1.5)*s} ${(cy-2.9)*s} L ${(cx+1.8)*s} ${(cy-4.8)*s} L ${(cx+0.3)*s} ${(cy-3.3)*s} Z`,"#e8562a");
-      P(`M ${(cx-1.3)*s} ${(cy-3.3)*s} L ${(cx-1.5)*s} ${(cy-4.3)*s} L ${(cx-0.65)*s} ${(cy-3.5)*s} Z`,"#2b1008");
-      P(`M ${(cx+1.3)*s} ${(cy-3.3)*s} L ${(cx+1.5)*s} ${(cy-4.3)*s} L ${(cx+0.65)*s} ${(cy-3.5)*s} Z`,"#2b1008");
-      R(cx-1.3,cy-0.2,2.6,2.3,"#f6e0c8",1.0);
-      R(cx-1.0,cy-1.9,2.0,1.3,"#f6e0c8",0.7);
-      eye(cx-0.74,cy-2.3,0.5,"#e8333a","#1b0608"); eye(cx+0.74,cy-2.3,0.5,"#e8333a","#1b0608");
-      R(cx-0.3,cy-1.45,0.6,0.3,"#2b1008",0.12);
-      S(`M ${(cx-1.5)*s} ${(cy-2.65)*s} L ${(cx-0.4)*s} ${(cy-2.5)*s}`,"#2b1008",0.16,0.8);
-      S(`M ${(cx+1.5)*s} ${(cy-2.65)*s} L ${(cx+0.4)*s} ${(cy-2.5)*s}`,"#2b1008",0.16,0.8);
+    } else {                // KURAMA — nine-tailed fox, one colour, long snout
+      for (let i=0;i<9;i++) {
+        const ang=A0+(A1-A0)*(i/8);
+        const x0=cx+Math.cos(ang)*1.3, y0=cy-0.4+Math.sin(ang)*1.3;
+        const x1=cx+Math.cos(ang)*4.7, y1=cy-0.4+Math.sin(ang)*4.7;
+        const xm=cx+Math.cos(ang+0.3)*3.2, ym=cy-0.4+Math.sin(ang+0.3)*3.2;
+        const px=cx+Math.cos(ang+0.62)*4.0, py=cy-0.4+Math.sin(ang+0.62)*4.0;
+        P(`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s} Q ${px*s} ${py*s} ${x0*s} ${y0*s} Z`,"#ef6a22");
+      }
+      P(`M ${(cx-2.2)*s} ${(cy+2.3)*s} L ${(cx-1.9)*s} ${(cy-0.5)*s} Q ${cx*s} ${(cy-1.5)*s} ${(cx+2.0)*s} ${(cy-0.4)*s} L ${(cx+2.3)*s} ${(cy+2.3)*s} Z`,"#ef6a22");
+      R(cx-1.85,cy+1.5,0.8,1.6,"#ef6a22",0.25); R(cx+1.1,cy+1.5,0.8,1.6,"#ef6a22",0.25);
+      R(cx-1.5,cy-2.5,2.1,2.1,"#ef6a22",0.8);                        // head
+      P(`M ${(cx-1.4)*s} ${(cy-1.7)*s} L ${(cx-3.4)*s} ${(cy-0.9)*s} L ${(cx-3.2)*s} ${(cy-0.05)*s} L ${(cx-1.3)*s} ${(cy-0.3)*s} Z`,"#ef6a22");
+      P(TRI(cx-1.4,cy-2.4,cx-1.9,cy-4.5,cx-0.5,cy-3.0),"#ef6a22");   // tall fox ears
+      P(TRI(cx+0.5,cy-2.4,cx+0.9,cy-4.4,cx-0.1,cy-2.9),"#ef6a22");
+      P(TRI(cx-1.3,cy-2.7,cx-1.65,cy-4.0,cx-0.75,cy-3.0),"#2b1008");
+      P(TRI(cx+0.55,cy-2.7,cx+0.8,cy-3.9,cx+0.05,cy-2.9),"#2b1008");
+      L(Q(cx-1.5,cy-1.95,cx-0.9,cy-2.25,cx-0.2,cy-2.1),"#2b1008",0.2,0.9);
+      E(cx-1.1,cy-1.5,0.36,"#e8333a","#1b0608");
+      C(cx-3.25,cy-0.45,0.18,"#2b1008");                             // nose
+      R(cx-2.9,cy-0.2,1.5,0.22,"#f7e0c8",0.05);                      // bared teeth
     }
   } else if (art==="slime") {
     R(cx-2.2,cy-1.4,4.4,3.8,color,1.8);
@@ -3233,7 +3262,6 @@ export default function App() {
     if (key==="planEnabled" && !val && view==="plan") setView("dashboard");
     if (key==="bossEnabled" && !val && view==="boss") setView("dashboard");
     if (key==="pomodoroEnabled" && !val && view==="focus") setView("dashboard");
-    if (key==="casinoEnabled" && !val && view==="casino") setView("dashboard");
     if (key==="shopEnabled" && !val && view==="shop") setView("dashboard");
     if (key==="questsEnabled" && !val && (view==="tasks"||view==="addTask"||view==="editTask"||view==="forecast")) setView("dashboard");
     if (key==="statsEnabled" && !val && view==="stats") setView("dashboard");
@@ -3961,13 +3989,11 @@ export default function App() {
   const navItems = [
     { v:"dashboard", icon:"⛰", label:"HOME" },
     ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
-    ...(S.bossEnabled !== false ? [{ v:"boss", icon:"⚔️", label:"RIVAL" }] : []),
+    ...(S.bossEnabled !== false ? [{ v:"boss", icon:"🔥", label:"RIVAL" }] : []),
     ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
-    ...(S.kanbanEnabled   ? [{ v:"board", icon:"📋", label:"BOARD" }] : []),
-    ...(S.pomodoroEnabled ? [{ v:"focus", icon:"⏱️", label:"FOCUS" }] : []),
-    ...(S.casinoEnabled ? [{ v:"casino", icon:"🎰", label:"CASINO" }] : []),
-    ...(S.shopEnabled ? [{ v:"shop", icon:"🛍", label:"SHOP" }] : []),
-    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"📊", label:"STATS" }] : []),
+    ...(S.kanbanEnabled ? [{ v:"board", icon:"📋", label:"BOARD" }] : []),
+    ...(S.shopEnabled ? [{ v:"shop", icon:"🦊", label:"SUMMONS" }] : []),
+    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"🥷", label:"ASCENT" }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats");
@@ -4760,15 +4786,6 @@ export default function App() {
                 </div>
                 <div key={rating} style={{fontSize:78,fontWeight:900,color:"#fff",lineHeight:1,marginTop:4,textShadow:"0 4px 24px rgba(0,0,0,0.45)",animation:"popIn .45s ease"}}>{rating}</div>
                 <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>{tier.label}{titleItem ? ` · ${titleItem.name}` : ""}</div>
-              </div>
-              {/* Coin / Gem HUD */}
-              <div style={{position:"absolute",top:8,right:12,display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:`1px solid ${LINE}`,borderRadius:14,padding:"4px 10px"}}>
-                  <span style={{fontSize:12}}>🪙</span><span style={{fontSize:12,fontWeight:900,color:"#fcd34d"}}>{coins}</span>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:`1px solid ${LINE}`,borderRadius:14,padding:"4px 10px"}}>
-                  <span style={{fontSize:12}}>💎</span><span style={{fontSize:12,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
-                </div>
               </div>
               {/* DAILY BADGE RACK — floats beside the character, tap for the full record */}
               <div onClick={()=>setView("record")}
@@ -5939,7 +5956,7 @@ export default function App() {
                       {!achieved && !isNext && <span style={{fontSize:11,color:FAINT}}>🔒</span>}
                     </div>
                     <div style={{fontSize:11.5,color:isNext?"#fff":DIM,marginTop:4,fontWeight:isNext?800:600}}>
-                      {achieved ? "Earned" : `Reach rating ${Math.round(L.lvl*8.4)}`}
+                      {achieved ? "Earned" : `Reach rating ${Math.round(L.lvl*4.2)}`}
                     </div>
                   </div>
                   {editingTitleLvl===L.lvl ? (
@@ -6634,21 +6651,21 @@ export default function App() {
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⚔ Quests</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your habit list & 7-day grid</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your missions and the weekly grid</div>
                 </div>
                 <Switch on={S.questsEnabled!==false} onToggle={()=>setSetting("questsEnabled",!(S.questsEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>📊 Stats</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Radar, bars & ascension path</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🥷 Ascension Path</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your attributes and the climb to Sage</div>
                 </div>
                 <Switch on={S.statsEnabled!==false} onToggle={()=>setSetting("statsEnabled",!(S.statsEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>👹 Boss Arena</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Weekly boss battles</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🔥 Rival</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Kaedo trains every day you do not</div>
                 </div>
                 <Switch on={S.bossEnabled!==false} onToggle={()=>setSetting("bossEnabled",!(S.bossEnabled!==false))}/>
               </div>
@@ -6662,28 +6679,14 @@ export default function App() {
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>📋 Board</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Reminders hub & kanban</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Mission board and scroll lists</div>
                 </div>
                 <Switch on={S.kanbanEnabled} onToggle={()=>setSetting("kanbanEnabled",!S.kanbanEnabled)}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⏱️ Focus</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Pomodoro timer</div>
-                </div>
-                <Switch on={S.pomodoroEnabled} onToggle={()=>setSetting("pomodoroEnabled",!S.pomodoroEnabled)}/>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🎰 Casino</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Spin games (coins still earn when off)</div>
-                </div>
-                <Switch on={S.casinoEnabled} onToggle={()=>setSetting("casinoEnabled",!S.casinoEnabled)}/>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🛍 Shop</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Owned cosmetics stay wearable when off</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🦊 Summons</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>The nine tailed beasts, earned by streak</div>
                 </div>
                 <Switch on={S.shopEnabled} onToggle={()=>setSetting("shopEnabled",!S.shopEnabled)}/>
               </div>
@@ -6978,7 +6981,7 @@ export default function App() {
         {view==="shop" && (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <div style={C.sectionTitle}>The Shop</div>
+              <div style={C.sectionTitle}>Summons</div>
               <div style={{display:"flex",alignItems:"center",gap:5,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 12px"}}>
                 <span style={{fontSize:13}}>💎</span><span style={{fontSize:13,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
               </div>
@@ -7031,7 +7034,7 @@ export default function App() {
                       ) : gated ? (
                         <div style={{fontSize:10,fontWeight:800,color:"#ffc46b"}}>🔒 {item.gate.streak}-DAY STREAK</div>
                       ) : (
-                        <div style={{fontSize:12,fontWeight:900,color: gems>=item.gems ? "#67e8f9" : FAINT}}>💎 {item.gems}</div>
+                        <div style={{fontSize:11,fontWeight:900,color:GOOD}}>TAP TO SUMMON</div>
                       )}
                     </div>
                   </div>
