@@ -242,15 +242,15 @@ const AURA_COLORS = METALS.map(m=>m.color); // legacy ref (free recolor disabled
 
 // ── PET DEFINITIONS (hand-drawn SVG creatures; streak tiers 3/7/14/30/60/90) ──
 const PETS = [
-  { id:"pet_cat",     name:"Shukaku · One-Tail",  rarity:"common",    gems:55,  art:"tb1", color:"#d8bd84" },
-  { id:"pet_owl",     name:"Matatabi · Two-Tails",   rarity:"common",    gems:75,  art:"tb2", color:"#3fa9e0" },
-  { id:"pet_dog",     name:"Isobu · Three-Tails", rarity:"uncommon", gems:95, art:"tb3", color:"#7f9aa8" },
-  { id:"pet_fox",     name:"Son Goku · Four-Tails",   rarity:"rare",      gems:130, art:"tb4", color:"#c23a22", gate:{streak:3}  },
-  { id:"pet_wolf",    name:"Kokuo · Five-Tails",rarity:"rare",      gems:170, art:"tb5", color:"#e3e0d6", gate:{streak:7}  },
-  { id:"pet_stag",    name:"Saiken · Six-Tails",   rarity:"epic",      gems:230, art:"tb6", color:"#cfe3c0", gate:{streak:14} },
-  { id:"pet_dragon",  name:"Chomei · Seven-Tails", rarity:"epic",  gems:300, art:"tb7", color:"#e08b2a", gate:{streak:30} },
-  { id:"pet_griffin", name:"Gyuki · Eight-Tails",  rarity:"legendary", gems:420, art:"tb8", color:"#8e86c4", gate:{streak:60} },
-  { id:"pet_phoenix", name:"Kurama · Nine-Tails",        rarity:"legendary", gems:500, art:"tb9", color:"#f2622a", gate:{streak:90} },
+  { id:"pet_cat",     name:"Shukaku · One-Tail",  rarity:"common",    gems:0,  art:"tb1", color:"#d8bd84", gate:{streak:1} },
+  { id:"pet_owl",     name:"Matatabi · Two-Tails",   rarity:"common",    gems:0,  art:"tb2", color:"#3fa9e0", gate:{streak:2} },
+  { id:"pet_dog",     name:"Isobu · Three-Tails", rarity:"uncommon", gems:0, art:"tb3", color:"#7f9aa8", gate:{streak:3} },
+  { id:"pet_fox",     name:"Son Goku · Four-Tails",   rarity:"rare",      gems:0, art:"tb4", color:"#c23a22", gate:{streak:4}  },
+  { id:"pet_wolf",    name:"Kokuo · Five-Tails",rarity:"rare",      gems:0, art:"tb5", color:"#e3e0d6", gate:{streak:5}  },
+  { id:"pet_stag",    name:"Saiken · Six-Tails",   rarity:"epic",      gems:0, art:"tb6", color:"#cfe3c0", gate:{streak:6} },
+  { id:"pet_dragon",  name:"Chomei · Seven-Tails", rarity:"epic",  gems:0, art:"tb7", color:"#e08b2a", gate:{streak:7} },
+  { id:"pet_griffin", name:"Gyuki · Eight-Tails",  rarity:"legendary", gems:0, art:"tb8", color:"#8e86c4", gate:{streak:8} },
+  { id:"pet_phoenix", name:"Kurama · Nine-Tails",        rarity:"legendary", gems:0, art:"tb9", color:"#f2622a", gate:{streak:9} },
 ];
 
 // ── SHOP CATALOG (auras [shape×metal], pets, capes [metal]) ───────────────────
@@ -486,8 +486,8 @@ function getTier(r) {
   return               { label:"NOVICE",   color:"#9ca3af" };
 }
 function getLevel(rating) {
-  const lvl = Math.min(LEVELS.length-1, Math.floor(rating / 12.5));
-  return { ...LEVELS[lvl], lvl, ratingForNext:(lvl+1)*12.5, ratingFloor:lvl*12.5 };
+  const lvl = Math.min(LEVELS.length-1, Math.floor(rating / 8.4));
+  return { ...LEVELS[lvl], lvl, ratingForNext:(lvl+1)*8.4, ratingFloor:lvl*8.4 };
 }
 function getTitle(data, lvl) {
   return (data.customTitles && data.customTitles[lvl]) || LEVELS[lvl].name;
@@ -1128,52 +1128,127 @@ function drawPet(els, art, color, cx, cy, s, nk) {
   const eyeW = "#ffffff", eyeB = "#16131f";
   // shadow
   els.push(<ellipse key={nk()} cx={cx*s} cy={(cy+2.6)*s} rx={2.4*s} ry={0.6*s} fill="#000" opacity="0.25"/>);
-  // ── TAILED BEASTS — count the tails ──────────────────────────────────────
+  // ── THE TAILED BEASTS ─────────────────────────────────────────────────────
+  // Each one is drawn individually — shared templates made them all look alike.
   if (art && art[0]==="t" && art[1]==="b") {
     const n = parseInt(art.slice(2)) || 1;
-    const CFG = {
-      1:{ ear:"round",  mark:"rings" }, 2:{ ear:"cat",   mark:"flame" },
-      3:{ ear:"none",   mark:"shell" }, 4:{ ear:"horn",  mark:"lava"  },
-      5:{ ear:"mane",   mark:"none"  }, 6:{ ear:"stalk", mark:"none"  },
-      7:{ ear:"horn",   mark:"wing"  }, 8:{ ear:"ox",    mark:"none"  },
-      9:{ ear:"fox",    mark:"fox"   },
-    }[n] || {};
-    // Tails sweep in a full arc around the beast, left side through the top to
-    // the right — the iconic fan, and still countable at thumbnail size.
-    const A0 = Math.PI * 1.02, A1 = Math.PI * 1.98;      // left → over the top → right
-    for (let i=0;i<n;i++) {
-      const ang = (n===1) ? Math.PI*1.35 : A0 + (A1-A0)*(i/(n-1));
-      const ox = cx, oy = cy - 0.3;
-      const r0 = 1.5, r1 = 3.9, rm = 2.8;
-      const x0 = ox + Math.cos(ang)*r0, y0 = oy + Math.sin(ang)*r0;
-      const x1 = ox + Math.cos(ang)*r1, y1 = oy + Math.sin(ang)*r1;
-      const xm = ox + Math.cos(ang+0.17)*rm, ym = oy + Math.sin(ang+0.17)*rm;
-      els.push(<path key={nk()}
-        d={`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s}`}
-        stroke={color} strokeWidth={(n>6?0.4:0.58)*s} fill="none" strokeLinecap="round" opacity="0.95"/>);
-      els.push(<circle key={nk()} cx={x1*s} cy={y1*s} r={(n>6?0.26:0.34)*s} fill={light}/>);
+    const P = (d,f,o) => els.push(<path key={nk()} d={d} fill={f} opacity={o===undefined?1:o}/>);
+    const S = (d,st,w,o) => els.push(<path key={nk()} d={d} stroke={st} strokeWidth={w*s} fill="none"
+                 strokeLinecap="round" opacity={o===undefined?1:o}/>);
+    const eye = (x,y,r,ic,pc) => { C(x,y,r,ic); C(x,y,r*0.42,pc||"#1a1208"); };
+    // tails sweep from the left, over the top, to the right
+    const tails = (count, len, wid, col, tipCol, tip) => {
+      for (let i=0;i<count;i++) {
+        const a0 = Math.PI*1.03, a1 = Math.PI*1.97;
+        const ang = count===1 ? Math.PI*1.32 : a0 + (a1-a0)*(i/(count-1));
+        const x0 = cx + Math.cos(ang)*1.5,       y0 = cy-0.3 + Math.sin(ang)*1.5;
+        const x1 = cx + Math.cos(ang)*len,       y1 = cy-0.3 + Math.sin(ang)*len;
+        const xm = cx + Math.cos(ang+0.2)*(len*0.72), ym = cy-0.3 + Math.sin(ang+0.2)*(len*0.72);
+        S(`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s}`, col, wid);
+        if (tip) C(x1,y1,tip,tipCol);
+      }
+    };
+
+    if (n===1) {            // SHUKAKU — sand tanuki, dark curling tattoos
+      tails(1, 4.2, 0.72, "#d9c89a", "#cbb682", 0.42);
+      R(cx-2.0,cy-1.1,4.0,3.3,"#d9c89a",1.3);
+      R(cx-1.6,cy-3.0,3.2,2.2,"#d9c89a",1.0);
+      P(`M ${(cx-1.5)*s} ${(cy-2.7)*s} L ${(cx-1.9)*s} ${(cy-4.2)*s} L ${(cx-0.5)*s} ${(cy-3.1)*s} Z`,"#d9c89a");
+      P(`M ${(cx+1.5)*s} ${(cy-2.7)*s} L ${(cx+1.9)*s} ${(cy-4.2)*s} L ${(cx+0.5)*s} ${(cy-3.1)*s} Z`,"#d9c89a");
+      S(`M ${(cx-1.4)*s} ${(cy-0.4)*s} Q ${cx*s} ${(cy+0.4)*s} ${(cx+1.4)*s} ${(cy-0.4)*s}`,"#2f3a52",0.26);
+      S(`M ${(cx-1.3)*s} ${(cy+0.7)*s} Q ${cx*s} ${(cy+1.4)*s} ${(cx+1.3)*s} ${(cy+0.7)*s}`,"#2f3a52",0.26);
+      R(cx-1.4,cy-2.6,0.9,0.4,"#2f3a52",0.1); R(cx+0.5,cy-2.6,0.9,0.4,"#2f3a52",0.1);
+      eye(cx-0.72,cy-1.95,0.5,"#f2d23a","#1b1508"); eye(cx+0.72,cy-1.95,0.5,"#f2d23a","#1b1508");
+      R(cx-0.3,cy-1.2,0.6,0.3,"#5a4a2a",0.1);
+    } else if (n===2) {     // MATATABI — two-tailed cat wreathed in blue fire
+      tails(2, 4.2, 0.66, "#2f6fd0", "#8fd4ff", 0.4);
+      R(cx-1.9,cy-1.1,3.8,3.2,"#1f2a44",1.3);
+      R(cx-1.6,cy-3.0,3.2,2.2,"#1f2a44",1.0);
+      P(`M ${(cx-1.6)*s} ${(cy-2.6)*s} L ${(cx-1.7)*s} ${(cy-4.3)*s} L ${(cx-0.3)*s} ${(cy-3.0)*s} Z`,"#1f2a44");
+      P(`M ${(cx+1.6)*s} ${(cy-2.6)*s} L ${(cx+1.7)*s} ${(cy-4.3)*s} L ${(cx+0.3)*s} ${(cy-3.0)*s} Z`,"#1f2a44");
+      S(`M ${(cx-1.7)*s} ${(cy-0.8)*s} Q ${(cx-0.6)*s} ${(cy-2.0)*s} ${cx*s} ${(cy-0.3)*s}`,"#3f8fe0",0.3,0.9);
+      S(`M ${(cx+1.7)*s} ${(cy-0.8)*s} Q ${(cx+0.6)*s} ${(cy-2.0)*s} ${cx*s} ${(cy+0.4)*s}`,"#3f8fe0",0.3,0.9);
+      eye(cx-0.72,cy-2.0,0.5,"#f6e05a","#141019"); eye(cx+0.72,cy-2.0,0.5,"#6fe06a","#141019");
+      R(cx-0.3,cy-1.25,0.6,0.28,"#8fd4ff",0.1);
+    } else if (n===3) {     // ISOBU — three-tailed turtle, spiked shell, one great eye
+      tails(3, 3.9, 0.6, "#6f8b9c", "#9db4c2", 0.36);
+      R(cx-2.1,cy-0.9,4.2,3.2,"#8fa4b0",1.4);
+      R(cx-1.9,cy-1.5,3.8,2.6,"#5e7786",1.5);
+      [-1.3,0,1.3].forEach(dx=> P(`M ${(cx+dx-0.45)*s} ${(cy-1.3)*s} L ${(cx+dx)*s} ${(cy-2.6)*s} L ${(cx+dx+0.45)*s} ${(cy-1.3)*s} Z`,"#cfdbe2"));
+      R(cx-1.2,cy-0.1,2.4,1.5,"#a9bcc6",0.8);
+      eye(cx,cy+0.6,0.72,"#e04a3a","#2a0d0a");
+      R(cx-2.5,cy+1.4,1.1,0.7,"#8fa4b0",0.3); R(cx+1.4,cy+1.4,1.1,0.7,"#8fa4b0",0.3);
+    } else if (n===4) {     // SON GOKU — four-tailed ape, red fur, horns
+      tails(4, 3.9, 0.62, "#a52f1e", "#7d2315", 0.34);
+      R(cx-2.0,cy-1.0,4.0,3.2,"#c0392b",1.3);
+      R(cx-1.5,cy-3.1,3.0,2.4,"#c0392b",1.0);
+      R(cx-1.1,cy-2.1,2.2,1.5,"#f0d8b0",0.8);
+      P(`M ${(cx-1.4)*s} ${(cy-3.0)*s} L ${(cx-1.9)*s} ${(cy-4.4)*s} L ${(cx-0.6)*s} ${(cy-3.5)*s} Z`,"#efe3c8");
+      P(`M ${(cx+1.4)*s} ${(cy-3.0)*s} L ${(cx+1.9)*s} ${(cy-4.4)*s} L ${(cx+0.6)*s} ${(cy-3.5)*s} Z`,"#efe3c8");
+      R(cx-1.5,cy-0.6,3.0,0.45,"#2f6b3a",0.15); R(cx-1.1,cy+0.5,2.2,0.4,"#2f6b3a",0.15);
+      eye(cx-0.66,cy-2.2,0.44,"#f6e05a","#1b1508"); eye(cx+0.66,cy-2.2,0.44,"#f6e05a","#1b1508");
+      R(cx-0.5,cy-1.3,1.0,0.35,"#7d2315",0.15);
+    } else if (n===5) {     // KOKUO — five-tailed dolphin-horse, horn, hooves
+      tails(5, 3.8, 0.56, "#d8d2c2", "#efeadd", 0.3);
+      R(cx-2.0,cy-1.0,4.0,3.1,"#e8e2d4",1.3);
+      R(cx-1.4,cy-3.2,2.8,2.6,"#e8e2d4",1.1);
+      P(`M ${cx*s} ${(cy-4.8)*s} L ${(cx+0.42)*s} ${(cy-3.2)*s} L ${(cx-0.42)*s} ${(cy-3.2)*s} Z`,"#f6f2e8");
+      R(cx-1.6,cy-3.5,3.2,0.6,"#c25a3a",0.3);
+      R(cx-1.7,cy-0.3,3.4,0.5,"#c25a3a",0.2);
+      eye(cx-0.62,cy-2.3,0.4,"#2f3340","#0a0a0d"); eye(cx+0.62,cy-2.3,0.4,"#2f3340","#0a0a0d");
+      R(cx-0.4,cy-1.4,0.8,0.4,"#b9b2a0",0.2);
+      R(cx-1.8,cy+1.6,0.9,0.6,"#b9b2a0",0.2);
+    } else if (n===6) {     // SAIKEN — six-tailed slug, soft and pale
+      tails(6, 3.7, 0.5, "#b9cfae", "#dfe9d6", 0.28);
+      R(cx-2.0,cy-1.2,4.0,3.4,"#dfe9d6",1.7);
+      R(cx-1.5,cy-2.9,3.0,2.2,"#dfe9d6",1.3);
+      R(cx-1.2,cy-4.2,0.42,1.5,"#dfe9d6",0.2); R(cx+0.8,cy-4.2,0.42,1.5,"#dfe9d6",0.2);
+      C(cx-1.0,cy-4.3,0.38,"#8fb57f"); C(cx+1.0,cy-4.3,0.38,"#8fb57f");
+      eye(cx-0.66,cy-2.0,0.42,"#ffffff","#1a2416"); eye(cx+0.66,cy-2.0,0.42,"#ffffff","#1a2416");
+      R(cx-0.55,cy-1.15,1.1,0.4,"#9fbd92",0.2);
+      R(cx-1.6,cy+0.6,3.2,0.5,"#c3d6b6",0.2);
+    } else if (n===7) {     // CHOMEI — seven-tailed beetle, hard shell, horn
+      tails(7, 3.7, 0.44, "#3f7a4a", "#8fd46a", 0.26);
+      R(cx-2.0,cy-1.1,4.0,3.3,"#e3a33a",1.2);
+      R(cx-1.9,cy-1.0,3.8,1.6,"#2f6b3a",0.9);
+      R(cx-1.4,cy-3.0,2.8,2.2,"#e3a33a",1.0);
+      P(`M ${cx*s} ${(cy-4.9)*s} L ${(cx+0.4)*s} ${(cy-3.0)*s} L ${(cx-0.4)*s} ${(cy-3.0)*s} Z`,"#2f6b3a");
+      R(cx-2.6,cy-0.4,1.2,1.8,"#cfe8b0",0.5); R(cx+1.4,cy-0.4,1.2,1.8,"#cfe8b0",0.5);
+      eye(cx-0.66,cy-2.1,0.44,"#ffffff","#1b2a14"); eye(cx+0.66,cy-2.1,0.44,"#ffffff","#1b2a14");
+      R(cx-0.4,cy-1.3,0.8,0.3,"#8a5f16",0.15);
+    } else if (n===8) {     // GYUKI — eight-tailed ox, tentacles with pale suckers
+      for (let i=0;i<8;i++) {
+        const a0=Math.PI*1.03, a1=Math.PI*1.97;
+        const ang=a0+(a1-a0)*(i/7);
+        const x0=cx+Math.cos(ang)*1.5, y0=cy-0.3+Math.sin(ang)*1.5;
+        const x1=cx+Math.cos(ang)*4.0, y1=cy-0.3+Math.sin(ang)*4.0;
+        const xm=cx+Math.cos(ang+0.22)*2.9, ym=cy-0.3+Math.sin(ang+0.22)*2.9;
+        S(`M ${x0*s} ${y0*s} Q ${xm*s} ${ym*s} ${x1*s} ${y1*s}`,"#c87a74",0.46);
+        C(x1,y1,0.3,"#ede4de");
+        C(xm,ym,0.19,"#ede4de");
+      }
+      R(cx-2.0,cy-1.0,4.0,3.2,"#c87a74",1.3);
+      R(cx-1.5,cy-3.2,3.0,2.5,"#c87a74",1.0);
+      P(`M ${(cx-1.4)*s} ${(cy-3.1)*s} L ${(cx-2.3)*s} ${(cy-4.7)*s} L ${(cx-0.5)*s} ${(cy-3.7)*s} Z`,"#eee6e0");
+      P(`M ${(cx+1.4)*s} ${(cy-3.1)*s} L ${(cx+2.3)*s} ${(cy-4.7)*s} L ${(cx+0.5)*s} ${(cy-3.7)*s} Z`,"#eee6e0");
+      eye(cx-0.72,cy-2.2,0.5,"#f2d23a","#1b1508"); eye(cx+0.72,cy-2.2,0.5,"#f2d23a","#1b1508");
+      R(cx-0.45,cy-1.35,0.9,0.42,"#d8cdc6",0.2);
+      R(cx-0.9,cy-0.7,1.8,0.34,"#7d3f3a",0.15);
+    } else {                // KURAMA — nine-tailed fox
+      tails(9, 4.2, 0.46, "#e8562a", "#f6a06a", 0.26);
+      R(cx-1.9,cy-1.0,3.8,3.1,"#e8562a",1.3);
+      R(cx-1.5,cy-3.1,3.0,2.4,"#e8562a",1.0);
+      P(`M ${(cx-1.5)*s} ${(cy-2.9)*s} L ${(cx-1.8)*s} ${(cy-4.8)*s} L ${(cx-0.3)*s} ${(cy-3.3)*s} Z`,"#e8562a");
+      P(`M ${(cx+1.5)*s} ${(cy-2.9)*s} L ${(cx+1.8)*s} ${(cy-4.8)*s} L ${(cx+0.3)*s} ${(cy-3.3)*s} Z`,"#e8562a");
+      P(`M ${(cx-1.3)*s} ${(cy-3.3)*s} L ${(cx-1.5)*s} ${(cy-4.3)*s} L ${(cx-0.65)*s} ${(cy-3.5)*s} Z`,"#2b1008");
+      P(`M ${(cx+1.3)*s} ${(cy-3.3)*s} L ${(cx+1.5)*s} ${(cy-4.3)*s} L ${(cx+0.65)*s} ${(cy-3.5)*s} Z`,"#2b1008");
+      R(cx-1.3,cy-0.2,2.6,2.3,"#f6e0c8",1.0);
+      R(cx-1.0,cy-1.9,2.0,1.3,"#f6e0c8",0.7);
+      eye(cx-0.74,cy-2.3,0.5,"#e8333a","#1b0608"); eye(cx+0.74,cy-2.3,0.5,"#e8333a","#1b0608");
+      R(cx-0.3,cy-1.45,0.6,0.3,"#2b1008",0.12);
+      S(`M ${(cx-1.5)*s} ${(cy-2.65)*s} L ${(cx-0.4)*s} ${(cy-2.5)*s}`,"#2b1008",0.16,0.8);
+      S(`M ${(cx+1.5)*s} ${(cy-2.65)*s} L ${(cx+0.4)*s} ${(cy-2.5)*s}`,"#2b1008",0.16,0.8);
     }
-    R(cx-1.9,cy-1.2,3.9,3.4,color,1.4);                   // body
-    R(cx-1.9,cy+0.9,3.9,1.3,dark,1.0);
-    R(cx-1.5,cy-2.9,3.1,2.3,color,1.1);                   // head
-    if (CFG.ear==="cat")  { R(cx-1.4,cy-3.9,0.9,1.3,color,0.4); R(cx+0.5,cy-3.9,0.9,1.3,color,0.4); }
-    if (CFG.ear==="fox")  { R(cx-1.5,cy-4.2,1.0,1.7,color,0.4); R(cx+0.5,cy-4.2,1.0,1.7,color,0.4);
-                            R(cx-1.25,cy-3.8,0.5,1.0,dark,0.3); R(cx+0.75,cy-3.8,0.5,1.0,dark,0.3); }
-    if (CFG.ear==="horn") { R(cx-1.2,cy-4.0,0.5,1.3,light,0.3); R(cx+0.7,cy-4.0,0.5,1.3,light,0.3); }
-    if (CFG.ear==="ox")   { R(cx-2.0,cy-3.4,1.5,0.5,light,0.2); R(cx+0.5,cy-3.4,1.5,0.5,light,0.2); }
-    if (CFG.ear==="round"){ C(cx-1.2,cy-3.1,0.6,color); C(cx+1.2,cy-3.1,0.6,color); }
-    if (CFG.ear==="mane") { R(cx-1.7,cy-3.4,3.5,0.7,light,0.3); }
-    if (CFG.ear==="stalk"){ C(cx-0.9,cy-3.9,0.4,light); C(cx+0.9,cy-3.9,0.4,light);
-                            R(cx-1.0,cy-3.6,0.25,0.9,light,0.1); R(cx+0.8,cy-3.6,0.25,0.9,light,0.1); }
-    if (CFG.mark==="shell"){ R(cx-1.7,cy-1.0,3.5,2.6,dark,1.2); C(cx,cy+0.2,0.7,light); }
-    if (CFG.mark==="lava") { R(cx-1.4,cy-0.6,2.8,0.4,"#ffb020",0.2); R(cx-0.9,cy+0.2,1.9,0.35,"#ffd46b",0.2); }
-    if (CFG.mark==="rings"){ R(cx-1.5,cy-2.5,1.1,0.9,dark,0.3); R(cx+0.4,cy-2.5,1.1,0.9,dark,0.3); }
-    if (CFG.mark==="flame"){ R(cx-1.6,cy-1.0,3.3,0.5,"#ffd46b",0.2); }
-    if (CFG.mark==="wing") { R(cx-2.4,cy-1.4,1.2,1.8,light,0.5); R(cx+1.3,cy-1.4,1.2,1.8,light,0.5); }
-    if (CFG.mark==="fox")  { R(cx-1.5,cy+0.9,3.1,1.2,"#f7e3c8",0.6); }
-    C(cx-0.72,cy-2.0,0.46,eyeW); C(cx+0.72,cy-2.0,0.46,eyeW);
-    C(cx-0.68,cy-1.95,0.26,n>=4?"#c81e1e":eyeB); C(cx+0.76,cy-1.95,0.26,n>=4?"#c81e1e":eyeB);
-    R(cx-0.35,cy-1.25,0.7,0.3,dark,0.15);
   } else if (art==="slime") {
     R(cx-2.2,cy-1.4,4.4,3.8,color,1.8);
     R(cx-2.2,cy+0.6,4.4,1.8,dark,1.2);
@@ -1445,7 +1520,12 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
                  : anbu ? skin : vest ? "#24402f" : (level>=1 ? shirt : skin);
   R(7.6,11.2,1.3,4.0,armColor,0.6);
   R(15.1,11.2,1.3,4.0,armColor,0.6);
-  if (has("gloves",3)) {
+  if (sage) {
+    R(7.0,11.0,2.1,5.2,"#f7e7b8",0.7);                    // wide sage sleeves
+    R(14.9,11.0,2.1,5.2,"#f7e7b8",0.7);
+    R(7.0,15.4,2.1,0.8,"#e0b23a",0.3);
+    R(14.9,15.4,2.1,0.8,"#e0b23a",0.3);
+  } else if (has("gloves",3)) {
     R(7.5,14.4,1.5,1.5,"#20252e",0.5);
     R(15.0,14.4,1.5,1.5,"#20252e",0.5);
     R(7.6,14.6,1.3,0.4,"#39404e",0.2);
@@ -1524,25 +1604,20 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   }
   // ── KAGE HAT ───────────────────────────────────────────────────────────────
   if (robe) {
-    R(6.4,2.8,11.2,1.4,"#f4f1e8",0.5);
-    R(8.6,1.0,6.8,2.0,"#f4f1e8",0.5);
-    R(8.6,1.0,6.8,0.6,"#b3281f",0.3);
-    R(11.2,1.5,1.6,1.4,"#b3281f",0.3);
-    R(6.4,4.1,11.2,0.5,"#ddd8cb",0.2);
+    // wide triangular brim, peaked crown, rank plate on the front
+    els.push(<path key={k++} d={`M ${12*s} ${0.6*s} L ${18.1*s} ${4.0*s} L ${5.9*s} ${4.0*s} Z`} fill="#f4f1e8"/>);
+    els.push(<path key={k++} d={`M ${12*s} ${0.6*s} L ${18.1*s} ${4.0*s} L ${12*s} ${4.0*s} Z`} fill="#ddd8cb"/>);
+    R(5.9,3.9,12.2,0.75,"#c9c3b4",0.3);
+    els.push(<path key={k++} d={`M ${12*s} ${1.5*s} L ${15.1*s} ${3.3*s} L ${8.9*s} ${3.3*s} Z`} fill="#b3281f"/>);
+    R(11.5,2.3,1.1,1.0,"#f4f1e8",0.2);
+    R(7.6,4.5,8.8,0.9,"#2b2520",0.3);
   }
   // ── SAGE HALO + HORNS ──────────────────────────────────────────────────────
   if (sage) {
     els.push(<circle key={k++} cx={12*s} cy={6.5*s} r={6.6*s} fill="none" stroke="#ffd96b" strokeWidth={0.5*s} opacity="0.85"/>);
-    R(9.4,1.6,1.0,2.2,"#f1dca0",0.3);
-    R(13.6,1.6,1.0,2.2,"#f1dca0",0.3);
     R(7.9,4.6,8.2,1.3,"#e0b23a",0.4);
   }
   // ── TOOL POUCH + TANTO (Jonin onward) ─────────────────────────────────────
-  if (level >= 3 && !cloak && !robe && !sage) {
-    R(5.6,13.2,2.4,3.0,"#2a211a",0.6);          // thigh pouch
-    R(5.6,13.2,2.4,0.7,"#3d3026",0.3);
-    R(6.3,14.3,1.0,1.0,"#8a949f",0.3);
-  }
   if (level === 3) {                             // the tanto is the Jonin's alone
     const wc = weaponC ? weaponC.color : null;
     R(16.2,6.6,0.9,7.6, wc||"#dfe6ef",0.3);
@@ -1555,7 +1630,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   if (pet) {
     const petItem = SHOP.find(it=>it.id===pet);
     if (petItem && petItem.art) {
-      drawPet(els, petItem.art, petItem.color, 19.5, 17.5, s, () => k++);
+      drawPet(els, petItem.art, petItem.color, 19.2, 18.6, s*0.86, () => k++);
     }
   }
 
@@ -2279,8 +2354,8 @@ function Blackjack({ state, onSettle }) {
 function ShopPreview({ item }) {
   if (item.type === "pet") {
     const els = []; let kk = 0;
-    drawPet(els, item.art, item.color, 12, 12, 1.7, ()=>kk++);
-    return <svg width="44" height="44" viewBox="0 0 41 41" style={{overflow:"visible"}}>{els}</svg>;
+    drawPet(els, item.art, item.color, 7.5, 8.0, 3.4, ()=>kk++);
+    return <svg width="58" height="58" viewBox="0 0 51 51" style={{overflow:"visible"}}>{els}</svg>;
   }
   if (item.type === "aura") {
     const c = item.color || "#f5b827";
@@ -5829,7 +5904,7 @@ export default function App() {
             )}
 
             <div style={{...C.sectionTitle,margin:"18px 2px 4px"}}>The Path of Ascension</div>
-            <div style={{fontSize:11,color:DIM,margin:"0 2px 12px",fontWeight:700}}>Every level forges new gear. Tap ✎ to rename a title.</div>
+            <div style={{fontSize:11,color:DIM,margin:"0 2px 12px",fontWeight:700}}>Tap ✎ to rename a rank.</div>
             {LEVELS.map(L=>{
               const achieved = level.lvl >= L.lvl;
               const isNext = level.lvl + 1 === L.lvl;
@@ -5864,7 +5939,7 @@ export default function App() {
                       {!achieved && !isNext && <span style={{fontSize:11,color:FAINT}}>🔒</span>}
                     </div>
                     <div style={{fontSize:11.5,color:isNext?"#fff":DIM,marginTop:4,fontWeight:isNext?800:600}}>
-                      {L.unlock}{!achieved && ` · reach rating ${L.lvl*7}`}
+                      {achieved ? "Earned" : `Reach rating ${Math.round(L.lvl*8.4)}`}
                     </div>
                   </div>
                   {editingTitleLvl===L.lvl ? (
