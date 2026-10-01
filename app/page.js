@@ -192,6 +192,7 @@ const coinsForTask = (task) => Math.max(1, Math.round((task.importance ?? 5) * C
 const SPIN_THRESHOLDS = [0.15, 0.40, 0.70, 1.0]; // up to 4 spins/day on a full day
 const SPIN_COST = 25;                    // coins per pull
 const PERFECT_DAY_BONUS_GEMS = 30;
+const PERFECT_DAY_XP = 0.50;
 
 const DEFAULT_WALLET = {
   coinsEarned: 0, coinsSpent: 0,
@@ -313,14 +314,11 @@ function quoteOfDay() {
   return QUOTES[doy % QUOTES.length];
 }
 
+// A single XP pool replaces the old seven attributes. Keeping it in the same
+// shape means every existing reward, decay and rating path keeps working.
+const XP_MAX = 36;
 const INIT_CATEGORIES = [
-  { id:"career",   name:"Career",   icon:"💼", color:"#f59e0b", value:3.0, maxValue:10 },
-  { id:"mind",     name:"Mind",     icon:"🧠", color:"#38bdf8", value:3.0, maxValue:10 },
-  { id:"body",     name:"Body",     icon:"💪", color:"#ef4444", value:3.0, maxValue:10 },
-  { id:"faith",    name:"Faith",    icon:"✝️",  color:"#a78bfa", value:3.0, maxValue:10 },
-  { id:"grooming", name:"Grooming", icon:"✨", color:"#34d399", value:3.0, maxValue:10 },
-  { id:"home",     name:"Home",     icon:"🏠", color:"#fb923c", value:3.0, maxValue:10 },
-  { id:"love",     name:"Love",     icon:"❤️",  color:"#f472b6", value:3.0, maxValue:10 },
+  { id:"xp", name:"XP", icon:"🌀", color:"#e2622a", value:0, maxValue:XP_MAX },
 ];
 const mkTask = (id, name, catId, importance, days, targetReps=1) => ({
   id, name, catId, importance, targetReps,
@@ -555,6 +553,24 @@ function migrate(d) {
   if (!["vivid","tinted"].includes(settings.cardStyle)) settings.cardStyle = "vivid";
   if (!["list","circles"].includes(settings.questLayout)) settings.questLayout = "list";
   if (!["last7","week"].includes(settings.questWeekView)) settings.questWeekView = "last7";
+  // Collapse any legacy multi-attribute save into the single XP pool, keeping
+  // the rating the user already earned.
+  {
+    const cats = Array.isArray(d.categories) ? d.categories : [];
+    const isPool = cats.length === 1 && cats[0] && cats[0].id === "xp";
+    if (!isPool) {
+      const ratio = cats.length
+        ? cats.reduce((sum,c)=>sum + (Number(c.value)||0)/(Number(c.maxValue)||10), 0) / cats.length
+        : 0;
+      d = { ...d,
+        categories: [{ id:"xp", name:"XP", icon:"🌀", color:"#e2622a",
+          value: Math.max(0, Math.min(XP_MAX, ratio * XP_MAX)), maxValue: XP_MAX }],
+        tasks: (d.tasks||[]).map(t=>({...t, catId:"xp"})) };
+    } else {
+      d = { ...d, categories:[{...cats[0], maxValue: XP_MAX}],
+            tasks: (d.tasks||[]).map(t=>({...t, catId:"xp"})) };
+    }
+  }
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
   if (!["m","f"].includes(chr.body)) chr.body = "m";
@@ -1085,9 +1101,9 @@ const TROPHIES = [
     check:(d)=>{ const w=(d.tasks||[]).filter(t=>t.catId&&isWeekly(t)); return w.length>0 && w.every(t=>weeklyMet(t, dateKey())); } },
   { id:"knighted", icon:"🏯", name:"Kage", desc:"Reach the highest rank", gems:25,
     check:(d)=>getLevel(getRating(d.categories||[]))>=7 },
-  { id:"war_chest", icon:"🪙", name:"War Chest", desc:"Earn 1,000 lifetime coins", gems:20,
+  { id:"war_chest", icon:"📜", name:"Devoted", desc:"Log 250 quest completions", gems:20,
     check:(d)=>(d.wallet?.coinsEarned||0)>=1000 },
-  { id:"gem_hoard", icon:"💎", name:"Gem Hoard", desc:"Earn 100 lifetime gems", gems:25,
+  { id:"gem_hoard", icon:"🌀", name:"Ascendant", desc:"Reach rating 50", gems:25,
     check:(d)=>(d.wallet?.gemsEarned||0)>=100 },
   { id:"tactician", icon:"🗓", name:"Tactician", desc:"Schedule 10 time blocks on the Plan page", gems:10,
     check:(d)=>Object.values(d.schedule||{}).reduce((a,l)=>a+(l?.length||0),0)>=10 },
@@ -1166,10 +1182,10 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       [-0.7,-0.1,0.5].forEach(dx=> P(TRI(cx+dx,cy-1.25,cx+dx+0.2,cy-0.75,cx+dx+0.4,cy-1.25),"#efe6cf"));
     } else if (n===2) {     // MATATABI — lithe blue cat wreathed in flame, two tails
       for (let i=0;i<2;i++) {
-        const ang=Math.PI*(1.30+0.26*i);
-        const x0=cx+Math.cos(ang)*1.6, y0=cy-0.4+Math.sin(ang)*1.6;
-        const x1=cx+Math.cos(ang)*4.6, y1=cy-0.4+Math.sin(ang)*4.6;
-        const xm=cx+Math.cos(ang+0.3)*3.2, ym=cy-0.4+Math.sin(ang+0.3)*3.2;
+        const ang=Math.PI*(1.56+0.30*i);                 // swung down, clear of the ears
+        const x0=cx+Math.cos(ang)*1.7, y0=cy+0.9+Math.sin(ang)*1.7;
+        const x1=cx+Math.cos(ang)*4.8, y1=cy+0.9+Math.sin(ang)*4.8;
+        const xm=cx+Math.cos(ang+0.3)*3.3, ym=cy+0.9+Math.sin(ang+0.3)*3.3;
         L(Q(x0,y0,xm,ym,x1,y1),"#2f7fd8",0.62);
         P(TRI(x1-0.55,y1+0.35,x1+0.15,y1-1.0,x1+0.65,y1+0.4),"#10203c");
       }
@@ -2679,6 +2695,7 @@ export default function App() {
   const [formUp, setFormUp] = useState(null);    // transformation overlay
   const [storyOpen, setStoryOpen] = useState(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [trialsOpen, setTrialsOpen] = useState(false);
 
 
   const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
@@ -2762,7 +2779,7 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
   }, [data]);
 
-  const [newTask, setNewTask] = useState({name:"",catId:"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+  const [newTask, setNewTask] = useState({name:"",catId:"xp",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
@@ -2805,7 +2822,6 @@ export default function App() {
       setData(decayed);
       setPomoLeft((decayed.pomodoro.workMin||25)*60);
       persistRaw(decayed);
-      if (lostCoins > 0) setTimeout(()=>toast$(`COINS FADED  −${lostCoins} 🪙`, "#fb923c"), 1100);
       if (lost > 0.005) {
         setTimeout(()=>toast$(`THE NIGHT TOOK ITS TOLL  −${lost.toFixed(2)}`, "#ef4444"), 600);
       }
@@ -2850,11 +2866,9 @@ export default function App() {
     if (lvl > prevLevelRef.current) {
       const best = data.flags?.maxLevel || 0;
       const isNewBest = lvl > best;
-      const gems = isNewBest ? 10 + lvl * 2 : 0;   // scale a little with level
-      setShowLevelUp({ lvl, name: getTitle(data, lvl), unlock: (LEVELS[lvl]||{}).unlock || "", gems });
+      setShowLevelUp({ lvl, name: getTitle(data, lvl), unlock: (LEVELS[lvl]||{}).unlock || "", gems:0 });
       if (isNewBest) {
-        setData(cur=>{ const n={...cur, flags:{...(cur.flags||{}), maxLevel:lvl},
-          wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+gems}}; persistRaw(n); return n; });
+        setData(cur=>{ const n={...cur, flags:{...(cur.flags||{}), maxLevel:lvl}}; persistRaw(n); return n; });
       }
       try { navigator.vibrate && navigator.vibrate([30,60,30,60,80]); } catch {}
       setTimeout(()=>setShowLevelUp(null), 6000);
@@ -3074,6 +3088,8 @@ export default function App() {
   const COMBO_MULT = [1, 1.5, 2];
   const FIRST_WIN_COINS = 15;
   const payCoins = (task, key, dayKey) => {
+    return;   // currencies retired — quests pay XP through their own points now
+    // eslint-disable-next-line no-unreachable
     const isToday = dayKey === dateKey();
     // precompute for toasts (cosmetic; ledger inside setData is authoritative)
     const now = Date.now();
@@ -3101,8 +3117,7 @@ export default function App() {
         wallet: {...cur.wallet, coinsEarned: earned, coinsByTaskDay: nl}};
       persistRaw(n); return n;
     });
-    if (isToday && !hadFirstWin) toast$(`⚡ FIRST WIN OF THE DAY +${FIRST_WIN_COINS} 🪙`, "#ffc46b");
-    else if (preCount >= 2) toast$(`🔥 COMBO x${COMBO_MULT[preCount-1]} — coins boosted!`, "#ff7a2e");
+    if (preCount >= 2) toast$(`🔥 COMBO x${COMBO_MULT[preCount-1]}`, "#ff7a2e");
     try { navigator.vibrate && navigator.vibrate(preCount>=2 ? 14 : 8); } catch {}
   };
 
@@ -3250,7 +3265,7 @@ export default function App() {
       targetReps: isWk ? 1 : (newTask.targetReps || 1),
       points: calcPoints(newTask.importance), decayRate: calcDecay(newTask.importance), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
-    setNewTask({name:"",catId:data.categories[0]?.id||"career",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+    setNewTask({name:"",catId:"xp",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
     setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
   };
 
@@ -3278,6 +3293,7 @@ export default function App() {
     if (key==="bossEnabled" && !val && view==="boss") setView("dashboard");
     if (key==="pomodoroEnabled" && !val && view==="focus") setView("dashboard");
     if (key==="shopEnabled" && !val && view==="shop") setView("dashboard");
+    if (view==="casino" || view==="focus") setView("dashboard");
     if (key==="questsEnabled" && !val && (view==="tasks"||view==="addTask"||view==="editTask"||view==="forecast")) setView("dashboard");
     if (key==="statsEnabled" && !val && view==="stats") setView("dashboard");
     update(next);
@@ -3407,26 +3423,32 @@ export default function App() {
   // ── SPIN GAMES (slot / wheel / blackjack, chosen at random) ─────────────────
   const spendCoins = (n) => setData(d=>{ const nd={...d, wallet:{...d.wallet, coinsSpent:(d.wallet.coinsSpent||0)+n}}; persistRaw(nd); return nd; });
   const awardGems  = (n) => setData(d=>{ const nd={...d, wallet:{...d.wallet, gemsEarned:(d.wallet.gemsEarned||0)+n}}; persistRaw(nd); return nd; });
+  // Rewards are XP now — they raise every attribute, so they speed up your rank.
+  const grantXP = (cur, xp) => ({
+    ...cur,
+    categories: cur.categories.map(c=>({...c, value: Math.min(c.maxValue, c.value + xp)})),
+  });
   const claimChallenge = (gems) => {
-    setData(cur=>{ const n={...cur, challengeClaims:{...(cur.challengeClaims||{}), [dateKey()]:true},
-      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+gems}}; persistRaw(n); return n; });
-    toast$(`CHALLENGE COMPLETE +${gems} 💎`, "#a78bfa");
+    const xp = 0.30;
+    setData(cur=>{ const n={...grantXP(cur, xp), challengeClaims:{...(cur.challengeClaims||{}), [dateKey()]:true}};
+      persistRaw(n); return n; });
+    toast$(`CHALLENGE COMPLETE  +${xp.toFixed(2)} XP`, "#a78bfa");
     try { navigator.vibrate && navigator.vibrate([10,40,20]); } catch {}
   };
   const claimBoss = (boss) => {
     setData(cur=>{ if ((cur.bossClaims||{})[boss.wkStart]) return cur;
-      const cats = cur.categories.map(c=>({...c, value: Math.min(c.maxValue, c.value + boss.xp)}));
-      const n={...cur, categories:cats, bossClaims:{...(cur.bossClaims||{}), [boss.wkStart]:boss.id},
-      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+boss.gems}}; persistRaw(n); return n; });
-    toast$(`⚔ BOSS SLAIN +${boss.gems} 💎 · +${boss.xp.toFixed(2)} XP ALL STATS`, "#ff8f5e");
+      const n={...grantXP(cur, boss.xp), bossClaims:{...(cur.bossClaims||{}), [boss.wkStart]:boss.id}};
+      persistRaw(n); return n; });
+    toast$(`⚔ BOSS SLAIN  +${boss.xp.toFixed(2)} XP`, "#ff8f5e");
     try { navigator.vibrate && navigator.vibrate([20,50,20,50,40]); } catch {}
   };
   const claimTrophy = (t) => {
     if (data.trophies && data.trophies[t.id]) return;
     setData(cur=>{ if (cur.trophies && cur.trophies[t.id]) return cur;
-      const n={...cur, trophies:{...(cur.trophies||{}), [t.id]:dateKey()},
-      wallet:{...cur.wallet, gemsEarned:(cur.wallet.gemsEarned||0)+t.gems}}; persistRaw(n); return n; });
-    toast$(`🏆 ${t.name.toUpperCase()} +${t.gems} 💎`, "#ffc46b");
+      const xp = Math.max(0.12, Math.min(0.70, (t.gems||10)/70));
+      const n={...grantXP(cur, xp), trophies:{...(cur.trophies||{}), [t.id]:dateKey()}};
+      persistRaw(n); return n; });
+    toast$(`🏆 ${t.name.toUpperCase()}  +XP`, "#ffc46b");
     try { navigator.vibrate && navigator.vibrate([10,40,20]); } catch {}
   };
   const markSpinUsed = (dk) => setData(d=>{
@@ -3580,7 +3602,7 @@ export default function App() {
     const dk = dateKey();
     if ((data.wallet.perfectClaimedByDay||{})[dk]) return;
     const claimed = {...(data.wallet.perfectClaimedByDay||{})}; claimed[dk]=true;
-    update({...data, wallet:{...data.wallet, gemsEarned:(data.wallet.gemsEarned||0)+PERFECT_DAY_BONUS_GEMS, perfectClaimedByDay:claimed}});
+    update({...grantXP(data, PERFECT_DAY_XP), wallet:{...data.wallet, perfectClaimedByDay:claimed}});
     setPerfectShow(true);
     fireConfettiBig("#f59e0b");
     try { navigator.vibrate && navigator.vibrate([40,60,40,60,40,60,150]); } catch {}
@@ -3918,7 +3940,7 @@ export default function App() {
   const pet = data.wallet.pet;
   const coins = coinBalance(data.wallet);
   const gems = gemBalance(data.wallet);
-  const spinsAvail = Math.max(0, spinsUnlocked(data, today) - ((data.wallet.spinsUsedByDay||{})[today]||0));
+  const spinsAvail = 0;   // the casino is retired
   spinsAvailRef.current = spinsAvail;
   coinBalRef.current = coinBalance(data.wallet);
   const perfectStreak = bestPerfectStreak(data);
@@ -4257,7 +4279,7 @@ export default function App() {
           <div style={{textAlign:"center",animation:"popIn .5s ease"}}>
             <div style={{fontSize:64}}>🏆</div>
             <div style={{fontSize:30,fontWeight:900,color:"#fff",textShadow:"0 0 24px #f59e0b",letterSpacing:1}}>PERFECT DAY</div>
-            <div style={{fontSize:16,fontWeight:800,color:"#fcd34d",marginTop:4}}>+{PERFECT_DAY_BONUS_GEMS} 💎</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#fcd34d",marginTop:4}}>+{PERFECT_DAY_XP.toFixed(2)} XP</div>
           </div>
         </div>
       )}
@@ -4312,9 +4334,6 @@ export default function App() {
             <div style={{fontSize:19,color:T.accent,fontWeight:900,marginTop:2}}>{showLevelUp.name}</div>
             <div style={{fontSize:11,color:GOOD,marginTop:12,fontWeight:900,letterSpacing:1}}>UNLOCKED</div>
             <div style={{fontSize:14,color:DIM,marginTop:3,fontWeight:700}}>{showLevelUp.unlock}</div>
-            {showLevelUp.gems > 0 && (
-              <div style={{marginTop:14,fontSize:15,fontWeight:900,color:"#c084fc"}}>+{showLevelUp.gems} 💎</div>
-            )}
             <div style={{fontSize:9,color:FAINT,fontWeight:800,marginTop:14}}>TAP ANYWHERE TO CONTINUE</div>
           </div>
         </div>
@@ -4935,11 +4954,12 @@ export default function App() {
                 const pct = Math.min(100,(progress/ch.goal)*100);
                 const comboHot = data.combo && (Date.now()-(data.combo.lastAt||0))<=COMBO_WINDOW_MS && (data.combo.count||0)>=1;
                 return (
-                  <div style={{...C.glass, border:`1.5px solid ${claimed?LINE:`${T.accent}66`}`, marginBottom:11, padding:"13px 15px"}}>
+                  <div onClick={()=>setTrialsOpen(true)}
+                    style={{...C.glass, border:`1.5px solid ${claimed?LINE:`${T.accent}66`}`, marginBottom:11, padding:"13px 15px", cursor:"pointer"}}>
                     <div style={{display:"flex",alignItems:"center",gap:12}}>
                       <div style={{fontSize:24}}>{claimed?"🏅":"🎯"}</div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1.5,color:T.accent}}>DAILY CHALLENGE</div>
+                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1.5,color:T.accent}}>DAILY CHALLENGE · TAP FOR ALL TRIALS</div>
                         <div style={{fontSize:13.5,fontWeight:800,color:"#fff",marginTop:2}}>{label}</div>
                         <div style={{height:6,borderRadius:4,background:"rgba(0,0,0,0.3)",marginTop:8,overflow:"hidden"}}>
                           <div style={{height:"100%",width:`${pct}%`,borderRadius:4,background:T.accent,transition:"width .4s"}}/>
@@ -4948,17 +4968,17 @@ export default function App() {
                       {claimed ? (
                         <div style={{fontSize:10,fontWeight:900,color:GOOD,whiteSpace:"nowrap"}}>DONE ✓</div>
                       ) : met ? (
-                        <button onClick={()=>claimChallenge(ch.gems)} style={{...C.btn,padding:"11px 14px",fontSize:11,whiteSpace:"nowrap",animation:"glowPulse 1.6s ease-in-out infinite"}}>CLAIM +{ch.gems} 💎</button>
+                        <button onClick={e=>{e.stopPropagation(); claimChallenge(ch.gems);}} style={{...C.btn,padding:"11px 14px",fontSize:11,whiteSpace:"nowrap",animation:"glowPulse 1.6s ease-in-out infinite"}}>CLAIM +XP</button>
                       ) : (
                         <div style={{textAlign:"center",whiteSpace:"nowrap"}}>
                           <div style={{fontSize:14,fontWeight:900,color:"#fff"}}>{Math.min(progress,ch.goal)}/{ch.goal}</div>
-                          <div style={{fontSize:8.5,fontWeight:800,color:DIM}}>+{ch.gems} 💎</div>
+                          <div style={{fontSize:8.5,fontWeight:800,color:DIM}}>+0.30 XP</div>
                         </div>
                       )}
                     </div>
                     {comboHot && (
                       <div style={{fontSize:9.5,fontWeight:800,color:"#ff9a4e",marginTop:9}}>
-                        🔥 MOMENTUM — next quest pays x{COMBO_MULT[Math.min(2,(data.combo.count||0))]} coins
+                        🔥 MOMENTUM — you're on a roll
                       </div>
                     )}
                   </div>
@@ -4998,7 +5018,7 @@ export default function App() {
                   <div style={{fontSize:30}}>🎰</div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{spinsAvail} SPIN{spinsAvail>1?"S":""} READY!</div>
-                    <div style={{fontSize:10.5,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>Tap to play · {SPIN_COST} 🪙 per pull · win 💎</div>
+                    <div style={{fontSize:10.5,fontWeight:700,color:"rgba(255,255,255,0.9)"}}>&nbsp;</div>
                   </div>
                   <div style={{fontSize:20,color:"#fff"}}>›</div>
                 </div>
@@ -5011,7 +5031,7 @@ export default function App() {
                   <div style={{fontSize:30}}>🏆</div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:15,fontWeight:900,color:"#3a2200"}}>PERFECT DAY!</div>
-                    <div style={{fontSize:10.5,fontWeight:800,color:"#5a3600"}}>Claim your +{PERFECT_DAY_BONUS_GEMS} 💎 jackpot</div>
+                    <div style={{fontSize:10.5,fontWeight:800,color:"#5a3600"}}>Claim your +{PERFECT_DAY_XP.toFixed(2)} XP bonus</div>
                   </div>
                   <div style={{fontSize:20,color:"#3a2200"}}>›</div>
                 </div>
@@ -5315,7 +5335,7 @@ export default function App() {
                     <select style={{...C.select,width:140,padding:"9px 11px",fontSize:12.5}} value=""
                       onChange={e=>{ if(e.target.value) update({...data, tasks:data.tasks.map(x=>x.id===t.id?{...x,catId:e.target.value}:x)}); }}>
                       <option value="">Assign...</option>
-                      {data.categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                      <option value="xp">🌀 XP</option>
                     </select>
                     <button onClick={()=>setConfirmBox({type:"task",id:t.id,name:t.name})}
                       style={{background:"none",border:"none",color:FAINT,fontSize:16,cursor:"pointer"}}>✕</button>
@@ -5343,6 +5363,9 @@ export default function App() {
                 <div style={{...C.label,marginTop:16}}>ICON <span style={{color:FAINT}}>· shown on the circle view</span></div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:132,overflowY:"auto",
                   background:"rgba(0,0,0,0.2)",padding:8,borderRadius:BLOCK?0:14}}>
+                  <input value={t.icon||""} onChange={e=>set({icon:e.target.value.slice(0,4)})}
+                    placeholder="type any emoji"
+                    style={{...C.input,width:140,padding:"7px 10px",fontSize:15,marginRight:4}}/>
                   <button onClick={()=>set({icon:""})}
                     style={{height:34,padding:"0 10px",borderRadius:BLOCK?0:10,cursor:"pointer",fontFamily:FONT,
                       fontSize:9.5,fontWeight:900,color:"#fff",background:"rgba(255,255,255,0.08)",
@@ -5354,11 +5377,7 @@ export default function App() {
                         border:t.icon===ic?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>{ic}</button>
                   ))}
                 </div>
-                <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>AUTO uses the category's icon</div>
-                <div style={{...C.label,marginTop:16}}>CATEGORY</div>
-                <select style={C.select} value={t.catId||""} onChange={e=>set({catId:e.target.value})}>
-                  {data.categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-                </select>
+                <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>Tap the box and use your keyboard's emoji key for anything not listed</div>
                 <div style={{...C.label,marginTop:16}}>QUEST COLOR</div>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
                   <button onClick={()=>set({color:null})}
@@ -5866,78 +5885,6 @@ export default function App() {
               </div>
               <div style={{fontSize:18,color:FAINT}}>›</div>
             </div>
-            <div style={{...C.sectionTitle,marginBottom:12}}>Attributes</div>
-            <div style={C.glass}>
-              {data.categories.map(c=>{
-                const pct=(c.value/c.maxValue)*100;
-                const editing = editingCat===c.id;
-                return (
-                  <div key={c.id} style={{padding:"10px 0",borderBottom:`1px solid ${LINE}`}}>
-                    {!editing ? (
-                      <div onClick={()=>setEditingCat(c.id)} style={{cursor:"pointer"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                          <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>{c.icon} {c.name}</span>
-                          <span style={{fontSize:12.5,fontWeight:900,color:"#fff"}}>{S.showXP?`${c.value.toFixed(2)} / ${c.maxValue}`:`${Math.round(pct)}%`}</span>
-                        </div>
-                        <div style={{height:11,background:"rgba(0,0,0,0.3)",borderRadius:6,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${pct}%`,background:c.color,borderRadius:6,boxShadow:`0 0 10px ${c.color}88`}}/>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div style={{display:"flex",gap:8,marginBottom:8}}>
-                          <input style={{...C.input,width:56,textAlign:"center",padding:"11px 4px"}} value={c.icon} maxLength={2}
-                            onChange={e=>saveEditCat(c.id,{icon:e.target.value})}/>
-                          <input style={{...C.input,flex:1}} value={c.name}
-                            onChange={e=>saveEditCat(c.id,{name:e.target.value})}/>
-                        </div>
-                        <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:10}}>
-                          {CAT_COLORS.map(col=>(
-                            <button key={col} onClick={()=>saveEditCat(c.id,{color:col})}
-                              style={{width:28,height:28,borderRadius:"50%",background:col,cursor:"pointer",
-                                border:c.color===col?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",padding:0}}/>
-                          ))}
-                        </div>
-                        <div style={{display:"flex",gap:8}}>
-                          <button style={{...C.btnSm,flex:1}} onClick={()=>setEditingCat(null)}>DONE</button>
-                          <button style={{...C.btnSm,flex:1,color:BAD}}
-                            onClick={()=>setConfirmBox({type:"cat",id:c.id,name:c.name,taskCount:data.tasks.filter(t=>t.catId===c.id).length})}>
-                            DELETE
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              <div style={{marginTop:12}}>
-                <div style={C.label}>NEW ATTRIBUTE</div>
-                <div style={{display:"flex",gap:8}}>
-                  <input style={{...C.input,width:56,textAlign:"center",padding:"11px 4px"}} value={newCat.icon} maxLength={2}
-                    onChange={e=>setNewCat({...newCat,icon:e.target.value})}/>
-                  <input style={{...C.input,flex:1}} value={newCat.name} placeholder="Name..."
-                    onChange={e=>setNewCat({...newCat,name:e.target.value})}/>
-                  <button style={{...C.btn,padding:"0 17px"}} onClick={addCat}>+</button>
-                </div>
-              </div>
-            </div>
-
-            {orphanTasks.length>0 && (
-              <div style={{...C.glass,border:"1.5px solid #ffc46b66"}}>
-                <div style={{...C.label,color:"#ffc46b"}}>QUESTS NEEDING REASSIGNMENT</div>
-                {orphanTasks.map(t=>(
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0"}}>
-                    <div style={{flex:1,fontSize:13.5,color:"#fff",fontWeight:600}}>{t.name}</div>
-                    <select style={{...C.select,width:140,padding:"9px 11px",fontSize:12.5}} value=""
-                      onChange={e=>{ if(e.target.value) update({...data, tasks:data.tasks.map(x=>x.id===t.id?{...x,catId:e.target.value}:x)}); }}>
-                      <option value="">Assign...</option>
-                      {data.categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            )}
-
             <div style={{...C.sectionTitle,margin:"18px 2px 4px"}}>The Path of Ascension</div>
             <div style={{fontSize:11,color:DIM,margin:"0 2px 12px",fontWeight:700}}>Tap ✎ to rename a rank.</div>
             {LEVELS.map(L=>{
@@ -5986,31 +5933,6 @@ export default function App() {
                 </div>
               );
             })}
-
-            <div style={{...C.sectionTitle, margin:"18px 2px 12px"}}>Trophies</div>
-            <div style={C.glass}>
-              {TROPHIES.map((t,i)=>{
-                const claimedOn = (data.trophies||{})[t.id];
-                const unlocked = claimedOn || t.check(data);
-                return (
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 2px",
-                    borderBottom: i<TROPHIES.length-1 ? `1px solid ${LINE}` : "none", opacity: unlocked?1:0.45}}>
-                    <div style={{fontSize:22,width:32,textAlign:"center",filter:unlocked?"none":"grayscale(1)"}}>{t.icon}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>{t.name}</div>
-                      <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:1}}>{t.desc}</div>
-                    </div>
-                    {claimedOn ? (
-                      <div style={{fontSize:12,fontWeight:900,color:GOOD}}>✓</div>
-                    ) : unlocked ? (
-                      <button onClick={()=>claimTrophy(t)} style={{...C.btn,padding:"9px 12px",fontSize:10.5,animation:"glowPulse 1.6s ease-in-out infinite"}}>+{t.gems} 💎</button>
-                    ) : (
-                      <div style={{fontSize:10,fontWeight:800,color:FAINT}}>+{t.gems} 💎</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
 
@@ -6186,6 +6108,43 @@ export default function App() {
                 {STORY[storyOpen].b}
               </div>
               <button style={{...C.btn,width:"100%",marginTop:20,padding:"14px"}} onClick={()=>setStoryOpen(null)}>CLOSE</button>
+            </div>
+          </div>
+        )}
+
+        {/* TRIALS — every standing way to earn XP */}
+        {trialsOpen && (
+          <div style={C.modal} onClick={()=>setTrialsOpen(false)}>
+            <div style={C.sheet} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>Trials</div>
+              <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:3,marginBottom:14,lineHeight:1.5}}>
+                Every one of these pays XP, and XP is the only thing that raises your rank.
+              </div>
+            <div style={{...C.sectionTitle, margin:"18px 2px 12px"}}>Trophies</div>
+            <div style={C.glass}>
+              {TROPHIES.map((t,i)=>{
+                const claimedOn = (data.trophies||{})[t.id];
+                const unlocked = claimedOn || t.check(data);
+                return (
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 2px",
+                    borderBottom: i<TROPHIES.length-1 ? `1px solid ${LINE}` : "none", opacity: unlocked?1:0.45}}>
+                    <div style={{fontSize:22,width:32,textAlign:"center",filter:unlocked?"none":"grayscale(1)"}}>{t.icon}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>{t.name}</div>
+                      <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:1}}>{t.desc}</div>
+                    </div>
+                    {claimedOn ? (
+                      <div style={{fontSize:12,fontWeight:900,color:GOOD}}>✓</div>
+                    ) : unlocked ? (
+                      <button onClick={()=>claimTrophy(t)} style={{...C.btn,padding:"9px 12px",fontSize:10.5,animation:"glowPulse 1.6s ease-in-out infinite"}}>CLAIM XP</button>
+                    ) : (
+                      <div style={{fontSize:10,fontWeight:800,color:FAINT}}>+XP</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+              <button style={{...C.btn,width:"100%",marginTop:14,padding:"14px"}} onClick={()=>setTrialsOpen(false)}>CLOSE</button>
             </div>
           </div>
         )}
@@ -6909,112 +6868,6 @@ export default function App() {
         )}
 
         {/* ══ CASINO ══ */}
-        {view==="casino" && (
-          <div style={{padding:"14px 16px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={C.sectionTitle}>The Reward Hall</div>
-              <div style={{display:"flex",gap:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:4,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 10px"}}>
-                  <span style={{fontSize:12}}>🪙</span><span style={{fontSize:12,fontWeight:900,color:"#fcd34d"}}>{coins}</span>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:4,background:GLASS,border:`1px solid ${LINE}`,borderRadius:12,padding:"5px 10px"}}>
-                  <span style={{fontSize:12}}>💎</span><span style={{fontSize:12,fontWeight:900,color:"#67e8f9"}}>{gems}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Spins available */}
-            <div style={{...C.glass,textAlign:"center"}}>
-              <div style={{fontSize:11,fontWeight:800,color:DIM}}>SPINS AVAILABLE TODAY</div>
-              <div style={{display:"flex",justifyContent:"center",gap:8,margin:"12px 0"}}>
-                {SPIN_THRESHOLDS.map((th,i)=>{
-                  const unlocked = i < spinsUnlocked(data, today);
-                  const used = i < ((data.wallet.spinsUsedByDay||{})[today]||0);
-                  return (
-                    <div key={i} style={{width:42,height:42,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,
-                      background: used ? "rgba(255,255,255,0.08)" : unlocked ? "linear-gradient(135deg,#7c3aed,#db2777)" : "rgba(255,255,255,0.08)",
-                      border: unlocked && !used ? "2px solid #fff" : `1px solid ${LINE}`,
-                      opacity: used ? 0.4 : 1}}>
-                      {used ? "✓" : unlocked ? "🎰" : "🔒"}
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginBottom:14}}>
-                Earn spins by completing your day's quests. {SPIN_COST} 🪙 per pull.
-              </div>
-              {spinsAvail > 0 && coins >= SPIN_COST ? (
-                <button style={{...C.btn,width:"100%",padding:"15px",fontSize:15,background:"linear-gradient(135deg,#7c3aed,#db2777,#f59e0b)",color:"#fff"}}
-                  onClick={newRound}>
-                  🎲 NEW GAME ({spinsAvail} LEFT)
-                </button>
-              ) : (
-                <div style={{fontSize:12,color:FAINT,fontWeight:700,padding:"4px 0"}}>
-                  {spinsAvail===0 ? "Complete more quests to unlock a spin" : `Need ${SPIN_COST} coins to play`}
-                </div>
-              )}
-            </div>
-
-            {/* The active game — stays mounted through the whole round (fixes blank-game bug) */}
-            {((spinsAvail > 0 && coins >= SPIN_COST) || spinState!=="ready") && (
-              <div style={{...C.glass,textAlign:"center",padding:"20px 16px"}}>
-                <div style={{fontSize:11,fontWeight:900,letterSpacing:2,color:T.accent,marginBottom:4}}>
-                  {spinGame==="slot"?"🎰 SLOT MACHINE":spinGame==="wheel"?"🎡 PRIZE WHEEL":"🃏 BLACKJACK"}
-                </div>
-                <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:16}}>A random game is chosen each round</div>
-
-                {spinGame==="slot" && <SlotMachine state={spinState} onSettle={settleSpin}/>}
-                {spinGame==="wheel" && <PrizeWheel state={spinState} onSettle={settleSpin}/>}
-                {spinGame==="blackjack" && <Blackjack state={spinState} onSettle={settleSpin}/>}
-
-                {spinState==="ready" && (
-                  (spinsAvail > 0 && coins >= SPIN_COST) ? (
-                    <button style={{...C.btn,width:"100%",padding:"15px",fontSize:15,marginTop:18,
-                      background:"linear-gradient(135deg,#7c3aed,#db2777)",color:"#fff"}}
-                      onClick={beginPlay}>
-                      {spinGame==="blackjack" ? `DEAL · ${SPIN_COST} 🪙` : `PULL · ${SPIN_COST} 🪙`}
-                    </button>
-                  ) : (
-                    <div style={{fontSize:12,color:FAINT,fontWeight:700,marginTop:18}}>
-                      {spinsAvail===0 ? "Complete more quests to unlock a spin" : `Need ${SPIN_COST} coins`}
-                    </div>
-                  )
-                )}
-                {(spinState==="spinning" || spinState==="playing") && (
-                  <div style={{fontSize:12,color:DIM,fontWeight:800,marginTop:18,letterSpacing:1}}>
-                    {spinGame==="blackjack" ? "YOUR MOVE..." : "GOOD LUCK..."}
-                  </div>
-                )}
-                {spinState==="done" && (
-                  <div style={{marginTop:18}}>
-                    <div style={{fontSize:15,fontWeight:900,color:RARITY[spinResult.rarity].color,letterSpacing:1,animation:"popIn .4s ease"}}>
-                      {spinResult.gems>0 ? `${RARITY[spinResult.rarity].label} · +${spinResult.gems} 💎` : "NO WIN — TRY AGAIN!"}
-                    </div>
-                    {spinsAvail > 0 && coins >= SPIN_COST ? (
-                      <button style={{...C.btn,width:"100%",padding:"14px",fontSize:14,marginTop:10}}
-                        onClick={newRound}>
-                        PLAY AGAIN ({spinsAvail} LEFT)
-                      </button>
-                    ) : (
-                      <button style={{...C.btnSm,width:"100%",padding:"14px",marginTop:10}} onClick={()=>{ setSpinState("ready"); setView("shop"); }}>
-                        {gems>0 ? "SPEND YOUR 💎 IN THE SHOP →" : "DONE"}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div style={{...C.glass}}>
-              <div style={C.label}>HOW IT WORKS</div>
-              <div style={{fontSize:12,color:DIM,fontWeight:600,lineHeight:1.6}}>
-                Completing quests earns <b style={{color:"#fcd34d"}}>coins</b> (harder quests = more). Finishing enough of your day unlocks <b style={{color:"#fff"}}>spins</b>. Spend coins to play a random game and win <b style={{color:"#67e8f9"}}>gems</b> — the currency for the Shop. Keep a perfect-day streak going to unlock the rarest gear.
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ══ SHOP ══ */}
         {view==="shop" && (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
