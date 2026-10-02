@@ -82,6 +82,7 @@ const THEMES = {
 const QUEST_ICONS = ["🏋️","🏃","🚴","🚶","🤸","🧘","💧","💊","🥗","🍳","😴","🛏️","📖","📚","✍️","📝","🙏","⛪","✝️","💼","💻","📞","📊","💰","🧹","🧺","🧼","🍽️","🚿","🪥","💈","🧴","🐕","🌱","🎸","🎨","🎯","🎮","☀️","🌙","⏰","🧠","❤️","👨‍👩‍👧","🎓","🔧","📵","🚭"];
 const iconFor = (task, cat) => (task && task.icon) || (cat && cat.icon) || "⭐";
 
+const NAV_ORDERABLE = ["tasks","boss","plan","board","shop","stats"];
 const THEME_KEYS = Object.keys(THEMES);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -153,6 +154,7 @@ const DEFAULT_SETTINGS = {
   cardStyle: "vivid", // "vivid" | "tinted"
   questLayout: "list", // "list" | "circles"
   questWeekView: "last7", // "last7" | "week" (Mon→Sun)
+  navOrder: [],   // bottom-bar arrangement; empty means the default order
   casinoEnabled: false,
   shopEnabled: true,
   questsEnabled: true,
@@ -553,6 +555,8 @@ function migrate(d) {
   if (!["vivid","tinted"].includes(settings.cardStyle)) settings.cardStyle = "vivid";
   if (!["list","circles"].includes(settings.questLayout)) settings.questLayout = "list";
   if (!["last7","week"].includes(settings.questWeekView)) settings.questWeekView = "last7";
+  settings.navOrder = Array.isArray(settings.navOrder)
+    ? settings.navOrder.filter((v,i,a)=>NAV_ORDERABLE.includes(v) && a.indexOf(v)===i) : [];
   // Collapse any legacy multi-attribute save into the single XP pool, keeping
   // the rating the user already earned.
   {
@@ -4041,14 +4045,30 @@ export default function App() {
     ...bevelIn(lit ? (col || BLK.btnL) : BLK.slotL, BLK.slotD, w),
   }) : null;
 
+  // Home and More are pinned; everything between them is yours to arrange.
+  const NAV_DEFS = {
+    tasks: { icon:"⚔",  label:"QUESTS",  on: S.questsEnabled !== false },
+    boss:  { icon:"🔥", label:"RIVAL",   on: S.bossEnabled   !== false },
+    plan:  { icon:"🗓", label:"PLAN",    on: S.planEnabled   !== false },
+    board: { icon:"🧮", label:"BOARD",   on: !!S.kanbanEnabled },
+    shop:  { icon:"🦊", label:"SUMMONS", on: !!S.shopEnabled },
+    stats: { icon:"🪵", label:"ASCENT",  on: S.statsEnabled  !== false },
+  };
+  const navOrder = (()=>{
+    const saved = Array.isArray(S.navOrder) ? S.navOrder.filter(v=>NAV_ORDERABLE.includes(v)) : [];
+    return [...saved, ...NAV_ORDERABLE.filter(v=>!saved.includes(v))];
+  })();
+  const moveNav = (v, dir) => {
+    const arr = [...navOrder];
+    const i = arr.indexOf(v), j = i + dir;
+    if (i < 0 || j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setSetting("navOrder", arr);
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
+  };
   const navItems = [
     { v:"dashboard", icon:"⛰", label:"HOME" },
-    ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
-    ...(S.bossEnabled !== false ? [{ v:"boss", icon:"🔥", label:"RIVAL" }] : []),
-    ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
-    ...(S.kanbanEnabled ? [{ v:"board", icon:"🧮", label:"BOARD" }] : []),
-    ...(S.shopEnabled ? [{ v:"shop", icon:"🦊", label:"SUMMONS" }] : []),
-    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"🪵", label:"ASCENT" }] : []),
+    ...navOrder.filter(v=>NAV_DEFS[v] && NAV_DEFS[v].on).map(v=>({ v, ...NAV_DEFS[v] })),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
@@ -6814,6 +6834,37 @@ export default function App() {
                 </div>
                 <Switch on={S.shopEnabled} onToggle={()=>setSetting("shopEnabled",!S.shopEnabled)}/>
               </div>
+            </div>
+
+            {/* BOTTOM BAR ORDER */}
+            <div style={C.glass}>
+              <div style={C.label}>BOTTOM BAR ORDER</div>
+              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>
+                Home stays first and More stays last. Arrange everything in between.
+              </div>
+              {navOrder.map((v,i)=>{
+                const d = NAV_DEFS[v];
+                if (!d) return null;
+                return (
+                  <div key={v} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",
+                    borderBottom: i<navOrder.length-1?`1px solid ${LINE}`:"none", opacity:d.on?1:0.45}}>
+                    <div style={{width:22,textAlign:"center",fontSize:9.5,fontWeight:900,color:FAINT}}>{i+1}</div>
+                    <div style={{fontSize:17,width:24,textAlign:"center"}}>{d.icon}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>{d.label}</div>
+                      {!d.on && <div style={{fontSize:9.5,color:FAINT,fontWeight:700}}>hidden — turn it on above</div>}
+                    </div>
+                    <button disabled={i===0} onClick={()=>moveNav(v,-1)}
+                      style={{...C.btnSm,padding:"7px 11px",fontSize:12,opacity:i===0?0.3:1,
+                        cursor:i===0?"default":"pointer"}}>▲</button>
+                    <button disabled={i===navOrder.length-1} onClick={()=>moveNav(v,1)}
+                      style={{...C.btnSm,padding:"7px 11px",fontSize:12,opacity:i===navOrder.length-1?0.3:1,
+                        cursor:i===navOrder.length-1?"default":"pointer"}}>▼</button>
+                  </div>
+                );
+              })}
+              <button style={{...C.btnSm,width:"100%",padding:"11px",marginTop:10}}
+                onClick={()=>setSetting("navOrder",[])}>↺ DEFAULT ORDER</button>
             </div>
 
             {/* BACKUPS */}
