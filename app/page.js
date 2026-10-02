@@ -4048,7 +4048,7 @@ export default function App() {
     ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
     ...(S.kanbanEnabled ? [{ v:"board", icon:"🧮", label:"BOARD" }] : []),
     ...(S.shopEnabled ? [{ v:"shop", icon:"🦊", label:"SUMMONS" }] : []),
-    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"⚕️", label:"ASCENT", fs:18, dy:-2 }] : []),
+    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"⚕️", label:"ASCENT", fs:19 }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
@@ -6915,9 +6915,11 @@ export default function App() {
       <div style={C.nav}>
         {navItems.map(n=>(
           <button key={n.v} style={C.navBtn(isActive(n.v))} onClick={()=>setView(n.v)}>
-            <span style={{fontSize:n.fs||15,lineHeight:1,display:"block",
-              transform:`translateY(${n.dy||0}px)`}}>{n.icon}</span>
-            {n.label}
+            {/* A fixed-height box for the glyph: emoji and text symbols have very
+                different intrinsic heights, which is what pushed the labels out of line. */}
+            <span style={{height:19,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:n.fs||16,lineHeight:1}}>{n.icon}</span>
+            <span style={{lineHeight:1,display:"block"}}>{n.label}</span>
           </button>
         ))}
       </div>
