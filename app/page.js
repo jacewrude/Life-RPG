@@ -4048,7 +4048,7 @@ export default function App() {
     ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
     ...(S.kanbanEnabled ? [{ v:"board", icon:"🧮", label:"BOARD" }] : []),
     ...(S.shopEnabled ? [{ v:"shop", icon:"🦊", label:"SUMMONS" }] : []),
-    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"⚕️", label:"ASCENT", fs:19 }] : []),
+    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"🪵", label:"ASCENT" }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
@@ -6781,7 +6781,7 @@ export default function App() {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⚕️ Ascension Path</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🪵 Ascension Path</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your attributes and the climb to Sage</div>
                 </div>
                 <Switch on={S.statsEnabled!==false} onToggle={()=>setSetting("statsEnabled",!(S.statsEnabled!==false))}/>
