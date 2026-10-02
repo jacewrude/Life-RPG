@@ -1201,7 +1201,7 @@ function drawPet(els, art, color, cx, cy, s, nk) {
         const mx = cx + side*4.3, my = cy + 0.6;
         const tx = cx + side*4.9, ty = cy - 2.6;
         L(`M ${bx*s} ${by*s} Q ${mx*s} ${my*s} ${tx*s} ${ty*s}`,"#2f7fd8",0.72);
-        P(TRI(tx-side*0.1-0.5, ty+0.4, tx+side*0.25, ty-1.3, tx+side*0.1+0.5, ty+0.45),"#10203c");
+        P(TRI(tx-0.52, ty+0.42, tx, ty-1.32, tx+0.52, ty+0.42),"#10203c");   // centred on the tip
         swirl(cx + side*3.1, cy + 1.25, 0.46, 0.17);
         swirl(cx + side*4.45, cy - 0.85, 0.42, 0.16);
       });
@@ -4048,7 +4048,7 @@ export default function App() {
     ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
     ...(S.kanbanEnabled ? [{ v:"board", icon:"🧮", label:"BOARD" }] : []),
     ...(S.shopEnabled ? [{ v:"shop", icon:"🦊", label:"SUMMONS" }] : []),
-    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"⚕️", label:"ASCENT" }] : []),
+    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"⚕️", label:"ASCENT", fs:18, dy:-2 }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
@@ -6915,7 +6915,8 @@ export default function App() {
       <div style={C.nav}>
         {navItems.map(n=>(
           <button key={n.v} style={C.navBtn(isActive(n.v))} onClick={()=>setView(n.v)}>
-            <span style={{fontSize:15,lineHeight:1}}>{n.icon}</span>
+            <span style={{fontSize:n.fs||15,lineHeight:1,display:"block",
+              transform:`translateY(${n.dy||0}px)`}}>{n.icon}</span>
             {n.label}
           </button>
         ))}
