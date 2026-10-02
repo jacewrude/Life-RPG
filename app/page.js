@@ -1159,6 +1159,19 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       return [x1,y1,ang];
     };
     const A0 = Math.PI*1.04, A1 = Math.PI*1.96;
+    // the pattern: inward-curling spirals, the markings he actually wears
+    const swirl = (sx,sy,rad,wid,turns) => {
+      let d = "", first = true;
+      for (let t=0; t<=1.001; t+=0.05) {
+        const ang = t*Math.PI*2*(turns||1.5);
+        const rr  = rad*(1 - t*0.80);
+        const px  = (sx + Math.cos(ang)*rr)*s, py = (sy + Math.sin(ang)*rr)*s;
+        d += (first ? `M ${px} ${py}` : ` L ${px} ${py}`); first = false;
+      }
+      els.push(<path key={nk()} d={d} stroke="#10203c" strokeWidth={wid*s} fill="none"
+        strokeLinecap="round" strokeLinejoin="round"/>);
+    };
+
 
     if (n===1) {            // SHUKAKU — heavy sitting tanuki, one thick segmented tail
       // the tail is a broad plume curling up behind him
@@ -1181,14 +1194,17 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       R(cx-1.0,cy-1.25,2.0,0.8,"#1d1710",0.3);                        // wide jagged maw
       [-0.7,-0.1,0.5].forEach(dx=> P(TRI(cx+dx,cy-1.25,cx+dx+0.2,cy-0.75,cx+dx+0.4,cy-1.25),"#efe6cf"));
     } else if (n===2) {     // MATATABI — lithe blue cat wreathed in flame, two tails
-      for (let i=0;i<2;i++) {
-        const ang=Math.PI*(1.18+0.64*i);                 // one to the left, one to the right
-        const x0=cx+Math.cos(ang)*1.7, y0=cy+0.9+Math.sin(ang)*1.7;
-        const x1=cx+Math.cos(ang)*4.8, y1=cy+0.9+Math.sin(ang)*4.8;
-        const xm=cx+Math.cos(ang+0.3)*3.3, ym=cy+0.9+Math.sin(ang+0.3)*3.3;
-        L(Q(x0,y0,xm,ym,x1,y1),"#2f7fd8",0.62);
-        P(TRI(x1-0.55,y1+0.35,x1+0.15,y1-1.0,x1+0.65,y1+0.4),"#10203c");
-      }
+      // Both tails leave the haunches low and sweep up and outward, so they read
+      // as tails rather than arms. The swirl pattern runs along them.
+      [-1,1].forEach(side=>{
+        const bx = cx + side*1.5, by = cy + 2.0;              // rooted at the rump
+        const mx = cx + side*4.3, my = cy + 0.6;
+        const tx = cx + side*4.9, ty = cy - 2.6;
+        L(`M ${bx*s} ${by*s} Q ${mx*s} ${my*s} ${tx*s} ${ty*s}`,"#2f7fd8",0.72);
+        P(TRI(tx-side*0.1-0.5, ty+0.4, tx+side*0.25, ty-1.3, tx+side*0.1+0.5, ty+0.45),"#10203c");
+        swirl(cx + side*3.1, cy + 1.25, 0.46, 0.17);
+        swirl(cx + side*4.45, cy - 0.85, 0.42, 0.16);
+      });
       // long low cat body with four legs
       P(`M ${(cx-2.4)*s} ${(cy+2.4)*s} L ${(cx-2.1)*s} ${(cy-0.1)*s} Q ${cx*s} ${(cy-1.5)*s} ${(cx+2.1)*s} ${(cy-0.2)*s} L ${(cx+2.4)*s} ${(cy+2.4)*s} Z`,"#2f7fd8");
       [-2.0,-0.8,0.45,1.6].forEach(dx=>{
@@ -1200,18 +1216,6 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       P(TRI(cx+1.3,cy-2.7,cx+1.8,cy-4.7,cx+0.2,cy-3.1),"#2f7fd8");
       P(TRI(cx-1.55,cy-3.0,cx-1.9,cy-4.2,cx-0.9,cy-3.2),"#10203c");
       P(TRI(cx+1.15,cy-3.0,cx+1.5,cy-4.2,cx+0.5,cy-3.2),"#10203c");
-      // the pattern: inward-curling spirals, the markings he actually wears
-      const swirl = (sx,sy,rad,wid,turns) => {
-        let d = "", first = true;
-        for (let t=0; t<=1.001; t+=0.05) {
-          const ang = t*Math.PI*2*(turns||1.5);
-          const rr  = rad*(1 - t*0.80);
-          const px  = (sx + Math.cos(ang)*rr)*s, py = (sy + Math.sin(ang)*rr)*s;
-          d += (first ? `M ${px} ${py}` : ` L ${px} ${py}`); first = false;
-        }
-        els.push(<path key={nk()} d={d} stroke="#10203c" strokeWidth={wid*s} fill="none"
-          strokeLinecap="round" strokeLinejoin="round"/>);
-      };
       // flank, haunch and shoulder
       swirl(cx-1.35, cy+0.85, 0.95, 0.34, 1.6);
       swirl(cx+1.30, cy+0.80, 0.95, 0.34, 1.6);
@@ -1268,7 +1272,15 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       R(cx-0.8,cy-1.95,1.6,0.75,"#6b1410",0.3);
       R(cx-0.65,cy-1.88,1.3,0.2,"#e8dca8",0.05);
     } else if (n===5) {     // KOKUO — white horse, head carried low
-      for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.5,0.6,"#e6e8ee",Math.PI*1.46,Math.PI*1.96); C(x1,y1,0.3,"#c9a469"); }
+      // Tails leave the rump itself, not a point floating above the body.
+      for (let i=0;i<5;i++) {
+        const ang = Math.PI*(1.34 + 0.16*i);
+        const bx = cx + 1.9, by = cy + 0.4;                 // anchored inside the barrel
+        const x1 = bx + Math.cos(ang)*4.3, y1 = by + Math.sin(ang)*4.3;
+        const xm = bx + Math.cos(ang+0.30)*2.7, ym = by + Math.sin(ang+0.30)*2.7;
+        L(Q(bx,by,xm,ym,x1,y1),"#e6e8ee",0.62);
+        C(x1,y1,0.3,"#c9a469");
+      }
       // barrel
       R(cx-2.05,cy-1.15,4.7,2.75,"#e6e8ee",1.0);        // a level barrel, square to the legs
       [-1.6,-0.6,1.0,1.95].forEach(dx=>{
@@ -1294,14 +1306,14 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       R(cx-1.6,cy-2.9,3.2,2.4,"#cfccdd",1.4);                        // soft head blob
       L(Q(cx-0.9,cy-2.2,cx-1.5,cy-3.8,cx-1.6,cy-4.8),"#cfccdd",0.3);  // stalks rooted in the head
       L(Q(cx+0.9,cy-2.2,cx+1.5,cy-3.8,cx+1.6,cy-4.8),"#cfccdd",0.3);
-      C(cx-1.62,cy-4.9,0.4,"#cfccdd"); C(cx-1.62,cy-4.9,0.15,"#17141f");
-      C(cx+1.62,cy-4.9,0.4,"#cfccdd"); C(cx+1.62,cy-4.9,0.15,"#17141f");
+      C(cx-1.62,cy-4.9,0.42,"#cfccdd"); C(cx-1.62,cy-4.9,0.33,"#17141f");
+      C(cx+1.62,cy-4.9,0.42,"#cfccdd"); C(cx+1.62,cy-4.9,0.33,"#17141f");
       [[-0.9,-1.9],[-0.3,-1.85],[0.3,-1.85],[0.9,-1.9]].forEach(([dx,dy])=> C(cx+dx,cy+dy,0.17,"#8e8aa4"));
       [[-1.4,1.0],[0.2,1.4],[1.3,0.8],[-0.4,0.3]].forEach(([dx,dy])=>
         L(Q(cx+dx,cy+dy,cx+dx,cy+dy+0.5,cx+dx+0.1,cy+dy+0.9),"#b2aec4",0.16,0.9));
     } else if (n===7) {     // CHOMEI — grey beetle, six orange leaf wings + tail
-      for (let i=0;i<6;i++) {
-        const ang = A0 + (A1-A0)*(i/5);
+      for (let i=0;i<7;i++) {
+        const ang = A0 + (A1-A0)*(i/6);
         const bx = cx + Math.cos(ang)*1.2, by = cy-0.4 + Math.sin(ang)*1.2;
         const tx = cx + Math.cos(ang)*4.6, ty = cy-0.4 + Math.sin(ang)*4.6;
         const px = cx + Math.cos(ang+0.26)*3.0, py = cy-0.4 + Math.sin(ang+0.26)*3.0;
@@ -1309,7 +1321,7 @@ function drawPet(els, art, color, cx, cy, s, nk) {
         P(`M ${bx*s} ${by*s} Q ${px*s} ${py*s} ${tx*s} ${ty*s} Q ${qx*s} ${qy*s} ${bx*s} ${by*s} Z`,"#e2762a");
         L(`M ${bx*s} ${by*s} L ${tx*s} ${ty*s}`,"#e8dc8a",0.14,0.9);
       }
-      L(Q(cx,cy+2.0,cx+0.9,cy+3.6,cx-0.4,cy+4.4),"#8fbf5a",0.3);     // the seventh, a green tail
+      L(Q(cx,cy+2.0,cx+0.9,cy+3.4,cx-0.3,cy+4.1),"#8fbf5a",0.26,0.8);   // trailing abdomen tip
       R(cx-0.95,cy-0.6,1.9,3.0,"#6f7a8c",0.8);                       // segmented abdomen
       [0.2,0.9,1.6].forEach(dy=> R(cx-0.95,cy+dy,1.9,0.2,"#4c5566",0.05));
       R(cx-1.2,cy-2.6,2.4,2.1,"#7d8898",0.7);                        // thorax/head
