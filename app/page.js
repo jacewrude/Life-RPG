@@ -147,7 +147,7 @@ const BAD = "#ff7b7b";
 const DEFAULT_SETTINGS = {
   kanbanEnabled: true,
   pomodoroEnabled: false,
-  showXP: true,
+  showXP: false,   // always words now; the toggle is gone
   statStyle: "radar", // "radar" | "bars" | "none"
   theme: "ember",
   cardStyle: "vivid", // "vivid" | "tinted"
@@ -205,11 +205,11 @@ const DEFAULT_WALLET = {
 
 // Rarity → gem payout weighting for the spin games
 const RARITY = {
-  common:   { label:"COMMON",    color:"#9ca3af", gems:[3,6] },
-  uncommon: { label:"UNCOMMON",  color:"#4ade80", gems:[7,14] },
-  rare:     { label:"RARE",      color:"#38bdf8", gems:[16,30] },
-  epic:     { label:"EPIC",      color:"#a855f7", gems:[34,60] },
-  legendary:{ label:"LEGENDARY", color:"#f59e0b", gems:[80,150] },
+  common:   { label:"D-RANK", color:"#9ca3af", gems:[3,6] },
+  uncommon: { label:"C-RANK", color:"#4ade80", gems:[7,14] },
+  rare:     { label:"B-RANK", color:"#38bdf8", gems:[16,30] },
+  epic:     { label:"A-RANK", color:"#a855f7", gems:[34,60] },
+  legendary:{ label:"S-RANK", color:"#f59e0b", gems:[80,150] },
 };
 
 // ── AURA SHAPES (each recolorable; colors bought separately) ──────────────────
@@ -1182,7 +1182,7 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       [-0.7,-0.1,0.5].forEach(dx=> P(TRI(cx+dx,cy-1.25,cx+dx+0.2,cy-0.75,cx+dx+0.4,cy-1.25),"#efe6cf"));
     } else if (n===2) {     // MATATABI — lithe blue cat wreathed in flame, two tails
       for (let i=0;i<2;i++) {
-        const ang=Math.PI*(1.56+0.30*i);                 // swung down, clear of the ears
+        const ang=Math.PI*(1.18+0.64*i);                 // one to the left, one to the right
         const x0=cx+Math.cos(ang)*1.7, y0=cy+0.9+Math.sin(ang)*1.7;
         const x1=cx+Math.cos(ang)*4.8, y1=cy+0.9+Math.sin(ang)*4.8;
         const xm=cx+Math.cos(ang+0.3)*3.3, ym=cy+0.9+Math.sin(ang+0.3)*3.3;
@@ -1270,11 +1270,10 @@ function drawPet(els, art, color, cx, cy, s, nk) {
     } else if (n===5) {     // KOKUO — white horse, head carried low
       for (let i=0;i<5;i++) { const [x1,y1]=arc(i,5,4.5,0.6,"#e6e8ee",Math.PI*1.46,Math.PI*1.96); C(x1,y1,0.3,"#c9a469"); }
       // barrel
-      P(`M ${(cx-2.1)*s} ${(cy+1.5)*s} Q ${(cx-2.3)*s} ${(cy-0.9)*s} ${cx*s} ${(cy-1.1)*s} Q ${(cx+2.3)*s} ${(cy-1.1)*s} ${(cx+2.6)*s} ${(cy+0.4)*s} Q ${(cx+2.65)*s} ${(cy+1.5)*s} ${(cx-2.1)*s} ${(cy+1.5)*s} Z`,"#e6e8ee");
-      // every leg starts inside the barrel's flat underside
-      [-1.5,-0.5,1.05,1.85].forEach(dx=>{
-        R(cx+dx,cy+1.0,0.64,2.0,"#e6e8ee",0.22);
-        R(cx+dx-0.04,cy+2.9,0.72,0.55,"#c9a469",0.18);
+      R(cx-2.05,cy-1.15,4.7,2.75,"#e6e8ee",1.0);        // a level barrel, square to the legs
+      [-1.6,-0.6,1.0,1.95].forEach(dx=>{
+        R(cx+dx,cy+0.9,0.66,2.2,"#e6e8ee",0.22);
+        R(cx+dx-0.03,cy+2.9,0.72,0.55,"#c9a469",0.18);
       });
       // neck leaving the shoulder and descending to the left
       P(`M ${(cx-1.5)*s} ${(cy-1.0)*s} L ${(cx-3.4)*s} ${(cy-1.5)*s} L ${(cx-3.7)*s} ${(cy-0.1)*s} L ${(cx-1.2)*s} ${(cy+0.3)*s} Z`,"#e6e8ee");
@@ -1295,8 +1294,8 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       R(cx-1.6,cy-2.9,3.2,2.4,"#cfccdd",1.4);                        // soft head blob
       L(Q(cx-0.9,cy-2.2,cx-1.5,cy-3.8,cx-1.6,cy-4.8),"#cfccdd",0.3);  // stalks rooted in the head
       L(Q(cx+0.9,cy-2.2,cx+1.5,cy-3.8,cx+1.6,cy-4.8),"#cfccdd",0.3);
-      C(cx-1.62,cy-4.9,0.36,"#e4e2ee"); C(cx-1.62,cy-4.9,0.16,"#2a2440");
-      C(cx+1.62,cy-4.9,0.36,"#e4e2ee"); C(cx+1.62,cy-4.9,0.16,"#2a2440");
+      C(cx-1.62,cy-4.9,0.4,"#cfccdd"); C(cx-1.62,cy-4.9,0.15,"#17141f");
+      C(cx+1.62,cy-4.9,0.4,"#cfccdd"); C(cx+1.62,cy-4.9,0.15,"#17141f");
       [[-0.9,-1.9],[-0.3,-1.85],[0.3,-1.85],[0.9,-1.9]].forEach(([dx,dy])=> C(cx+dx,cy+dy,0.17,"#8e8aa4"));
       [[-1.4,1.0],[0.2,1.4],[1.3,0.8],[-0.4,0.3]].forEach(([dx,dy])=>
         L(Q(cx+dx,cy+dy,cx+dx,cy+dy+0.5,cx+dx+0.1,cy+dy+0.9),"#b2aec4",0.16,0.9));
@@ -1317,7 +1316,11 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       [[-1.2,-1.4],[1.2,-1.4],[-1.3,-0.5],[1.3,-0.5]].forEach(([dx,dy])=>
         L(Q(cx+dx,cy+dy,cx+dx*1.7,cy+dy+0.2,cx+dx*2.1,cy+dy+1.0),"#5b6475",0.16));
       P(TRI(cx-0.35,cy-2.6,cx-0.1,cy-4.6,cx+0.35,cy-2.6),"#8d98a8"); // horn
-      E(cx-0.55,cy-1.9,0.3,"#f0c23a","#1b1b22"); E(cx+0.55,cy-1.9,0.3,"#f0c23a","#1b1b22");
+      R(cx-1.05,cy-2.05,0.85,0.22,"#2a313e",0.06);     // a plated faceplate, not eyes
+      R(cx+0.2, cy-2.05,0.85,0.22,"#2a313e",0.06);
+      R(cx-1.0, cy-1.58,0.7,0.18,"#2a313e",0.05);
+      R(cx+0.3, cy-1.58,0.7,0.18,"#2a313e",0.05);
+      R(cx-0.12,cy-2.35,0.24,1.1,"#2a313e",0.05);
     } else if (n===8) {     // GYUKI — ox head, suckered tentacles
       for (let i=0;i<8;i++) {
         const ang=A0+(A1-A0)*(i/7);
@@ -1347,7 +1350,7 @@ function drawPet(els, art, color, cx, cy, s, nk) {
       }
       // low prowling body
       P(`M ${(cx-2.3)*s} ${(cy+2.3)*s} L ${(cx-2.0)*s} ${(cy-0.3)*s} Q ${cx*s} ${(cy-1.4)*s} ${(cx+2.1)*s} ${(cy-0.2)*s} L ${(cx+2.4)*s} ${(cy+2.3)*s} Z`,"#ef6a22");
-      [-1.95,-0.8,0.6,1.6].forEach(dx=> R(cx+dx,cy+1.5,0.72,1.7,"#e05c18",0.22));
+      [-1.95,-0.8,0.6,1.6].forEach(dx=> R(cx+dx,cy+1.5,0.72,1.7,"#ef6a22",0.22));
       // a long lean head: a single tapering wedge, no blocky muzzle
       P(`M ${(cx+0.9)*s} ${(cy-2.7)*s} L ${(cx+1.25)*s} ${(cy-1.0)*s} L ${(cx-0.9)*s} ${(cy-0.45)*s} L ${(cx-4.4)*s} ${(cy-1.15)*s} L ${(cx-4.25)*s} ${(cy-1.85)*s} L ${(cx-1.1)*s} ${(cy-2.45)*s} Z`,"#ef6a22");
       // a single dark line for the closed mouth — no teeth
@@ -4031,12 +4034,12 @@ export default function App() {
     ...(S.questsEnabled !== false ? [{ v:"tasks", icon:"⚔", label:"QUESTS" }] : []),
     ...(S.bossEnabled !== false ? [{ v:"boss", icon:"🔥", label:"RIVAL" }] : []),
     ...(S.planEnabled !== false ? [{ v:"plan", icon:"🗓", label:"PLAN" }] : []),
-    ...(S.kanbanEnabled ? [{ v:"board", icon:"📋", label:"BOARD" }] : []),
+    ...(S.kanbanEnabled ? [{ v:"board", icon:"🧮", label:"BOARD" }] : []),
     ...(S.shopEnabled ? [{ v:"shop", icon:"🦊", label:"SUMMONS" }] : []),
-    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"🥷", label:"ASCENT" }] : []),
+    ...(S.statsEnabled !== false ? [{ v:"stats", icon:"⚕️", label:"ASCENT" }] : []),
     { v:"settings", icon:"⚙", label:"MORE" },
   ];
-  const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats");
+  const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
 
   // ── QUEST CARD (ring on the LEFT; vivid or tinted; per-quest color) ─────────
   // Weekly-habit card (used on Home and on the Quests page). Tap ring to log one.
@@ -5936,6 +5939,191 @@ export default function App() {
           </div>
         )}
 
+        {/* ══ DESIGN ══ */}
+        {view==="design" && (
+          <div style={{padding:"14px 16px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={C.sectionTitle}>Design</div>
+              <button style={{...C.btnSm,padding:"9px 14px",fontSize:11.5}} onClick={()=>setView("settings")}>‹ SETTINGS</button>
+            </div>
+            {/* SKY THEME */}
+            <div style={C.glass}>
+              <div style={C.label}>SKY</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
+                {THEME_KEYS.map(key=>{
+                  const th = THEMES[key];
+                  const on = S.theme===key;
+                  return (
+                    <button key={key} onClick={()=>setSetting("theme",key)}
+                      style={{
+                        background:`linear-gradient(180deg,${th.sky[0]},${th.sky[1]} 55%,${th.sky[2]})`,
+                        border:on?"2.5px solid #ffffff":"1.5px solid rgba(255,255,255,0.18)",
+                        borderRadius:16,padding:0,cursor:"pointer",height:74,position:"relative",overflow:"hidden",
+                        boxShadow:on?"0 0 18px rgba(255,255,255,0.45)":"0 4px 12px rgba(0,0,0,0.3)",
+                      }}>
+                      <svg width="100%" height="100%" viewBox="0 0 100 74" preserveAspectRatio="none" style={{position:"absolute",inset:0}}>
+                        <circle cx="74" cy="18" r="9" fill={th.sun} opacity="0.95"/>
+                        <polygon fill={th.m2} points="0,74 0,52 26,34 50,52 74,32 100,50 100,74"/>
+                        <polygon fill={th.m3} points="0,74 0,64 34,46 66,64 100,52 100,74"/>
+                      </svg>
+                      <div style={{position:"absolute",bottom:5,left:0,right:0,fontSize:9,fontWeight:900,color:"#fff",textShadow:"0 1px 4px rgba(0,0,0,0.6)"}}>{th.name.toUpperCase()}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* DISPLAY */}
+            <div style={C.glass}>
+              <div style={C.label}>STAT DISPLAY</div>
+              <div style={{display:"flex",gap:8,marginBottom:16}}>
+                {[["radar","RADAR"],["bars","BARS"],["none","HIDDEN"]].map(([v,l])=>(
+                  <button key={v} style={C.chip(S.statStyle===v)} onClick={()=>setSetting("statStyle",v)}>{l}</button>
+                ))}
+              </div>
+              <div style={C.label}>HOME QUEST LAYOUT</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                {[["list","LIST"],["circles","CIRCLES"]].map(([v,l])=>(
+                  <button key={v} style={C.chip(S.questLayout===v)} onClick={()=>setSetting("questLayout",v)}>{l}</button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:16}}>Circles = big tappable rings with icons, spaced out. They shrink as you add quests so everything stays on one page.</div>
+              <div style={C.label}>QUEST CARD STYLE</div>
+              <div style={{display:"flex",gap:8,marginBottom:16}}>
+                {[["vivid","VIVID"],["tinted","TINTED"]].map(([v,l])=>(
+                  <button key={v} style={C.chip(S.cardStyle===v)} onClick={()=>setSetting("cardStyle",v)}>{l}</button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginTop:-8,marginBottom:16}}>Vivid = full color cards · Tinted = subtle glass with a touch of color</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>"This Week" on home</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = weekly habits show on the Quests page instead</div>
+                </div>
+                <Switch on={S.weeklyOnHome!==false} onToggle={()=>setSetting("weeklyOnHome",!(S.weeklyOnHome!==false))}/>
+              </div>
+            </div>
+
+            {/* CHARACTER */}
+            <div style={C.glass}>
+              <div style={C.label}>YOUR CHAMPION</div>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
+                <PixelCharacter level={wornLvl} character={cz} scale={6.5} idle cosmetics={cosmetics} pet={pet}/>
+              </div>
+              <div style={{...C.label,marginBottom:6}}>OUTFIT</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+                {LEVELS.filter(L=>L.lvl<=level.lvl).map(L=>{
+                  const on = wornLvl === L.lvl;
+                  return (
+                    <button key={L.lvl} onClick={()=>setChar("appearLevel", L.lvl===level.lvl ? null : L.lvl)}
+                      style={{padding:"8px 11px",borderRadius:12,cursor:"pointer",fontFamily:FONT,
+                        fontSize:10.5,fontWeight:900,letterSpacing:0.3,
+                        border: on ? `2px solid ${T.accent}` : `1px solid ${LINE}`,
+                        background: on ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.05)",
+                        color: on ? "#fff" : DIM}}>
+                      {getTitle(data, L.lvl)}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:14,lineHeight:1.5}}>
+                Wear any rank you have already earned. Your actual rank never changes.
+              </div>
+              <div style={{...C.label,marginBottom:6}}>BODY</div>
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                {BODIES.map(([v,l])=>(
+                  <button key={v} style={C.chip(cz.body===v)} onClick={()=>setChar("body",v)}>{l.toUpperCase()}</button>
+                ))}
+              </div>
+              <div style={{...C.label,marginBottom:6}}>HAIRSTYLE</div>
+              <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+                {HAIRSTYLES.map(([v,l])=>(
+                  <button key={v} style={{...C.chip(cz.hairstyle===v),flex:"0 0 auto",padding:"10px 15px"}} onClick={()=>setChar("hairstyle",v)}>{l.toUpperCase()}</button>
+                ))}
+              </div>
+              {[["skin","SKIN",SKINS],["hair","HAIR",HAIRS],["shirt","SHIRT",SHIRTS],["pants","PANTS",PANTS]].map(([key,lab,opts])=>(
+                <div key={key} style={{marginBottom:12}}>
+                  <div style={{...C.label,marginBottom:6}}>{lab}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {opts.map(col=>(
+                      <button key={col} onClick={()=>setChar(key,col)}
+                        style={{width:32,height:32,borderRadius:"50%",background:col,cursor:"pointer",
+                          border:cz[key]===col?"3px solid #ffffff":"2px solid rgba(255,255,255,0.2)",padding:0,
+                          boxShadow:cz[key]===col?"0 0 12px rgba(255,255,255,0.5)":"none"}}/>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* WARDROBE */}
+            <div style={C.glass}>
+              <div style={C.label}>WARDROBE</div>
+              <div style={{fontSize:11,color:DIM,marginBottom:12,fontWeight:600}}>Unlocked gear can be worn or stored.</div>
+              {GEAR.map(g=>{
+                const unlocked = level.lvl >= g.lvl;
+                const worn = cz.equipped[g.slot] !== false;
+                return (
+                  <div key={g.slot} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${LINE}`,opacity:unlocked?1:0.5}}>
+                    <div>
+                      <div style={{fontSize:13.5,fontWeight:800,color:"#fff"}}>{g.name}</div>
+                      <div style={{fontSize:10,color:unlocked?GOOD:FAINT,fontWeight:800,marginTop:1}}>
+                        {unlocked?"UNLOCKED":`UNLOCKS AT LV ${g.lvl}`}
+                      </div>
+                    </div>
+                    {unlocked
+                      ? <Switch on={worn} onToggle={()=>toggleGear(g.slot)}/>
+                      : <span style={{fontSize:14,color:FAINT}}>🔒</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* MY COSMETICS (shop items, managed here on the character page) */}
+            <div style={C.glass}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{...C.label,marginBottom:0}}>MY SUMMONS</div>
+                <button style={{...C.btnSm,padding:"7px 12px"}} onClick={()=>setView("shop")}>SUMMONS →</button>
+              </div>
+              {(() => {
+                const owned = SHOP.filter(it=>(data.wallet.owned||[]).includes(it.id));
+                if (owned.length===0 && !data.wallet.pet) {
+                  return <div style={{fontSize:11.5,color:DIM,fontWeight:600,marginTop:10,lineHeight:1.5}}>
+                    Nothing yet. Hold a perfect-day streak and the tailed beasts answer one by one — they&rsquo;ll appear here to equip.
+                  </div>;
+                }
+                const groups = [["pet","TAILED BEASTS"]];
+                return groups.map(([type,label])=>{
+                  const items = owned.filter(it=>it.type===type);
+                  if (!items.length) return null;
+                  return (
+                    <div key={type} style={{marginTop:12}}>
+                      <div style={{fontSize:9,fontWeight:800,color:FAINT,letterSpacing:1,marginBottom:7}}>{label}</div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                        {items.map(it=>{
+                          const equipped = type==="pet" ? data.wallet.pet===it.id : cosmetics[type]===it.id;
+                          return (
+                            <button key={it.id} onClick={()=>equipCosmetic(it)} style={{
+                              display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+                              background:equipped?"rgba(255,255,255,0.16)":"rgba(255,255,255,0.06)",
+                              border:equipped?`2px solid ${RARITY[it.rarity].color}`:`1px solid ${LINE}`,
+                              borderRadius:14,padding:"9px 8px",cursor:"pointer",minWidth:62}}>
+                              <div style={{height:30,display:"flex",alignItems:"center"}}>
+                                <ShopPreview item={it}/>
+                              </div>
+                              <div style={{fontSize:8.5,fontWeight:800,color:equipped?"#fff":DIM,textAlign:"center",lineHeight:1.1}}>{it.name}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* ══ SETTINGS ══ */}
         {/* ══ THE RIVAL ══ */}
         {view==="boss" && (()=>{
@@ -6556,69 +6744,16 @@ export default function App() {
           <div style={{padding:"14px 16px"}}>
             <div style={{...C.sectionTitle,marginBottom:12}}>Settings</div>
 
-            {/* SKY THEME */}
-            <div style={C.glass}>
-              <div style={C.label}>SKY</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9}}>
-                {THEME_KEYS.map(key=>{
-                  const th = THEMES[key];
-                  const on = S.theme===key;
-                  return (
-                    <button key={key} onClick={()=>setSetting("theme",key)}
-                      style={{
-                        background:`linear-gradient(180deg,${th.sky[0]},${th.sky[1]} 55%,${th.sky[2]})`,
-                        border:on?"2.5px solid #ffffff":"1.5px solid rgba(255,255,255,0.18)",
-                        borderRadius:16,padding:0,cursor:"pointer",height:74,position:"relative",overflow:"hidden",
-                        boxShadow:on?"0 0 18px rgba(255,255,255,0.45)":"0 4px 12px rgba(0,0,0,0.3)",
-                      }}>
-                      <svg width="100%" height="100%" viewBox="0 0 100 74" preserveAspectRatio="none" style={{position:"absolute",inset:0}}>
-                        <circle cx="74" cy="18" r="9" fill={th.sun} opacity="0.95"/>
-                        <polygon fill={th.m2} points="0,74 0,52 26,34 50,52 74,32 100,50 100,74"/>
-                        <polygon fill={th.m3} points="0,74 0,64 34,46 66,64 100,52 100,74"/>
-                      </svg>
-                      <div style={{position:"absolute",bottom:5,left:0,right:0,fontSize:9,fontWeight:900,color:"#fff",textShadow:"0 1px 4px rgba(0,0,0,0.6)"}}>{th.name.toUpperCase()}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* DISPLAY */}
-            <div style={C.glass}>
-              <div style={C.label}>STAT DISPLAY</div>
-              <div style={{display:"flex",gap:8,marginBottom:16}}>
-                {[["radar","RADAR"],["bars","BARS"],["none","HIDDEN"]].map(([v,l])=>(
-                  <button key={v} style={C.chip(S.statStyle===v)} onClick={()=>setSetting("statStyle",v)}>{l}</button>
-                ))}
-              </div>
-              <div style={C.label}>HOME QUEST LAYOUT</div>
-              <div style={{display:"flex",gap:8,marginBottom:8}}>
-                {[["list","LIST"],["circles","CIRCLES"]].map(([v,l])=>(
-                  <button key={v} style={C.chip(S.questLayout===v)} onClick={()=>setSetting("questLayout",v)}>{l}</button>
-                ))}
-              </div>
-              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:16}}>Circles = big tappable rings with icons, spaced out. They shrink as you add quests so everything stays on one page.</div>
-              <div style={C.label}>QUEST CARD STYLE</div>
-              <div style={{display:"flex",gap:8,marginBottom:16}}>
-                {[["vivid","VIVID"],["tinted","TINTED"]].map(([v,l])=>(
-                  <button key={v} style={C.chip(S.cardStyle===v)} onClick={()=>setSetting("cardStyle",v)}>{l}</button>
-                ))}
-              </div>
-              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginTop:-8,marginBottom:16}}>Vivid = full color cards · Tinted = subtle glass with a touch of color</div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>Show XP numbers</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = difficulty words instead of decimals</div>
+            <div onClick={()=>setView("design")}
+              style={{...C.glass,padding:"13px 15px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{fontSize:22}}>🎨</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:900,color:"#fff"}}>Design</div>
+                <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:1}}>
+                  Sky, your champion, wardrobe, cosmetics and stat display
                 </div>
-                <Switch on={S.showXP} onToggle={()=>setSetting("showXP",!S.showXP)}/>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>"This Week" on home</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = weekly habits show on the Quests page instead</div>
-                </div>
-                <Switch on={S.weeklyOnHome!==false} onToggle={()=>setSetting("weeklyOnHome",!(S.weeklyOnHome!==false))}/>
-              </div>
+              <div style={{fontSize:18,color:FAINT}}>›</div>
             </div>
 
             {/* PAGES */}
@@ -6634,7 +6769,7 @@ export default function App() {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🥷 Ascension Path</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⚕️ Ascension Path</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your attributes and the climb to Sage</div>
                 </div>
                 <Switch on={S.statsEnabled!==false} onToggle={()=>setSetting("statsEnabled",!(S.statsEnabled!==false))}/>
@@ -6655,7 +6790,7 @@ export default function App() {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>📋 Board</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🧮 Board</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Mission board and scroll lists</div>
                 </div>
                 <Switch on={S.kanbanEnabled} onToggle={()=>setSetting("kanbanEnabled",!S.kanbanEnabled)}/>
@@ -6667,124 +6802,6 @@ export default function App() {
                 </div>
                 <Switch on={S.shopEnabled} onToggle={()=>setSetting("shopEnabled",!S.shopEnabled)}/>
               </div>
-            </div>
-
-            {/* CHARACTER */}
-            <div style={C.glass}>
-              <div style={C.label}>YOUR CHAMPION</div>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-                <PixelCharacter level={wornLvl} character={cz} scale={6.5} idle cosmetics={cosmetics} pet={pet}/>
-              </div>
-              <div style={{...C.label,marginBottom:6}}>OUTFIT</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
-                {LEVELS.filter(L=>L.lvl<=level.lvl).map(L=>{
-                  const on = wornLvl === L.lvl;
-                  return (
-                    <button key={L.lvl} onClick={()=>setChar("appearLevel", L.lvl===level.lvl ? null : L.lvl)}
-                      style={{padding:"8px 11px",borderRadius:12,cursor:"pointer",fontFamily:FONT,
-                        fontSize:10.5,fontWeight:900,letterSpacing:0.3,
-                        border: on ? `2px solid ${T.accent}` : `1px solid ${LINE}`,
-                        background: on ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.05)",
-                        color: on ? "#fff" : DIM}}>
-                      {getTitle(data, L.lvl)}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:14,lineHeight:1.5}}>
-                Wear any rank you have already earned. Your actual rank never changes.
-              </div>
-              <div style={{...C.label,marginBottom:6}}>BODY</div>
-              <div style={{display:"flex",gap:8,marginBottom:14}}>
-                {BODIES.map(([v,l])=>(
-                  <button key={v} style={C.chip(cz.body===v)} onClick={()=>setChar("body",v)}>{l.toUpperCase()}</button>
-                ))}
-              </div>
-              <div style={{...C.label,marginBottom:6}}>HAIRSTYLE</div>
-              <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
-                {HAIRSTYLES.map(([v,l])=>(
-                  <button key={v} style={{...C.chip(cz.hairstyle===v),flex:"0 0 auto",padding:"10px 15px"}} onClick={()=>setChar("hairstyle",v)}>{l.toUpperCase()}</button>
-                ))}
-              </div>
-              {[["skin","SKIN",SKINS],["hair","HAIR",HAIRS],["shirt","SHIRT",SHIRTS],["pants","PANTS",PANTS]].map(([key,lab,opts])=>(
-                <div key={key} style={{marginBottom:12}}>
-                  <div style={{...C.label,marginBottom:6}}>{lab}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    {opts.map(col=>(
-                      <button key={col} onClick={()=>setChar(key,col)}
-                        style={{width:32,height:32,borderRadius:"50%",background:col,cursor:"pointer",
-                          border:cz[key]===col?"3px solid #ffffff":"2px solid rgba(255,255,255,0.2)",padding:0,
-                          boxShadow:cz[key]===col?"0 0 12px rgba(255,255,255,0.5)":"none"}}/>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* WARDROBE */}
-            <div style={C.glass}>
-              <div style={C.label}>WARDROBE</div>
-              <div style={{fontSize:11,color:DIM,marginBottom:12,fontWeight:600}}>Unlocked gear can be worn or stored.</div>
-              {GEAR.map(g=>{
-                const unlocked = level.lvl >= g.lvl;
-                const worn = cz.equipped[g.slot] !== false;
-                return (
-                  <div key={g.slot} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${LINE}`,opacity:unlocked?1:0.5}}>
-                    <div>
-                      <div style={{fontSize:13.5,fontWeight:800,color:"#fff"}}>{g.name}</div>
-                      <div style={{fontSize:10,color:unlocked?GOOD:FAINT,fontWeight:800,marginTop:1}}>
-                        {unlocked?"UNLOCKED":`UNLOCKS AT LV ${g.lvl}`}
-                      </div>
-                    </div>
-                    {unlocked
-                      ? <Switch on={worn} onToggle={()=>toggleGear(g.slot)}/>
-                      : <span style={{fontSize:14,color:FAINT}}>🔒</span>}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* MY COSMETICS (shop items, managed here on the character page) */}
-            <div style={C.glass}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{...C.label,marginBottom:0}}>MY COSMETICS</div>
-                <button style={{...C.btnSm,padding:"7px 12px"}} onClick={()=>setView("shop")}>SHOP →</button>
-              </div>
-              {(() => {
-                const owned = SHOP.filter(it=>(data.wallet.owned||[]).includes(it.id));
-                if (owned.length===0 && !data.wallet.pet) {
-                  return <div style={{fontSize:11.5,color:DIM,fontWeight:600,marginTop:10,lineHeight:1.5}}>
-                    Nothing yet. Win 💎 in the Casino, then unlock auras, pets, capes, and blades in the Shop — they&rsquo;ll appear here to equip.
-                  </div>;
-                }
-                const groups = [["aura","AURAS"],["pet","PETS"],["cape","CAPES"]];
-                return groups.map(([type,label])=>{
-                  const items = owned.filter(it=>it.type===type);
-                  if (!items.length) return null;
-                  return (
-                    <div key={type} style={{marginTop:12}}>
-                      <div style={{fontSize:9,fontWeight:800,color:FAINT,letterSpacing:1,marginBottom:7}}>{label}</div>
-                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                        {items.map(it=>{
-                          const equipped = type==="pet" ? data.wallet.pet===it.id : cosmetics[type]===it.id;
-                          return (
-                            <button key={it.id} onClick={()=>equipCosmetic(it)} style={{
-                              display:"flex",flexDirection:"column",alignItems:"center",gap:4,
-                              background:equipped?"rgba(255,255,255,0.16)":"rgba(255,255,255,0.06)",
-                              border:equipped?`2px solid ${RARITY[it.rarity].color}`:`1px solid ${LINE}`,
-                              borderRadius:14,padding:"9px 8px",cursor:"pointer",minWidth:62}}>
-                              <div style={{height:30,display:"flex",alignItems:"center"}}>
-                                <ShopPreview item={it}/>
-                              </div>
-                              <div style={{fontSize:8.5,fontWeight:800,color:equipped?"#fff":DIM,textAlign:"center",lineHeight:1.1}}>{it.name}</div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
             </div>
 
             {/* BACKUPS */}
@@ -6809,61 +6826,12 @@ export default function App() {
                 onClick={()=>setConfirmBox({type:"resetAllQuests"})}>
                 ↺ RESET ALL QUESTS (WIPES EVERY STREAK & HISTORY)
               </button>
-              <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#fcd34d",marginBottom:8}}
-                onClick={()=>setConfirmBox({type:"resetCoins"})}>
-                ↺ RESET COINS (GOLD)
-              </button>
-              <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#67e8f9",marginBottom:8}}
-                onClick={()=>setConfirmBox({type:"resetGems"})}>
-                ↺ RESET GEMS
-              </button>
               <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#f472b6"}}
                 onClick={()=>setConfirmBox({type:"resetCosmetics"})}>
                 ↺ RESET COSMETICS (UNEQUIPS & CLEARS OWNED)
               </button>
             </div>
 
-            {/* DEVELOPER MODE */}
-            <div style={{...C.glass,border:`1.5px solid ${T.accent}55`}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:800,color:T.accent}}>🛠 Developer Mode</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Set coins & gems directly (for testing)</div>
-                </div>
-                <Switch on={S.devMode} onToggle={()=>setSetting("devMode",!S.devMode)} color={T.accent}/>
-              </div>
-              {S.devMode && (
-                <div style={{marginTop:14}}>
-                  <div style={{display:"flex",gap:8,marginBottom:8}}>
-                    <input id="devCoins" type="number" placeholder={`Coins (now ${coins})`} style={{...C.input,flex:1}}/>
-                    <button style={{...C.btnSm,padding:"0 16px"}} onClick={()=>{
-                      const el=document.getElementById("devCoins"); const v=parseInt(el.value);
-                      if(!isNaN(v)) devSetCurrency(v, null); el.value="";
-                    }}>SET 🪙</button>
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    <input id="devGems" type="number" placeholder={`Gems (now ${gems})`} style={{...C.input,flex:1}}/>
-                    <button style={{...C.btnSm,padding:"0 16px"}} onClick={()=>{
-                      const el=document.getElementById("devGems"); const v=parseInt(el.value);
-                      if(!isNaN(v)) devSetCurrency(null, v); el.value="";
-                    }}>SET 💎</button>
-                  </div>
-                  <div style={{height:1,background:LINE,margin:"12px 0"}}/>
-                  <div style={{fontSize:11,fontWeight:800,color:T.accent,marginBottom:7}}>AVAILABLE GAMES (max 4)</div>
-                  <div style={{display:"flex",gap:8}}>
-                    <input id="devSpins" type="number" min="0" max="4" placeholder={`Now ${spinsAvail} available`} style={{...C.input,flex:1}}/>
-                    <button style={{...C.btnSm,padding:"0 16px"}} onClick={()=>{
-                      const el=document.getElementById("devSpins"); const v=parseInt(el.value);
-                      if(!isNaN(v)) devSetAvailableSpins(v); el.value="";
-                    }}>SET 🎰</button>
-                  </div>
-                  <button style={{...C.btnSm,width:"100%",padding:"11px",marginTop:8}} onClick={()=>devSetAvailableSpins(4)}>
-                    ↺ RESET TO 4 SPINS
-                  </button>
-                  <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:8}}>Tip: give yourself gems, then buy items to verify they wear correctly. Reset spins to keep testing the casino.</div>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
