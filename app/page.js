@@ -68,9 +68,9 @@ const THEMES = {
   },
   akatsuki: {
     name:"Akatsuki", swatch:"#b11226",
-    sky:["#0a0205","#2e060f","#6e0f1e"], sun:"#d81f31", stars:true, ember:true,
+    sky:["#030204","#090508","#1a070d"], sun:"#d81f31", stars:true, ember:true,
     m1:"#45101c", m2:"#260810", m3:"#10040a",
-    accent:"#d81f31", glass:"28,6,12",
+    accent:"#d81f31", glass:"16,6,10",
   },
   voxel: {
     name:"Blockland", swatch:"#5d9e3c", blocky:true,
@@ -1731,9 +1731,8 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   // eyelids: a hood of skin across the top of each eye, with a lash line under it
   R(9.82,6.72,1.56,0.62,shade(skin,-6),0.34);
   R(12.72,6.72,1.56,0.62,shade(skin,-6),0.34);
-  // a touch of lower lid so the eye reads as set into the face
-  R(9.9,8.42,1.4,0.22,shade(skin,-26),0.1);
-  R(12.8,8.42,1.4,0.22,shade(skin,-26),0.1);
+  R(9.86,7.26,1.48,0.17,shade(skin,-62),0.06);
+  R(12.76,7.26,1.48,0.17,shade(skin,-62),0.06);
   R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
 
   // ── ANBU PORCELAIN MASK — animal face, hair left showing above it ─────────
@@ -2893,14 +2892,26 @@ export default function App() {
     if (!data) return;
     const owned = (data.wallet?.owned)||[];
     const won = [];
+    const lock = (data.flags||{}).eyeLock || {};
+    const unlockKeys = [];
     (data.tasks||[]).forEach(t=>{
       const st = getStreak(t);
       (t.goals||[]).forEach(g=>{
         if (!g || !g.eye || !g.days) return;
+        const key = `${t.id}|${g.eye}`;
+        if (lock[key]) { if (st < g.days) unlockKeys.push(key); return; }  // streak broke — goal lives again
         if (owned.includes(`eye_${g.eye}`)) return;
         if (st >= g.days) won.push(g.eye);
       });
     });
+    if (unlockKeys.length) {
+      setData(cur=>{
+        const L = {...((cur.flags||{}).eyeLock||{})};
+        unlockKeys.forEach(k=>{ delete L[k]; });
+        const n = {...cur, flags:{...(cur.flags||{}), eyeLock:L}};
+        persistRaw(n); return n;
+      });
+    }
     if (!won.length) return;
     setData(cur=>{
       const have = (cur.wallet?.owned)||[];
@@ -3744,12 +3755,21 @@ export default function App() {
   };
   const resetDojutsu = () => {
     setData(cur=>{
-      const n = {...cur, wallet:{...cur.wallet,
-        owned:((cur.wallet.owned)||[]).filter(id=>!String(id).startsWith("eye_")),
-        equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), eye:null}}};
+      // Any goal already satisfied is locked, so it has to be re-earned from a
+      // fresh streak instead of paying out again the instant we clear it.
+      const lock = {...((cur.flags||{}).eyeLock||{})};
+      (cur.tasks||[]).forEach(t=>{
+        const st = getStreak(t);
+        (t.goals||[]).forEach(g=>{ if (g && g.eye && g.days && st >= g.days) lock[`${t.id}|${g.eye}`] = true; });
+      });
+      const n = {...cur,
+        flags:{...(cur.flags||{}), eyeLock: lock},
+        wallet:{...cur.wallet,
+          owned:((cur.wallet.owned)||[]).filter(id=>!String(id).startsWith("eye_")),
+          equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), eye:null}}};
       persistRaw(n); return n;
     });
-    toast$("DOJUTSU RESET", "#fb923c");
+    toast$("DOJUTSU RESET — RE-EARN THEM WITH A FRESH STREAK", "#fb923c");
   };
   const resetSummons = () => {
     setData(cur=>{
@@ -4600,7 +4620,10 @@ export default function App() {
                   else if (confirmBox.type==="resetSummons") resetSummons();
                   setConfirmBox(null);
                 }}>
-                {confirmBox.type && confirmBox.type.startsWith("reset") ? "RESET" : "DELETE"}
+                {confirmBox.type==="resetWardrobe" ? "ERASE MY PROGRESS"
+                  : confirmBox.type==="resetDojutsu" ? "RESET EYES ONLY"
+                  : confirmBox.type==="resetSummons" ? "RESET BEASTS ONLY"
+                  : confirmBox.type && confirmBox.type.startsWith("reset") ? "RESET" : "DELETE"}
               </button>
             </div>
           </div>
@@ -6402,19 +6425,27 @@ export default function App() {
             <div style={{...C.glass,border:`1.5px solid ${BAD}44`}}>
               <div style={{...C.label,color:BAD}}>RESET</div>
               <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.45}}>
-                Each of these is independent. None of them touch your quests themselves.
+                Each of these is independent.
               </div>
-              <button style={{...C.btnSm,width:"100%",padding:"13px",color:BAD,marginBottom:8}}
-                onClick={()=>setConfirmBox({type:"resetWardrobe"})}>
-                ↺ RESET WARDROBE <span style={{color:FAINT,fontWeight:700}}>· rank & quest history</span>
-              </button>
-              <button style={{...C.btnSm,width:"100%",padding:"13px",color:BAD,marginBottom:8}}
+              <button style={{...C.btnSm,width:"100%",padding:"13px",marginBottom:8}}
                 onClick={()=>setConfirmBox({type:"resetDojutsu"})}>
-                ↺ RESET DOJUTSU <span style={{color:FAINT,fontWeight:700}}>· all awakened eyes</span>
+                👁 RESET DOJUTSU <span style={{color:FAINT,fontWeight:700}}>· eyes only</span>
               </button>
-              <button style={{...C.btnSm,width:"100%",padding:"13px",color:BAD}}
+              <button style={{...C.btnSm,width:"100%",padding:"13px"}}
                 onClick={()=>setConfirmBox({type:"resetSummons"})}>
-                ↺ RESET SUMMONS <span style={{color:FAINT,fontWeight:700}}>· all tailed beasts</span>
+                🦊 RESET SUMMONS <span style={{color:FAINT,fontWeight:700}}>· beasts only</span>
+              </button>
+              <div style={{height:1,background:LINE,margin:"16px 0 14px"}}/>
+              <div style={{fontSize:10,color:BAD,fontWeight:900,letterSpacing:1,marginBottom:7}}>
+                ⚠ THIS ONE ERASES PROGRESS
+              </div>
+              <button style={{...C.btnSm,width:"100%",padding:"15px",color:"#fff",
+                  background:`${BAD}33`,border:`1.5px solid ${BAD}`}}
+                onClick={()=>setConfirmBox({type:"resetWardrobe"})}>
+                ↺ RESET WARDROBE
+                <div style={{fontSize:9.5,color:"#ffb3b3",fontWeight:700,marginTop:3}}>
+                  wipes every quest&rsquo;s history and your rank
+                </div>
               </button>
             </div>
 
