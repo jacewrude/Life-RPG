@@ -66,6 +66,12 @@ const THEMES = {
     m1:"#571423", m2:"#380c18", m3:"#20060e",
     accent:"#ff8f5e", glass:"28,8,12",
   },
+  akatsuki: {
+    name:"Akatsuki", swatch:"#b11226",
+    sky:["#0a0205","#2e060f","#6e0f1e"], sun:"#d81f31", stars:true, ember:true,
+    m1:"#45101c", m2:"#260810", m3:"#10040a",
+    accent:"#d81f31", glass:"28,6,12",
+  },
   voxel: {
     name:"Blockland", swatch:"#5d9e3c", blocky:true,
     sky:["#16233d","#2f629a","#63a8d8"], sun:"#ffe98a", stars:false,
@@ -575,6 +581,16 @@ function migrate(d) {
             tasks: (d.tasks||[]).map(t=>({...t, catId:"xp"})) };
     }
   }
+  // One goal became many; fold any legacy single goal into the list.
+  d = { ...d, tasks: (d.tasks||[]).map(t=>{
+    let goals = Array.isArray(t.goals) ? t.goals : [];
+    if (!goals.length && t.goal && t.goal.eye) goals = [t.goal];
+    goals = goals.filter(g=>g && g.eye)
+      .map(g=>({ eye:g.eye, days: Math.max(1, Math.min(30, parseInt(g.days)||7)) }))
+      .slice(0,3);
+    const { goal, ...rest } = t;
+    return { ...rest, goals };
+  }) };
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
   if (!["m","f"].includes(chr.body)) chr.body = "m";
@@ -1715,8 +1731,6 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   // eyelids: a hood of skin across the top of each eye, with a lash line under it
   R(9.82,6.72,1.56,0.62,shade(skin,-6),0.34);
   R(12.72,6.72,1.56,0.62,shade(skin,-6),0.34);
-  R(9.86,7.26,1.48,0.17,shade(skin,-62),0.06);
-  R(12.76,7.26,1.48,0.17,shade(skin,-62),0.06);
   // a touch of lower lid so the eye reads as set into the face
   R(9.9,8.42,1.4,0.22,shade(skin,-26),0.1);
   R(12.8,8.42,1.4,0.22,shade(skin,-26),0.1);
@@ -2880,10 +2894,12 @@ export default function App() {
     const owned = (data.wallet?.owned)||[];
     const won = [];
     (data.tasks||[]).forEach(t=>{
-      const g = t.goal;
-      if (!g || !g.eye || !g.days) return;
-      if (owned.includes(`eye_${g.eye}`)) return;
-      if (getStreak(t) >= g.days) won.push(g.eye);
+      const st = getStreak(t);
+      (t.goals||[]).forEach(g=>{
+        if (!g || !g.eye || !g.days) return;
+        if (owned.includes(`eye_${g.eye}`)) return;
+        if (st >= g.days) won.push(g.eye);
+      });
     });
     if (!won.length) return;
     setData(cur=>{
@@ -2914,7 +2930,7 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
   }, [data]);
 
-  const [newTask, setNewTask] = useState({name:"",catId:"xp",goal:null,importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+  const [newTask, setNewTask] = useState({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
@@ -3400,7 +3416,7 @@ export default function App() {
       targetReps: isWk ? 1 : (newTask.targetReps || 1),
       points: calcPoints(newTask.importance), decayRate: calcDecay(newTask.importance), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
-    setNewTask({name:"",catId:"xp",goal:null,importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+    setNewTask({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
     setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
   };
 
@@ -3716,6 +3732,34 @@ export default function App() {
   // ── RESET / DEVELOPER TOOLS ─────────────────────────────────────────────────
   const resetGems = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, gemsEarned:0, gemsSpent:0}}; persistRaw(n); return n; }); toast$("GEMS RESET","#fb923c"); };
   const resetCoins = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, coinsEarned:0, coinsSpent:0, coinsByTaskDay:{}}}; persistRaw(n); return n; }); toast$("COINS RESET","#fb923c"); };
+  // Wardrobe = your rank and the quest history that earned it.
+  const resetWardrobe = () => {
+    update({...data,
+      categories: data.categories.map(c=>({...c, value:0})),
+      tasks: data.tasks.map(t=>({...t, completions:{}, frozen:{}, createdAt: dateKey()})),
+      flags: {...(data.flags||{}), maxLevel:0, maxForm:0},
+      character: {...data.character, appearLevel:null},
+      lastDecayDate: dateKey()});
+    toast$("WARDROBE RESET — BACK TO ACADEMY STUDENT", "#fb923c");
+  };
+  const resetDojutsu = () => {
+    setData(cur=>{
+      const n = {...cur, wallet:{...cur.wallet,
+        owned:((cur.wallet.owned)||[]).filter(id=>!String(id).startsWith("eye_")),
+        equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), eye:null}}};
+      persistRaw(n); return n;
+    });
+    toast$("DOJUTSU RESET", "#fb923c");
+  };
+  const resetSummons = () => {
+    setData(cur=>{
+      const n = {...cur, wallet:{...cur.wallet,
+        owned:((cur.wallet.owned)||[]).filter(id=>!String(id).startsWith("pet_")),
+        pet:null}};
+      persistRaw(n); return n;
+    });
+    toast$("SUMMONS RESET", "#fb923c");
+  };
   const resetCosmetics = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, owned:[], equippedCosmetics:{}, pet:null}}; persistRaw(n); return n; }); toast$("COSMETICS RESET","#fb923c"); };
   const devSetCurrency = (coinsVal, gemsVal) => {
     setData(cur=>{
@@ -4507,7 +4551,10 @@ export default function App() {
               {confirmBox.type==="reset" ? "⚠ RESET STATS" : confirmBox.type==="questReset" ? "⚠ RESET QUEST"
                 : confirmBox.type==="resetCoins" ? "⚠ RESET COINS" : confirmBox.type==="resetGems" ? "⚠ RESET GEMS"
                 : confirmBox.type==="resetCosmetics" ? "⚠ RESET COSMETICS"
-                : confirmBox.type==="resetAllQuests" ? "⚠ RESET ALL QUESTS" : "⚠ CONFIRM DELETE"}
+                : confirmBox.type==="resetAllQuests" ? "⚠ RESET ALL QUESTS"
+                : confirmBox.type==="resetWardrobe" ? "⚠ RESET WARDROBE"
+                : confirmBox.type==="resetDojutsu" ? "⚠ RESET DOJUTSU"
+                : confirmBox.type==="resetSummons" ? "⚠ RESET SUMMONS" : "⚠ CONFIRM DELETE"}
             </div>
             <div style={{fontSize:14.5,color:"#fff",textAlign:"center",marginBottom:10,lineHeight:1.5,fontWeight:600}}>
               {confirmBox.type==="reset"
@@ -4522,6 +4569,12 @@ export default function App() {
                 ? <>Wipe the history, streaks, and shields of <span style={{color:BAD,fontWeight:900}}>every quest</span> and start them all fresh from today? Your character's stats, coins, and gems are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="resetCosmetics"
                 ? <>Unequip and <span style={{color:BAD,fontWeight:900}}>permanently clear</span> every cosmetic you own? You'll have to re-earn them.</>
+                : confirmBox.type==="resetWardrobe"
+                ? <>Drop back to <span style={{color:BAD,fontWeight:900}}>Academy Student</span>. This wipes your XP and the completion history of every quest, so the whole rank ladder starts over. Your quests, summons and dojutsu are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
+                : confirmBox.type==="resetDojutsu"
+                ? <>Lose <span style={{color:BAD,fontWeight:900}}>every awakened eye</span> and start their goals again? Nothing else is touched.</>
+                : confirmBox.type==="resetSummons"
+                ? <>Release <span style={{color:BAD,fontWeight:900}}>every tailed beast</span> you've earned? You'll need the streaks again. Nothing else is touched.</>
                 : <>Are you sure you want to delete <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span>?</>}
             </div>
             {confirmBox.type==="cat" && confirmBox.taskCount > 0 && (
@@ -4542,9 +4595,12 @@ export default function App() {
                   else if (confirmBox.type==="resetGems") resetGems();
                   else if (confirmBox.type==="resetCosmetics") resetCosmetics();
                   else if (confirmBox.type==="resetAllQuests") resetAllQuests();
+                  else if (confirmBox.type==="resetWardrobe") resetWardrobe();
+                  else if (confirmBox.type==="resetDojutsu") resetDojutsu();
+                  else if (confirmBox.type==="resetSummons") resetSummons();
                   setConfirmBox(null);
                 }}>
-                {["reset","questReset","resetCoins","resetGems","resetCosmetics","resetAllQuests"].includes(confirmBox.type) ? "RESET" : "DELETE"}
+                {confirmBox.type && confirmBox.type.startsWith("reset") ? "RESET" : "DELETE"}
               </button>
             </div>
           </div>
@@ -5538,75 +5594,76 @@ export default function App() {
                   ))}
                 </div>
                 <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>Tap the box and use your keyboard's emoji key for anything not listed</div>
-                {/* ── GOAL: hold a streak on this quest, awaken an eye ── */}
-                <div style={{...C.label,marginTop:16}}>GOAL <span style={{color:FAINT}}>· optional</span></div>
-                <div style={{background:"rgba(0,0,0,0.2)",padding:11,borderRadius:BLOCK?0:14}}>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    <button onClick={()=>set({goal:null})}
-                      style={{height:38,padding:"0 11px",borderRadius:BLOCK?0:10,cursor:"pointer",fontFamily:FONT,
-                        fontSize:9.5,fontWeight:900,color:"#fff",background:"rgba(255,255,255,0.08)",
-                        border:!t.goal?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>NONE</button>
-                    {EYES.map(e=>{
-                      const on = !!(t.goal && t.goal.eye===e.id);
-                      const have = ((data.wallet||{}).owned||[]).includes("eye_"+e.id);
-                      let q1 = 0;
-                      return (
-                        <button key={e.id}
-                          onClick={()=>set({goal:{eye:e.id, days:Math.min(30,(t.goal&&t.goal.days)||7)}})}
-                          style={{width:38,height:38,padding:0,borderRadius:BLOCK?0:10,cursor:"pointer",
-                            background:"rgba(255,255,255,0.08)",position:"relative",
-                            border:on?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>
-                          <svg width="28" height="28" viewBox="0 0 28 28" style={{display:"block",margin:"0 auto"}}>
-                            {drawEye([], e.id, 14, 14, 12, ()=>q1++)}
-                          </svg>
-                          {have && <span style={{position:"absolute",top:-6,right:-4,fontSize:10}}>✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {t.goal && (()=>{
-                    const e = eyeById(t.goal.eye);
-                    const have = ((data.wallet||{}).owned||[]).includes("eye_"+t.goal.eye);
-                    const cur = t.id ? getStreak(t) : 0;
-                    let q2 = 0;
-                    return (
-                      <div style={{marginTop:12}}>
-                        <div style={{display:"flex",alignItems:"center",gap:12}}>
-                          {/* the eye itself, then the same eye worn on your face */}
-                          <svg width="46" height="46" viewBox="0 0 46 46" style={{flexShrink:0}}>
-                            {drawEye([], t.goal.eye, 23, 23, 20, ()=>q2++)}
-                          </svg>
-                          <div style={{width:96,height:76,overflow:"hidden",position:"relative",flexShrink:0,
-                            borderRadius:BLOCK?0:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${LINE}`}}>
-                            <div style={{position:"absolute",left:-62,top:-16}}>
-                              <PixelCharacter level={wornLvl===4 ? 3 : wornLvl} character={cz} scale={9}
-                                cosmetics={{...cosmetics, eye:t.goal.eye}}/>
-                            </div>
-                          </div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>{e ? e.name : ""}</div>
-                            {wornLvl===4 && (
-                              <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:2,lineHeight:1.35}}>
-                                hidden under the ANBU mask
-                              </div>
-                            )}
+                {/* ── GOALS: hold a streak, awaken an eye. Up to three per quest. ── */}
+                <div style={{...C.label,marginTop:16}}>GOALS <span style={{color:FAINT}}>· optional</span></div>
+                {(t.goals||[]).map((g,gi)=>{
+                  const e = eyeById(g.eye);
+                  const have = ((data.wallet||{}).owned||[]).includes("eye_"+g.eye);
+                  const cur = t.id ? getStreak(t) : 0;
+                  const setGoal = (patch) => set({goals:(t.goals||[]).map((x,i)=>i===gi?{...x,...patch}:x)});
+                  let q2 = 0;
+                  return (
+                    <div key={gi} style={{background:"rgba(0,0,0,0.2)",padding:11,borderRadius:BLOCK?0:14,marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1,color:FAINT}}>GOAL {gi+1}</div>
+                        <div style={{flex:1}}/>
+                        <button onClick={()=>set({goals:(t.goals||[]).filter((_,i)=>i!==gi)})}
+                          style={{...C.btnSm,padding:"5px 10px",fontSize:10,color:BAD}}>REMOVE</button>
+                      </div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {EYES.map(ey=>{
+                          const on = g.eye===ey.id;
+                          const ownedEye = ((data.wallet||{}).owned||[]).includes("eye_"+ey.id);
+                          let q1 = 0;
+                          return (
+                            <button key={ey.id} onClick={()=>setGoal({eye:ey.id})}
+                              style={{width:38,height:38,padding:0,borderRadius:BLOCK?0:10,cursor:"pointer",
+                                background:"rgba(255,255,255,0.08)",position:"relative",
+                                border:on?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>
+                              <svg width="28" height="28" viewBox="0 0 28 28" style={{display:"block",margin:"0 auto"}}>
+                                {drawEye([], ey.id, 14, 14, 12, ()=>q1++)}
+                              </svg>
+                              {ownedEye && <span style={{position:"absolute",top:-6,right:-4,fontSize:10}}>✓</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:12,marginTop:12}}>
+                        <svg width="42" height="42" viewBox="0 0 42 42" style={{flexShrink:0}}>
+                          {drawEye([], g.eye, 21, 21, 18, ()=>q2++)}
+                        </svg>
+                        <div style={{width:92,height:72,overflow:"hidden",position:"relative",flexShrink:0,
+                          borderRadius:BLOCK?0:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${LINE}`}}>
+                          <div style={{position:"absolute",left:-64,top:-18}}>
+                            <PixelCharacter level={wornLvl===4 ? 3 : wornLvl} character={cz} scale={9}
+                              cosmetics={{...cosmetics, eye:g.eye}}/>
                           </div>
                         </div>
-                        <div style={{...C.label,marginTop:12,marginBottom:6}}>
-                          HOLD A STREAK OF <span style={{color:"#fff"}}>{t.goal.days}</span> DAYS
-                        </div>
-                        <input type="range" min="1" max="30" step="1" value={t.goal.days}
-                          onChange={ev=>set({goal:{...t.goal, days:parseInt(ev.target.value)}})}
-                          style={{width:"100%",accentColor:T.accent}}/>
-                        <div style={{fontSize:10,color:have?GOOD:FAINT,fontWeight:800,marginTop:6}}>
-                          {have ? "✓ Already awakened — yours for good"
-                                : t.id ? `Current streak ${cur} / ${t.goal.days}`
-                                       : "Progress starts once this quest is saved"}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>{e ? e.name : ""}</div>
+                          <div style={{fontSize:9.5,color:have?GOOD:FAINT,fontWeight:800,marginTop:3}}>
+                            {have ? "✓ awakened"
+                                  : t.id ? `${cur} / ${g.days} days` : "starts once saved"}
+                          </div>
                         </div>
                       </div>
-                    );
-                  })()}
-                </div>
+                      <div style={{...C.label,marginTop:11,marginBottom:6}}>
+                        HOLD A STREAK OF <span style={{color:"#fff"}}>{g.days}</span> {g.days===1?"DAY":"DAYS"}
+                      </div>
+                      <input type="range" min="1" max="30" step="1" value={g.days}
+                        onChange={ev=>setGoal({days:parseInt(ev.target.value)})}
+                        style={{width:"100%",accentColor:T.accent}}/>
+                    </div>
+                  );
+                })}
+                {(t.goals||[]).length < 3 && (
+                  <button onClick={()=>set({goals:[...(t.goals||[]),
+                      {eye:EYES[Math.min(EYES.length-1,(t.goals||[]).length)].id, days:(t.goals||[]).length?15:3}]})}
+                    style={{...C.btnSm,width:"100%",padding:"12px"}}>
+                    ＋ {(t.goals||[]).length ? "ADD ANOTHER GOAL" : "ADD A GOAL"}
+                  </button>
+                )}
+
                 <div style={{...C.label,marginTop:16}}>QUEST COLOR</div>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
                   <button onClick={()=>set({color:null})}
@@ -6339,6 +6396,26 @@ export default function App() {
               <div style={{fontSize:10,color:DIM,fontWeight:800,marginTop:10}}>
                 {cosmetics.eye ? (eyeById(cosmetics.eye)||{}).name : "No dojutsu equipped"}
               </div>
+            </div>
+
+            {/* RESETS — each one stands alone */}
+            <div style={{...C.glass,border:`1.5px solid ${BAD}44`}}>
+              <div style={{...C.label,color:BAD}}>RESET</div>
+              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.45}}>
+                Each of these is independent. None of them touch your quests themselves.
+              </div>
+              <button style={{...C.btnSm,width:"100%",padding:"13px",color:BAD,marginBottom:8}}
+                onClick={()=>setConfirmBox({type:"resetWardrobe"})}>
+                ↺ RESET WARDROBE <span style={{color:FAINT,fontWeight:700}}>· rank & quest history</span>
+              </button>
+              <button style={{...C.btnSm,width:"100%",padding:"13px",color:BAD,marginBottom:8}}
+                onClick={()=>setConfirmBox({type:"resetDojutsu"})}>
+                ↺ RESET DOJUTSU <span style={{color:FAINT,fontWeight:700}}>· all awakened eyes</span>
+              </button>
+              <button style={{...C.btnSm,width:"100%",padding:"13px",color:BAD}}
+                onClick={()=>setConfirmBox({type:"resetSummons"})}>
+                ↺ RESET SUMMONS <span style={{color:FAINT,fontWeight:700}}>· all tailed beasts</span>
+              </button>
             </div>
 
             {/* MY COSMETICS (shop items, managed here on the character page) */}
@@ -7108,22 +7185,6 @@ export default function App() {
                 onClick={()=>setRestoreOpen(true)}>💾 RESTORE A BACKUP</button>
             </div>
 
-            {/* DANGER ZONE */}
-            <div style={{...C.glass,border:`1.5px solid ${BAD}55`}}>
-              <div style={{...C.label,color:BAD}}>DANGER ZONE</div>
-              <button style={{...C.btnSm,width:"100%",padding:"14px",color:BAD,marginBottom:8}}
-                onClick={()=>setConfirmBox({type:"reset"})}>
-                ↺ RESET STATS (KEEPS QUESTS & HISTORY)
-              </button>
-              <button style={{...C.btnSm,width:"100%",padding:"12px",color:BAD,marginBottom:8}}
-                onClick={()=>setConfirmBox({type:"resetAllQuests"})}>
-                ↺ RESET ALL QUESTS (WIPES EVERY STREAK & HISTORY)
-              </button>
-              <button style={{...C.btnSm,width:"100%",padding:"12px",color:"#f472b6"}}
-                onClick={()=>setConfirmBox({type:"resetCosmetics"})}>
-                ↺ RESET COSMETICS (UNEQUIPS & CLEARS OWNED)
-              </button>
-            </div>
 
           </div>
         )}
