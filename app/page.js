@@ -1700,10 +1700,16 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
       R(8.2,3.2,7.6,1.3,hair,0.9);
     }
   }
-  R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
-  R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
-  R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
-  R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
+  const wornEye = (cosmetics && cosmetics.eye && eyeById(cosmetics.eye)) ? cosmetics.eye : null;
+  if (wornEye && !anbu) {
+    drawEye(els, wornEye, 10.6*s, 7.7*s, 1.05*s, () => k++);
+    drawEye(els, wornEye, 13.5*s, 7.7*s, 1.05*s, () => k++);
+  } else {
+    R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
+    R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
+    R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
+    R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
+  }
   R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
 
   // ── ANBU PORCELAIN MASK — animal face, hair left showing above it ─────────
@@ -2696,6 +2702,80 @@ const STORY = [
 ];
 
 // ══════════════════════════════════════════════════════════════════════════════
+// DOJUTSU — eyes earned by holding a streak on one specific quest
+// ══════════════════════════════════════════════════════════════════════════════
+const EYES = [
+  { id:"sharingan", name:"Sharingan",       lore:"Three tomoe. It sees the pattern before you do." },
+  { id:"mangekyo",  name:"Mangekyo",        lore:"The pinwheel. Bought with something that hurt." },
+  { id:"byakugan",  name:"Byakugan",        lore:"All-seeing, and blind to nothing nearby." },
+  { id:"rinnegan",  name:"Rinnegan",        lore:"Ringed. The eye the stories are about." },
+  { id:"tenseigan", name:"Tenseigan",       lore:"Bloomed pale blue, the sky's own eye." },
+  { id:"rinne",     name:"Rinne Sharingan", lore:"Rings and tomoe together. The first eye." },
+];
+const eyeById = (id) => EYES.find(e=>e.id===id) || null;
+
+function drawEye(els, id, ex, ey, r, nk) {
+  const C=(x,y,rr,f,o)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill={f} opacity={o===undefined?1:o}/>);
+  const RING=(x,y,rr,st,w)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill="none" stroke={st} strokeWidth={w}/>);
+  const P=(d,f)=>els.push(<path key={nk()} d={d} fill={f}/>);
+  // a tomoe: a comma — round head with a tail curling around the pupil
+  // a tomoe: a round head with a short tapering tail — kept apart so three of
+  // them read as three, not one blob
+  const tomoe=(ang,rr,size,col)=>{
+    const a=ang*Math.PI/180;
+    const hx=ex+Math.cos(a)*rr, hy=ey+Math.sin(a)*rr;
+    const px=Math.cos(a+Math.PI/2), py=Math.sin(a+Math.PI/2);
+    const t=a+1.05;
+    P(`M ${hx+px*size*0.95} ${hy+py*size*0.95}
+       L ${ex+Math.cos(t)*rr*1.02} ${ey+Math.sin(t)*rr*1.02}
+       L ${hx-px*size*0.95} ${hy-py*size*0.95} Z`, col);
+    C(hx,hy,size,col);
+  };
+  els.push(<ellipse key={nk()} cx={ex} cy={ey} rx={r*1.12} ry={r} fill="#f6f2ea"/>);
+  if (id==="sharingan") {
+    C(ex,ey,r*0.92,"#c2201f"); RING(ex,ey,r*0.92,"#6b0f0e",r*0.12);
+    C(ex,ey,r*0.26,"#140606");
+    [90,210,330].forEach(a=>tomoe(a,r*0.58,r*0.17,"#140606"));
+  } else if (id==="mangekyo") {
+    C(ex,ey,r*0.92,"#c2201f"); RING(ex,ey,r*0.92,"#6b0f0e",r*0.12);
+    [0,120,240].forEach(a=>{
+      const t=a*Math.PI/180;
+      P(`M ${ex} ${ey} L ${ex+Math.cos(t)*r*0.88} ${ey+Math.sin(t)*r*0.88}
+         Q ${ex+Math.cos(t+0.9)*r*0.95} ${ey+Math.sin(t+0.9)*r*0.95}
+           ${ex+Math.cos(t+1.6)*r*0.5} ${ey+Math.sin(t+1.6)*r*0.5} Z`,"#140606");
+    });
+    C(ex,ey,r*0.2,"#140606");
+  } else if (id==="rinnegan") {
+    C(ex,ey,r*0.95,"#b9a7e6");
+    [0.78,0.6,0.42,0.26].forEach(f=>RING(ex,ey,r*f,"#4b3a7a",r*0.085));
+    C(ex,ey,r*0.13,"#2a1f47");
+  } else if (id==="byakugan") {
+    C(ex,ey,r*0.95,"#ece7f2"); RING(ex,ey,r*0.95,"#c8c0d8",r*0.09);
+    C(ex,ey,r*0.4,"#dcd5e8",0.85);
+    [[-1,-0.55],[-1,0.45],[1,-0.55],[1,0.45]].forEach(([dx,dy])=>
+      els.push(<path key={nk()} d={`M ${ex+dx*r*0.52} ${ey+dy*r*0.55} q ${dx*r*0.26} ${dy*r*0.22} ${dx*r*0.42} ${dy*r*0.05}`}
+        stroke="#a99bc4" strokeWidth={r*0.085} fill="none" strokeLinecap="round"/>));
+  } else if (id==="tenseigan") {
+    C(ex,ey,r*0.95,"#7fd4f0");
+    [0,60,120,180,240,300].forEach(a=>{
+      const t=a*Math.PI/180;
+      P(`M ${ex} ${ey} Q ${ex+Math.cos(t-0.3)*r*0.8} ${ey+Math.sin(t-0.3)*r*0.8}
+         ${ex+Math.cos(t)*r*0.92} ${ey+Math.sin(t)*r*0.92}
+         Q ${ex+Math.cos(t+0.3)*r*0.8} ${ey+Math.sin(t+0.3)*r*0.8} ${ex} ${ey} Z`,"#1b5f86");
+    });
+    C(ex,ey,r*0.22,"#0d3350");
+  } else {                       // rinne-sharingan
+    C(ex,ey,r*0.95,"#c2201f");
+    [0.78,0.58,0.38].forEach(f=>RING(ex,ey,r*f,"#2a0708",r*0.085));
+    C(ex,ey,r*0.14,"#140606");
+    [90,210,330].forEach(a=>tomoe(a,r*0.70,r*0.13,"#140606"));
+    [30,150,270].forEach(a=>tomoe(a,r*0.50,r*0.11,"#140606"));
+  }
+  RING(ex,ey,r*1.0,"#2b231c",r*0.09);
+  return els;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -2783,6 +2863,32 @@ export default function App() {
     });
   }, [currentDay, data]);
 
+  // A quest goal pays out the moment its streak reaches the target, and the eye
+  // stays yours afterwards no matter what the streak does.
+  useEffect(()=>{
+    if (!data) return;
+    const owned = (data.wallet?.owned)||[];
+    const won = [];
+    (data.tasks||[]).forEach(t=>{
+      const g = t.goal;
+      if (!g || !g.eye || !g.days) return;
+      if (owned.includes(`eye_${g.eye}`)) return;
+      if (getStreak(t) >= g.days) won.push(g.eye);
+    });
+    if (!won.length) return;
+    setData(cur=>{
+      const have = (cur.wallet?.owned)||[];
+      const add = won.filter(e=>!have.includes(`eye_${e}`)).map(e=>`eye_${e}`);
+      if (!add.length) return cur;
+      const n = {...cur, wallet:{...cur.wallet, owned:[...have, ...add],
+        equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), eye:(cur.wallet.equippedCosmetics||{}).eye || won[0]}}};
+      persistRaw(n); return n;
+    });
+    const e = eyeById(won[0]);
+    if (e) { toast$(`👁 ${e.name.toUpperCase()} AWAKENED`, "#e8333a");
+      try { navigator.vibrate && navigator.vibrate([30,60,30,60,120]); } catch {} }
+  }, [data]);
+
   // Crossing into a new form is an event, not a stat change. Once per form, ever.
   useEffect(()=>{
     if (!data) return;
@@ -2798,7 +2904,7 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
   }, [data]);
 
-  const [newTask, setNewTask] = useState({name:"",catId:"xp",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+  const [newTask, setNewTask] = useState({name:"",catId:"xp",goal:null,importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
@@ -3284,7 +3390,7 @@ export default function App() {
       targetReps: isWk ? 1 : (newTask.targetReps || 1),
       points: calcPoints(newTask.importance), decayRate: calcDecay(newTask.importance), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
-    setNewTask({name:"",catId:"xp",importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+    setNewTask({name:"",catId:"xp",goal:null,importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
     setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
   };
 
@@ -3570,6 +3676,15 @@ export default function App() {
       try { navigator.vibrate && navigator.vibrate([20,40,30]); } catch {}
       return n;
     });
+  };
+  // Dojutsu aren't shop items — they're earned, so they equip on their own path.
+  const setCos = (slot, val) => {
+    setData(cur=>{
+      const n = {...cur, wallet:{...cur.wallet,
+        equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), [slot]: val}}};
+      persistRaw(n); return n;
+    });
+    try { navigator.vibrate && navigator.vibrate(10); } catch {}
   };
   const equipCosmetic = (item) => {
     setData(cur=>{
@@ -5413,6 +5528,63 @@ export default function App() {
                   ))}
                 </div>
                 <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>Tap the box and use your keyboard's emoji key for anything not listed</div>
+                {/* ── GOAL: hold a streak on this quest, awaken an eye ── */}
+                <div style={{...C.label,marginTop:16}}>GOAL <span style={{color:FAINT}}>· optional</span></div>
+                <div style={{background:"rgba(0,0,0,0.2)",padding:11,borderRadius:BLOCK?0:14}}>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    <button onClick={()=>set({goal:null})}
+                      style={{height:38,padding:"0 11px",borderRadius:BLOCK?0:10,cursor:"pointer",fontFamily:FONT,
+                        fontSize:9.5,fontWeight:900,color:"#fff",background:"rgba(255,255,255,0.08)",
+                        border:!t.goal?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>NONE</button>
+                    {EYES.map(e=>{
+                      const on = !!(t.goal && t.goal.eye===e.id);
+                      const have = ((data.wallet||{}).owned||[]).includes("eye_"+e.id);
+                      let q1 = 0;
+                      return (
+                        <button key={e.id}
+                          onClick={()=>set({goal:{eye:e.id, days:(t.goal&&t.goal.days)||30}})}
+                          style={{width:38,height:38,padding:0,borderRadius:BLOCK?0:10,cursor:"pointer",
+                            background:"rgba(255,255,255,0.08)",position:"relative",
+                            border:on?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>
+                          <svg width="28" height="28" viewBox="0 0 28 28" style={{display:"block",margin:"0 auto"}}>
+                            {drawEye([], e.id, 14, 14, 12, ()=>q1++)}
+                          </svg>
+                          {have && <span style={{position:"absolute",top:-6,right:-4,fontSize:10}}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {t.goal && (()=>{
+                    const e = eyeById(t.goal.eye);
+                    const have = ((data.wallet||{}).owned||[]).includes("eye_"+t.goal.eye);
+                    const cur = t.id ? getStreak(t) : 0;
+                    let q2 = 0;
+                    return (
+                      <div style={{marginTop:12}}>
+                        <div style={{display:"flex",alignItems:"center",gap:11}}>
+                          <svg width="46" height="46" viewBox="0 0 46 46" style={{flexShrink:0}}>
+                            {drawEye([], t.goal.eye, 23, 23, 20, ()=>q2++)}
+                          </svg>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>{e ? e.name : ""}</div>
+                            <div style={{fontSize:9.5,color:DIM,fontWeight:700,fontStyle:"italic",marginTop:1}}>{e ? e.lore : ""}</div>
+                          </div>
+                        </div>
+                        <div style={{...C.label,marginTop:12,marginBottom:6}}>
+                          HOLD A STREAK OF <span style={{color:"#fff"}}>{t.goal.days}</span> DAYS
+                        </div>
+                        <input type="range" min="3" max="120" step="1" value={t.goal.days}
+                          onChange={ev=>set({goal:{...t.goal, days:parseInt(ev.target.value)}})}
+                          style={{width:"100%",accentColor:T.accent}}/>
+                        <div style={{fontSize:10,color:have?GOOD:FAINT,fontWeight:800,marginTop:6}}>
+                          {have ? "✓ Already awakened — yours for good"
+                                : t.id ? `Current streak ${cur} / ${t.goal.days}`
+                                       : "Progress starts once this quest is saved"}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
                 <div style={{...C.label,marginTop:16}}>QUEST COLOR</div>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
                   <button onClick={()=>set({color:null})}
@@ -6109,6 +6281,42 @@ export default function App() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* DOJUTSU */}
+            <div style={C.glass}>
+              <div style={C.label}>DOJUTSU</div>
+              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:11,lineHeight:1.45}}>
+                Awakened by holding a streak on a quest. Set the goal in the quest itself.
+                Hidden under the ANBU mask.
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:9}}>
+                <button onClick={()=>setCos("eye", null)}
+                  style={{height:54,padding:"0 14px",borderRadius:14,cursor:"pointer",fontFamily:FONT,
+                    fontSize:10,fontWeight:900,color:"#fff",background:"rgba(255,255,255,0.06)",
+                    border:!cosmetics.eye?`2px solid ${T.accent}`:`1px solid ${LINE}`}}>NONE</button>
+                {EYES.map(e=>{
+                  const have = ((data.wallet||{}).owned||[]).includes("eye_"+e.id);
+                  const on = cosmetics.eye===e.id;
+                  let q = 0;
+                  return (
+                    <button key={e.id} onClick={()=>have && setCos("eye", on?null:e.id)}
+                      title={e.name}
+                      style={{width:54,height:54,padding:0,borderRadius:14,position:"relative",
+                        cursor:have?"pointer":"default",background:"rgba(255,255,255,0.06)",
+                        border:on?`2px solid ${T.accent}`:`1px solid ${LINE}`,
+                        filter:have?"none":"grayscale(1) brightness(0.45)"}}>
+                      <svg width="40" height="40" viewBox="0 0 40 40" style={{display:"block",margin:"0 auto"}}>
+                        {drawEye([], e.id, 20, 20, 17, ()=>q++)}
+                      </svg>
+                      {!have && <span style={{position:"absolute",top:3,right:4,fontSize:11}}>🔒</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:10,color:DIM,fontWeight:800,marginTop:10}}>
+                {cosmetics.eye ? (eyeById(cosmetics.eye)||{}).name : "No dojutsu equipped"}
+              </div>
             </div>
 
             {/* MY COSMETICS (shop items, managed here on the character page) */}
