@@ -1701,15 +1701,25 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     }
   }
   const wornEye = (cosmetics && cosmetics.eye && eyeById(cosmetics.eye)) ? cosmetics.eye : null;
+  // sclera
+  R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
+  R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
   if (wornEye && !anbu) {
-    drawEye(els, wornEye, 10.6*s, 7.7*s, 1.05*s, () => k++);
-    drawEye(els, wornEye, 13.5*s, 7.7*s, 1.05*s, () => k++);
+    // the dojutsu is the iris, sitting inside the eye rather than replacing it
+    drawEye(els, wornEye, 10.62*s, 7.78*s, 0.62*s, () => k++, true);
+    drawEye(els, wornEye, 13.52*s, 7.78*s, 0.62*s, () => k++, true);
   } else {
-    R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
-    R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
     R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
     R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
   }
+  // eyelids: a hood of skin across the top of each eye, with a lash line under it
+  R(9.82,6.72,1.56,0.62,shade(skin,-6),0.34);
+  R(12.72,6.72,1.56,0.62,shade(skin,-6),0.34);
+  R(9.86,7.26,1.48,0.17,shade(skin,-62),0.06);
+  R(12.76,7.26,1.48,0.17,shade(skin,-62),0.06);
+  // a touch of lower lid so the eye reads as set into the face
+  R(9.9,8.42,1.4,0.22,shade(skin,-26),0.1);
+  R(12.8,8.42,1.4,0.22,shade(skin,-26),0.1);
   R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
 
   // ── ANBU PORCELAIN MASK — animal face, hair left showing above it ─────────
@@ -2714,7 +2724,7 @@ const EYES = [
 ];
 const eyeById = (id) => EYES.find(e=>e.id===id) || null;
 
-function drawEye(els, id, ex, ey, r, nk) {
+function drawEye(els, id, ex, ey, r, nk, irisOnly) {
   const C=(x,y,rr,f,o)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill={f} opacity={o===undefined?1:o}/>);
   const RING=(x,y,rr,st,w)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill="none" stroke={st} strokeWidth={w}/>);
   const P=(d,f)=>els.push(<path key={nk()} d={d} fill={f}/>);
@@ -2731,7 +2741,7 @@ function drawEye(els, id, ex, ey, r, nk) {
        L ${hx-px*size*0.95} ${hy-py*size*0.95} Z`, col);
     C(hx,hy,size,col);
   };
-  els.push(<ellipse key={nk()} cx={ex} cy={ey} rx={r*1.12} ry={r} fill="#f6f2ea"/>);
+  if (!irisOnly) els.push(<ellipse key={nk()} cx={ex} cy={ey} rx={r*1.12} ry={r} fill="#f6f2ea"/>);
   if (id==="sharingan") {
     C(ex,ey,r*0.92,"#c2201f"); RING(ex,ey,r*0.92,"#6b0f0e",r*0.12);
     C(ex,ey,r*0.26,"#140606");
@@ -2771,7 +2781,7 @@ function drawEye(els, id, ex, ey, r, nk) {
     [90,210,330].forEach(a=>tomoe(a,r*0.70,r*0.13,"#140606"));
     [30,150,270].forEach(a=>tomoe(a,r*0.50,r*0.11,"#140606"));
   }
-  RING(ex,ey,r*1.0,"#2b231c",r*0.09);
+  if (!irisOnly) RING(ex,ey,r*1.0,"#2b231c",r*0.09);
   return els;
 }
 
@@ -5542,7 +5552,7 @@ export default function App() {
                       let q1 = 0;
                       return (
                         <button key={e.id}
-                          onClick={()=>set({goal:{eye:e.id, days:(t.goal&&t.goal.days)||30}})}
+                          onClick={()=>set({goal:{eye:e.id, days:Math.min(30,(t.goal&&t.goal.days)||7)}})}
                           style={{width:38,height:38,padding:0,borderRadius:BLOCK?0:10,cursor:"pointer",
                             background:"rgba(255,255,255,0.08)",position:"relative",
                             border:on?"2px solid #fff":"1px solid rgba(255,255,255,0.2)"}}>
@@ -5585,7 +5595,7 @@ export default function App() {
                         <div style={{...C.label,marginTop:12,marginBottom:6}}>
                           HOLD A STREAK OF <span style={{color:"#fff"}}>{t.goal.days}</span> DAYS
                         </div>
-                        <input type="range" min="3" max="120" step="1" value={t.goal.days}
+                        <input type="range" min="1" max="30" step="1" value={t.goal.days}
                           onChange={ev=>set({goal:{...t.goal, days:parseInt(ev.target.value)}})}
                           style={{width:"100%",accentColor:T.accent}}/>
                         <div style={{fontSize:10,color:have?GOOD:FAINT,fontWeight:800,marginTop:6}}>
