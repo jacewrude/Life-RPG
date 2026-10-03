@@ -2705,12 +2705,12 @@ const STORY = [
 // DOJUTSU — eyes earned by holding a streak on one specific quest
 // ══════════════════════════════════════════════════════════════════════════════
 const EYES = [
-  { id:"sharingan", name:"Sharingan",       lore:"Three tomoe. It sees the pattern before you do." },
-  { id:"mangekyo",  name:"Mangekyo",        lore:"The pinwheel. Bought with something that hurt." },
-  { id:"byakugan",  name:"Byakugan",        lore:"All-seeing, and blind to nothing nearby." },
-  { id:"rinnegan",  name:"Rinnegan",        lore:"Ringed. The eye the stories are about." },
-  { id:"tenseigan", name:"Tenseigan",       lore:"Bloomed pale blue, the sky's own eye." },
-  { id:"rinne",     name:"Rinne Sharingan", lore:"Rings and tomoe together. The first eye." },
+  { id:"sharingan", name:"Sharingan" },
+  { id:"mangekyo",  name:"Mangekyo" },
+  { id:"byakugan",  name:"Byakugan" },
+  { id:"rinnegan",  name:"Rinnegan" },
+  { id:"tenseigan", name:"Tenseigan" },
+  { id:"rinne",     name:"Rinne Sharingan" },
 ];
 const eyeById = (id) => EYES.find(e=>e.id===id) || null;
 
@@ -5561,13 +5561,25 @@ export default function App() {
                     let q2 = 0;
                     return (
                       <div style={{marginTop:12}}>
-                        <div style={{display:"flex",alignItems:"center",gap:11}}>
+                        <div style={{display:"flex",alignItems:"center",gap:12}}>
+                          {/* the eye itself, then the same eye worn on your face */}
                           <svg width="46" height="46" viewBox="0 0 46 46" style={{flexShrink:0}}>
                             {drawEye([], t.goal.eye, 23, 23, 20, ()=>q2++)}
                           </svg>
+                          <div style={{width:96,height:76,overflow:"hidden",position:"relative",flexShrink:0,
+                            borderRadius:BLOCK?0:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${LINE}`}}>
+                            <div style={{position:"absolute",left:-62,top:-16}}>
+                              <PixelCharacter level={wornLvl===4 ? 3 : wornLvl} character={cz} scale={9}
+                                cosmetics={{...cosmetics, eye:t.goal.eye}}/>
+                            </div>
+                          </div>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>{e ? e.name : ""}</div>
-                            <div style={{fontSize:9.5,color:DIM,fontWeight:700,fontStyle:"italic",marginTop:1}}>{e ? e.lore : ""}</div>
+                            {wornLvl===4 && (
+                              <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:2,lineHeight:1.35}}>
+                                hidden under the ANBU mask
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div style={{...C.label,marginTop:12,marginBottom:6}}>
