@@ -626,7 +626,9 @@ function migrate(d) {
     lists: Array.isArray(d.lists) ? d.lists : [],
     schedule: (d.schedule && typeof d.schedule === "object") ? d.schedule : {},
     combo: (d.combo && typeof d.combo === "object") ? { count:d.combo.count||0, lastAt:d.combo.lastAt||0 } : { count:0, lastAt:0 },
-    challengeClaims: (d.challengeClaims && typeof d.challengeClaims === "object") ? d.challengeClaims : {},
+    challengeClaims: (()=>{ const src=(d.challengeClaims && typeof d.challengeClaims==="object")?d.challengeClaims:{};
+      const out={}; Object.keys(src).forEach(k=>{ out[k] = (src[k] && typeof src[k]==="object") ? src[k] : {}; });
+      return out; })(),
     trophies: (d.trophies && typeof d.trophies === "object") ? d.trophies : {},
     bossClaims: (()=>{ const src=(d.bossClaims && typeof d.bossClaims==="object")?d.bossClaims:{}; const out={};
       const ids=["sloth","procrast","wraith","golem","hydra","fiend","fog","snooze"];
@@ -797,29 +799,40 @@ function questStats(task) {
 }
 
 // ── DAILY CHALLENGE (deterministic per date) ─────────────────────────────────
-function dailyChallengeFor(d, todayK) {
-  const dailies = (d.tasks||[]).filter(t=>t.catId && !isWeekly(t) && isScheduledOn(t, todayK));
+// Three trials a day, drawn deterministically from the date so they're the same
+// all day but different tomorrow. Some are racing a clock.
+function dailyTrialsFor(d, todayK) {
+  const dailies  = (d.tasks||[]).filter(t=>t.catId && !isWeekly(t) && isScheduledOn(t, todayK));
   const weeklies = (d.tasks||[]).filter(t=>t.catId && isWeekly(t));
-  const seed = todayK.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
-  const catsToday = [...new Set(dailies.map(t=>t.catId))];
-  const opts = [];
-  if (dailies.length>=2) opts.push("count");
-  if (catsToday.length>=2) opts.push("cat");
-  if (weeklies.length>=1) opts.push("weekly");
-  if (!opts.length) return null;
-  const pick = opts[seed % opts.length];
-  if (pick==="cat") {
-    const catId = catsToday[seed % catsToday.length];
-    const goal = dailies.filter(t=>t.catId===catId).length;
-    return { type:"cat", catId, goal, gems:15 };
+  if (!dailies.length && !weeklies.length) return [];
+  let seed = todayK.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
+  const rnd = () => { seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; };
+  const n = dailies.length;
+  const pool = [];
+  if (n >= 2) {
+    pool.push({ id:"count",   xp:0.30, need: Math.max(2, Math.min(n, 2 + Math.floor(rnd()*3))),
+                text:(g)=>`Finish ${g} quests today` });
+    pool.push({ id:"half",    xp:0.35, need: Math.ceil(n/2), by: 14,
+                text:(g)=>`Be half done — ${g} quests — before 2pm` });
+    pool.push({ id:"early",   xp:0.40, need: Math.max(1, Math.min(n, 1 + Math.floor(rnd()*2))), by: 11,
+                text:(g)=>`Clear ${g} ${g===1?"quest":"quests"} before 11am` });
+    pool.push({ id:"sweep",   xp:0.60, need: n,
+                text:(g)=>`Clear the whole board — all ${g}` });
+    pool.push({ id:"dusk",    xp:0.35, need: Math.max(2, Math.min(n, 3)), by: 18,
+                text:(g)=>`${g} quests done before 6pm` });
   }
-  if (pick==="weekly") {
-    const n = 2 + (seed % 3);
-    return { type:"weekly", n, goal:n, gems:12 };
+  if (weeklies.length) {
+    pool.push({ id:"weekly",  xp:0.30, need: 2 + Math.floor(rnd()*3),
+                text:(g)=>`Log ${g} weekly-habit reps today` });
   }
-  const n = Math.max(2, Math.min(dailies.length, 2 + (seed % 3)));
-  return { type:"count", n, goal:n, gems:10 };
+  if (!pool.length) return [];
+  // shuffle deterministically, take three
+  const order = pool.map((p,i)=>({p, k: rnd()})).sort((a,b)=>a.k-b.k).map(x=>x.p);
+  return order.slice(0, Math.min(3, order.length)).map(t=>({
+    id:t.id, xp:t.xp, need:t.need, by:t.by || null, label:t.text(t.need),
+  }));
 }
+
 
 
 // Original boss illustrations for Life RPG — drawn as SVG strings so the exact
@@ -2869,6 +2882,8 @@ export default function App() {
   const [storyOpen, setStoryOpen] = useState(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [trialsOpen, setTrialsOpen] = useState(false);
+  // Overlays must never survive a page change — that's how one got stranded.
+  useEffect(()=>{ setTrialsOpen(false); setRestoreOpen(false); }, [view]);
 
 
   const [barDrag, setBarDrag] = useState(false);   // priority divider being dragged
@@ -3641,6 +3656,25 @@ export default function App() {
     ...cur,
     categories: cur.categories.map(c=>({...c, value: Math.min(c.maxValue, c.value + xp)})),
   });
+  // XP is shown as whole numbers: internally 0.30, on screen 3.
+  const xpInt = (v) => Math.round((v||0) * 10);
+  const trialProgress = (t) => {
+    if (t.id === "weekly") return weeklyHabits.reduce((a,x)=>a+(getReps(x,today)||0),0);
+    return todayDone;
+  };
+  // A timed trial can only be claimed before its hour is up.
+  const trialOpen = (t) => (t.by == null) || (new Date().getHours() < t.by);
+  const trialClaimed = (t) => !!(((data.challengeClaims||{})[today])||{})[t.id];
+  const claimTrial = (t) => {
+    if (trialClaimed(t) || trialProgress(t) < t.need || !trialOpen(t)) return;
+    setData(cur=>{
+      const day = {...(((cur.challengeClaims||{})[today])||{}), [t.id]:true};
+      const n = {...grantXP(cur, t.xp), challengeClaims:{...(cur.challengeClaims||{}), [today]: day}};
+      persistRaw(n); return n;
+    });
+    toast$(`TRIAL CLEARED  +${xpInt(t.xp)} XP`, "#a78bfa");
+    try { navigator.vibrate && navigator.vibrate([20,40,20]); } catch {}
+  };
   const claimChallenge = (gems) => {
     const xp = 0.30;
     setData(cur=>{ const n={...grantXP(cur, xp), challengeClaims:{...(cur.challengeClaims||{}), [dateKey()]:true}};
@@ -4579,7 +4613,7 @@ export default function App() {
           <div style={{textAlign:"center",animation:"popIn .5s ease"}}>
             <div style={{fontSize:64}}>🏆</div>
             <div style={{fontSize:30,fontWeight:900,color:"#fff",textShadow:"0 0 24px #f59e0b",letterSpacing:1}}>PERFECT DAY</div>
-            <div style={{fontSize:16,fontWeight:800,color:"#fcd34d",marginTop:4}}>+{PERFECT_DAY_XP.toFixed(2)} XP</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#fcd34d",marginTop:4}}>+{xpInt(PERFECT_DAY_XP)} XP</div>
           </div>
         </div>
       )}
@@ -5182,32 +5216,18 @@ export default function App() {
 
             <div style={{padding:"0 16px"}}>
               {/* LEVEL PROGRESS */}
-              <div style={{...C.glass,padding:"13px 16px"}}>
-                <div style={{height:11,background:"rgba(0,0,0,0.3)",borderRadius:6,overflow:"hidden"}}>
+              <div style={{...C.glass,padding:"10px 14px",marginBottom:10}}>
+                <div style={{height:8,background:"rgba(0,0,0,0.3)",borderRadius:5,overflow:"hidden"}}>
                   <div style={{height:"100%",width:`${level.lvl>=LEVELS.length-1?100:lvlProgress}%`,background:"linear-gradient(90deg,rgba(255,255,255,0.75),#ffffff)",borderRadius:6,boxShadow:"0 0 12px rgba(255,255,255,0.6)",transition:"width .6s ease"}}/>
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginTop:6,fontWeight:800}}>
-                  <span>{xpNow.toFixed(1)} XP</span>
+                  <span>{xpInt(xpNow)} XP</span>
                   {level.lvl < LEVELS.length-1
                     ? <span style={{color:"#fff"}}>
-                        {(level.ratingForNext - xpNow).toFixed(1)} XP to {getTitle(data, level.lvl+1)}
+                        {Math.max(0, xpInt(level.ratingForNext - xpNow))} XP to {getTitle(data, level.lvl+1)}
                       </span>
                     : <span style={{color:T.accent}}>HIGHEST RANK</span>}
-                  <span>{level.lvl>=LEVELS.length-1?"MAX":level.ratingForNext.toFixed(1)}</span>
-                </div>
-                <div style={{display:"flex",gap:8,marginTop:10}}>
-                  <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:14,padding:"8px 11px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{fontSize:9,color:GOOD,fontWeight:900}}>ALL DONE</span>
-                    <span style={{fontSize:16,fontWeight:900,color:GOOD}}>{ratingIfAllDone}</span>
-                  </div>
-                  <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:14,padding:"8px 11px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{fontSize:9,color:BAD,fontWeight:900}}>NONE DONE</span>
-                    <span style={{fontSize:16,fontWeight:900,color:BAD}}>{ratingIfNoneDone}</span>
-                  </div>
-                </div>
-                <div style={{marginTop:11,paddingTop:10,borderTop:`1px solid ${LINE}`,textAlign:"center"}}>
-                  <div style={{fontSize:12,color:DIM,fontStyle:"italic",lineHeight:1.5,fontWeight:600}}>"{qText}"</div>
-                  <div style={{fontSize:9,color:FAINT,marginTop:3,fontWeight:800,letterSpacing:1}}>— {qAuthor.toUpperCase()}</div>
+                  <span>{level.lvl>=LEVELS.length-1?"MAX":xpInt(level.ratingForNext)}</span>
                 </div>
               </div>
 
@@ -5256,45 +5276,35 @@ export default function App() {
                 <div style={{fontSize:11,color:DIM,fontWeight:800}}>{todayDone} of {todayTasks.length}</div>
               </div>
               {(()=>{
-                const ch = dailyChallengeFor(data, today);
-                if (!ch) return null;
-                const claimed = !!(data.challengeClaims||{})[today];
-                let progress=0, label="";
-                if (ch.type==="count"){ progress=todayDone; label=`Complete ${ch.n} quests today`; }
-                else if (ch.type==="cat"){ const cat=data.categories.find(c=>c.id===ch.catId);
-                  progress=data.tasks.filter(t=>t.catId===ch.catId&&!isWeekly(t)&&isScheduledOn(t,today)&&isCompletedOn(t,today)).length;
-                  label=`Finish every ${cat?cat.name:""} quest today`; }
-                else { progress=weeklyHabits.reduce((a,t)=>a+(getReps(t,today)||0),0); label=`Log ${ch.n} weekly-habit reps today`; }
-                const met = progress>=ch.goal;
-                const pct = Math.min(100,(progress/ch.goal)*100);
+                const trials = dailyTrialsFor(data, today);
+                if (!trials.length) return null;
+                const t0 = trials[0];
+                const p0 = trialProgress(t0);
+                const claimed = !!((data.challengeClaims||{})[today]||{})[t0.id];
+                const open = trials.filter(t=>!((data.challengeClaims||{})[today]||{})[t.id]).length;
+                const pct = Math.min(100,(p0/t0.need)*100);
                 const comboHot = data.combo && (Date.now()-(data.combo.lastAt||0))<=COMBO_WINDOW_MS && (data.combo.count||0)>=1;
                 return (
                   <div onClick={()=>setTrialsOpen(true)}
-                    style={{...C.glass, border:`1.5px solid ${claimed?LINE:`${T.accent}66`}`, marginBottom:11, padding:"13px 15px", cursor:"pointer"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12}}>
-                      <div style={{fontSize:24}}>{claimed?"🏅":"🎯"}</div>
+                    style={{...C.glass, border:`1.5px solid ${claimed?LINE:`${T.accent}66`}`, marginBottom:11, padding:"11px 14px", cursor:"pointer"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:11}}>
+                      <div style={{fontSize:20}}>{claimed?"🏅":"🎯"}</div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1.5,color:T.accent}}>DAILY CHALLENGE · TAP FOR ALL TRIALS</div>
-                        <div style={{fontSize:13.5,fontWeight:800,color:"#fff",marginTop:2}}>{label}</div>
-                        <div style={{height:6,borderRadius:4,background:"rgba(0,0,0,0.3)",marginTop:8,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${pct}%`,borderRadius:4,background:T.accent,transition:"width .4s"}}/>
+                        <div style={{fontSize:8.5,fontWeight:900,letterSpacing:1.3,color:T.accent}}>
+                          TODAY&rsquo;S TRIALS · {open} OPEN · TAP
+                        </div>
+                        <div style={{fontSize:12.5,fontWeight:800,color:"#fff",marginTop:1}}>{t0.label}</div>
+                        <div style={{height:5,borderRadius:3,background:"rgba(0,0,0,0.3)",marginTop:6,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${pct}%`,borderRadius:3,background:T.accent,transition:"width .4s"}}/>
                         </div>
                       </div>
-                      {claimed ? (
-                        <div style={{fontSize:10,fontWeight:900,color:GOOD,whiteSpace:"nowrap"}}>DONE ✓</div>
-                      ) : met ? (
-                        <button onClick={e=>{e.stopPropagation(); claimChallenge(ch.gems);}} style={{...C.btn,padding:"11px 14px",fontSize:11,whiteSpace:"nowrap",animation:"glowPulse 1.6s ease-in-out infinite"}}>CLAIM +XP</button>
-                      ) : (
-                        <div style={{textAlign:"center",whiteSpace:"nowrap"}}>
-                          <div style={{fontSize:14,fontWeight:900,color:"#fff"}}>{Math.min(progress,ch.goal)}/{ch.goal}</div>
-                          <div style={{fontSize:8.5,fontWeight:800,color:DIM}}>+0.30 XP</div>
-                        </div>
-                      )}
+                      <div style={{textAlign:"center",whiteSpace:"nowrap"}}>
+                        <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>{Math.min(p0,t0.need)}/{t0.need}</div>
+                        <div style={{fontSize:8,fontWeight:800,color:DIM}}>+{xpInt(t0.xp)} XP</div>
+                      </div>
                     </div>
                     {comboHot && (
-                      <div style={{fontSize:9.5,fontWeight:800,color:"#ff9a4e",marginTop:9}}>
-                        🔥 MOMENTUM — you're on a roll
-                      </div>
+                      <div style={{fontSize:9,fontWeight:800,color:"#ff9a4e",marginTop:7}}>🔥 MOMENTUM</div>
                     )}
                   </div>
                 );
@@ -5346,7 +5356,7 @@ export default function App() {
                   <div style={{fontSize:30}}>🏆</div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:15,fontWeight:900,color:"#3a2200"}}>PERFECT DAY!</div>
-                    <div style={{fontSize:10.5,fontWeight:800,color:"#5a3600"}}>Claim your +{PERFECT_DAY_XP.toFixed(2)} XP bonus</div>
+                    <div style={{fontSize:10.5,fontWeight:800,color:"#5a3600"}}>Claim your +{xpInt(PERFECT_DAY_XP)} XP bonus</div>
                   </div>
                   <div style={{fontSize:20,color:"#3a2200"}}>›</div>
                 </div>
@@ -6764,10 +6774,44 @@ export default function App() {
         {trialsOpen && (
           <div style={C.modal} onClick={()=>setTrialsOpen(false)}>
             <div style={C.sheet} onClick={e=>e.stopPropagation()}>
-              <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>Trials</div>
-              <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:3,marginBottom:14,lineHeight:1.5}}>
-                Every one of these pays XP, and XP is the only thing that raises your rank.
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                <div style={{fontSize:20,fontWeight:900,color:"#fff",flex:1}}>Trials</div>
+                <button onClick={()=>setTrialsOpen(false)}
+                  style={{...C.btnSm,padding:"8px 14px",fontSize:15,lineHeight:1}}>✕</button>
               </div>
+              <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:0,marginBottom:14,lineHeight:1.5}}>
+                Three a day, fresh each morning. Some are racing a clock.
+              </div>
+              {dailyTrialsFor(data, today).map(t=>{
+                const prog = trialProgress(t), done = trialClaimed(t);
+                const met = prog >= t.need, live = trialOpen(t);
+                const expired = !live && !done;
+                return (
+                  <div key={t.id} style={{...C.glass,padding:"12px 14px",
+                    border:`1px solid ${done?GOOD+"55":expired?LINE:T.accent+"55"}`,opacity:expired?0.5:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:11}}>
+                      <div style={{fontSize:18}}>{done?"🏅":expired?"⌛":t.by?"⏰":"🎯"}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12.5,fontWeight:800,color:"#fff"}}>{t.label}</div>
+                        <div style={{height:5,borderRadius:3,background:"rgba(0,0,0,0.3)",marginTop:6,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${Math.min(100,(prog/t.need)*100)}%`,
+                            borderRadius:3,background:done?GOOD:T.accent}}/>
+                        </div>
+                      </div>
+                      {done ? <div style={{fontSize:10,fontWeight:900,color:GOOD}}>DONE ✓</div>
+                        : expired ? <div style={{fontSize:9.5,fontWeight:900,color:FAINT}}>MISSED</div>
+                        : met ? <button onClick={()=>claimTrial(t)}
+                            style={{...C.btn,padding:"9px 12px",fontSize:10.5,whiteSpace:"nowrap",
+                              animation:"glowPulse 1.6s ease-in-out infinite"}}>+{xpInt(t.xp)} XP</button>
+                        : <div style={{textAlign:"center",whiteSpace:"nowrap"}}>
+                            <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>{Math.min(prog,t.need)}/{t.need}</div>
+                            <div style={{fontSize:8,fontWeight:800,color:DIM}}>+{xpInt(t.xp)} XP</div>
+                          </div>}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{...C.label,marginTop:16,marginBottom:8}}>LIFETIME</div>
             <div style={{...C.sectionTitle, margin:"18px 2px 12px"}}>Trophies</div>
             <div style={C.glass}>
               {TROPHIES.map((t,i)=>{
