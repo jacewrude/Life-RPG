@@ -6814,8 +6814,9 @@ export default function App() {
           <div style={C.modal} onClick={()=>setTrialsOpen(false)}>
             <div style={C.sheet} onClick={e=>e.stopPropagation()}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,
-                position:"sticky",top:-18,zIndex:3,background:GLASS_HEAVY,
-                margin:"-18px -20px 4px",padding:"16px 20px 10px"}}>
+                position:"sticky",top:0,zIndex:3,background:GLASS_HEAVY,
+                backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",
+                margin:"-18px -20px 6px",padding:"18px 20px 10px"}}>
                 <div style={{fontSize:20,fontWeight:900,color:"#fff",flex:1}}>Trials</div>
                 <button onClick={()=>setTrialsOpen(false)}
                   style={{...C.btnSm,padding:"9px 15px",fontSize:15,lineHeight:1}}>✕</button>
