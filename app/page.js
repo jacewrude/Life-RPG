@@ -79,13 +79,7 @@ const THEMES = {
     accent:"#ff8f5e", glass:"28,8,12",
   },
   akatsuki: {
-    name:"Akatsuki", swatch:"#b11226",
-    sky:["#030204","#090508","#1a070d"], sun:"#d81f31", stars:true, ember:true,
-    m1:"#45101c", m2:"#260810", m3:"#10040a",
-    accent:"#d81f31", glass:"16,6,10",
-  },
-  dawn: {
-    name:"The Dawn", swatch:"#8c1020", banner:AKATSUKI_BANNER,
+    name:"Akatsuki", swatch:"#8c1020", banner:AKATSUKI_BANNER,
     sky:["#050206","#140509","#24060f"], sun:"#c21828", stars:true, ember:true,
     m1:"#3a0c16", m2:"#1e060c", m3:"#0c0206",
     accent:"#c93040", glass:"20,6,10",
@@ -4285,7 +4279,7 @@ export default function App() {
     sectionTitle:{fontSize:14,fontWeight:700,color:TXT,letterSpacing:1.2,textTransform:"uppercase",textShadow:"2px 2px 0 #000"},
   } : {
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative",background:pageBg},
-    header:{padding:"calc(env(safe-area-inset-top, 0px) + 14px) 18px 10px",position:"sticky",top:0,zIndex:5,background:`linear-gradient(180deg,${T.sky[0]}f0,${T.sky[0]}00)`,backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)"},
+    header:{padding:"calc(env(safe-area-inset-top, 0px) + 14px) 18px 10px",position:"sticky",top:0,zIndex:5,background:`linear-gradient(180deg,${pageTop} 55%,transparent 100%)`},
     glass:{background:GLASS,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",border:`1px solid ${LINE}`,borderRadius:26,padding:"16px 17px",marginBottom:12,boxShadow:"0 8px 28px rgba(0,0,0,0.35)"},
     label:{fontSize:11,letterSpacing:1,color:DIM,marginBottom:10,fontWeight:800},
     input:{background:"rgba(0,0,0,0.28)",border:`1px solid ${LINE}`,borderRadius:16,padding:"13px 15px",color:TXT,fontSize:15,width:"100%",boxSizing:"border-box",fontFamily:FONT,fontWeight:600,outline:"none"},
@@ -5141,10 +5135,6 @@ export default function App() {
                 <div style={{display:"inline-flex",alignItems:"center",gap:7,background:GLASS,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:`1px solid ${LINE}`,borderRadius:20,padding:"5px 14px"}}>
                   <span style={{fontSize:11,fontWeight:900,color:T.accent}}>LV {level.lvl}</span>
                   <span style={{fontSize:11,fontWeight:800,color:"#fff"}}>{getTitle(data, level.lvl)}</span>
-                </div>
-                <div key={rating} style={{fontSize:78,fontWeight:900,color:"#fff",lineHeight:1,marginTop:4,textShadow:"0 4px 24px rgba(0,0,0,0.45)",animation:"popIn .45s ease"}}>{rating}</div>
-                <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>
-                  XP · {(level.ratingForNext - xpNow) > 0 ? `${(level.ratingForNext - xpNow).toFixed(1)} TO ${getTitle(data, Math.min(LEVELS.length-1, level.lvl+1)).toUpperCase()}` : "MAX RANK"}
                 </div>
               </div>
               {/* DAILY BADGE RACK — floats beside the character, tap for the full record */}
