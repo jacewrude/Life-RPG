@@ -6813,14 +6813,7 @@ export default function App() {
         {trialsOpen && (
           <div style={C.modal} onClick={()=>setTrialsOpen(false)}>
             <div style={C.sheet} onClick={e=>e.stopPropagation()}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,
-                position:"sticky",top:0,zIndex:3,background:GLASS_HEAVY,
-                backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",
-                margin:"-18px -20px 6px",padding:"18px 20px 10px"}}>
-                <div style={{fontSize:20,fontWeight:900,color:"#fff",flex:1}}>Trials</div>
-                <button onClick={()=>setTrialsOpen(false)}
-                  style={{...C.btnSm,padding:"9px 15px",fontSize:15,lineHeight:1}}>✕</button>
-              </div>
+              <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>Trials</div>
               <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:0,marginBottom:14,lineHeight:1.5}}>
                 Three a day, fresh each morning. Some are racing a clock.
               </div>
@@ -6878,15 +6871,8 @@ export default function App() {
                 );
               })}
             </div>
-              {/* Pinned to the bottom of the sheet so it's always in thumb reach,
-                  whatever the scroll position — the top ✕ is a long stretch on a tall phone. */}
-              <div style={{position:"sticky",bottom:0,zIndex:3,margin:"14px -20px 0",
-                padding:"12px 20px 14px",background:GLASS_HEAVY,
-                backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",
-                borderTop:`1px solid ${LINE}`}}>
-                <button style={{...C.btn,width:"100%",padding:"15px"}}
-                  onClick={()=>setTrialsOpen(false)}>CLOSE</button>
-              </div>
+              <button style={{...C.btn,width:"100%",marginTop:14,padding:"15px"}}
+                onClick={()=>setTrialsOpen(false)}>CLOSE</button>
             </div>
           </div>
         )}
