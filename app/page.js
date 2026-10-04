@@ -4191,6 +4191,9 @@ export default function App() {
   const GLASS_SOFT = `rgba(${_gb},0.30)`;
   const GLASS_HEAVY = `rgba(${_gb},0.72)`;
   const skyGradient = `linear-gradient(180deg,${T.sky[0]} 0%,${T.sky[1]} 52%,${T.sky[2]} 100%)`;
+  // The app background stays dark whatever the theme, tinted only faintly by it.
+  const pageBase = shade(T.sky[0], -34);
+  const pageBg   = `linear-gradient(180deg,#060509 0%,${pageBase} 100%)`;
   const C = BLOCK ? {
     // ── BLOCKLAND SKIN ────────────────────────────────────────────────────────
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,letterSpacing:0.3,
@@ -4502,9 +4505,9 @@ export default function App() {
       {/* iOS can hold a stale composited layer for a fixed background when the
           theme changes. Painting the body as well, and remounting on theme
           change, forces it to repaint. */}
-      <style>{`html,body{background:${BLOCK ? "#14141a" : T.sky[2]};}`}</style>
+      <style>{`html,body{background:${BLOCK ? "#14141a" : pageBase};}`}</style>
       <div key={`bg-${S.theme}`} style={{position:"fixed",inset:0,zIndex:0,transform:"translateZ(0)",
-        background: BLOCK ? "#14141a" : skyGradient,
+        background: BLOCK ? "#14141a" : pageBg,
         backgroundImage: BLOCK ? TEX_DEEP : undefined,
         backgroundSize: BLOCK ? "64px 64px" : undefined,
         imageRendering: BLOCK ? "pixelated" : undefined}}/>
