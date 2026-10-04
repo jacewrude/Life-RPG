@@ -19,12 +19,21 @@ function calcEarnedPoints(basePoints, targetReps, reps) {
   const bonusMult = Math.min(MAX_BONUS_MULT, extra * BONUS_PER_EXTRA);
   return basePoints * (1 + bonusMult);
 }
+// Difficulty 1-10 maps onto the mission ranks, one per step.
+const MISSION_RANKS = ["D","D+","C","C+","B","B+","A","A+","S","S+"];
+const MISSION_COLORS = ["#8d9299","#8d9299","#4ade80","#4ade80","#38bdf8","#38bdf8",
+                        "#a855f7","#a855f7","#f59e0b","#ffd34a"];
 function diffLabel(imp) {
-  if (imp <= 2) return "TRIVIAL";
-  if (imp <= 4) return "EASY";
-  if (imp <= 6) return "MODERATE";
-  if (imp <= 8) return "HARD";
-  return "EPIC";
+  const i = Math.max(1, Math.min(10, Math.round(imp ?? 5)));
+  return MISSION_RANKS[i-1] + " RANK";
+}
+function diffShort(imp) {
+  const i = Math.max(1, Math.min(10, Math.round(imp ?? 5)));
+  return MISSION_RANKS[i-1];
+}
+function diffColor(imp) {
+  const i = Math.max(1, Math.min(10, Math.round(imp ?? 5)));
+  return MISSION_COLORS[i-1];
 }
 
 
@@ -2734,6 +2743,7 @@ const EYES = [
   { id:"rinnegan",  name:"Rinnegan" },
   { id:"tenseigan", name:"Tenseigan" },
   { id:"rinne",     name:"Rinne Sharingan" },
+  { id:"sage",      name:"Sage Mode" },
 ];
 const eyeById = (id) => EYES.find(e=>e.id===id) || null;
 
@@ -2787,6 +2797,12 @@ function drawEye(els, id, ex, ey, r, nk, irisOnly) {
          Q ${ex+Math.cos(t+0.3)*r*0.8} ${ey+Math.sin(t+0.3)*r*0.8} ${ex} ${ey} Z`,"#1b5f86");
     });
     C(ex,ey,r*0.22,"#0d3350");
+  } else if (id==="sage") {      // Sage Mode — an amber toad eye with a bar pupil
+    C(ex,ey,r*0.95,"#e8b531");
+    RING(ex,ey,r*0.95,"#8a5f08",r*0.1);
+    C(ex,ey,r*0.62,"#f5d978");
+    els.push(<rect key={nk()} x={ex-r*0.62} y={ey-r*0.2} width={r*1.24} height={r*0.4} rx={r*0.08} fill="#1d1403"/>);
+    els.push(<rect key={nk()} x={ex-r*0.66} y={ey-r*0.46} width={r*1.32} height={r*0.14} rx={r*0.06} fill="#f7e6a8" opacity="0.5"/>);
   } else {                       // rinne-sharingan
     C(ex,ey,r*0.95,"#c2201f");
     [0.78,0.58,0.38].forEach(f=>RING(ex,ey,r*f,"#2a0708",r*0.085));
@@ -4117,13 +4133,17 @@ export default function App() {
     const n = {...data, priorityBar: arr};
     if (persist) update(n); else setData(n);
   };
+  // Exact XP drives the rank. The rounded number is only ever for display, so a
+  // rank can never lag behind what you actually have.
+  const xpNow  = Math.max(0, Math.min(100,
+    ((data.categories[0]?.value || 0) / (data.categories[0]?.maxValue || 36)) * 100));
   const rating = getRating(data.categories);
   const tier = getTier(rating);
-  const level = getLevel(rating);
+  const level = getLevel(xpNow);
   // You keep your rank; you can choose to wear the look of any rank you've passed.
   const wornLvl = (cz && cz.appearLevel != null && cz.appearLevel <= level.lvl)
     ? cz.appearLevel : level.lvl;
-  const lvlProgress = ((rating - level.ratingFloor) / 7) * 100;
+  const lvlProgress = Math.max(0, Math.min(100, ((xpNow - level.ratingFloor) / 4.2) * 100));
   const ghostCategories = data.categories.map(c=>{
     let val = c.value;
     data.tasks.forEach(t=>{
@@ -4398,7 +4418,8 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
               <WeekPills task={task} cardColor={color} tinted={tinted}/>
               <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap"}}>
-                {cat?.icon} {S.showXP ? `+${task.points.toFixed(3)}` : diffLabel(task.importance??5)}
+                <span style={{color:diffColor(task.importance)}}>{diffShort(task.importance)}</span>
+                {(task.goals||[]).length > 0 && <span style={{marginLeft:5}}>👁{(task.goals||[]).length>1?(task.goals||[]).length:""}</span>}
               </div>
             </div>
           </div>
@@ -4478,7 +4499,11 @@ export default function App() {
         body { background: ${T.sky[0]}; }
       `}</style>
       {/* FULL-BLEED SKY */}
-      <div style={{position:"fixed",inset:0,zIndex:0,
+      {/* iOS can hold a stale composited layer for a fixed background when the
+          theme changes. Painting the body as well, and remounting on theme
+          change, forces it to repaint. */}
+      <style>{`html,body{background:${BLOCK ? "#14141a" : T.sky[2]};}`}</style>
+      <div key={`bg-${S.theme}`} style={{position:"fixed",inset:0,zIndex:0,transform:"translateZ(0)",
         background: BLOCK ? "#14141a" : skyGradient,
         backgroundImage: BLOCK ? TEX_DEEP : undefined,
         backgroundSize: BLOCK ? "64px 64px" : undefined,
@@ -5061,7 +5086,9 @@ export default function App() {
                   <span style={{fontSize:11,fontWeight:800,color:"#fff"}}>{getTitle(data, level.lvl)}</span>
                 </div>
                 <div key={rating} style={{fontSize:78,fontWeight:900,color:"#fff",lineHeight:1,marginTop:4,textShadow:"0 4px 24px rgba(0,0,0,0.45)",animation:"popIn .45s ease"}}>{rating}</div>
-                <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>{tier.label}{titleItem ? ` · ${titleItem.name}` : ""}</div>
+                <div style={{fontSize:11,letterSpacing:3,color:"rgba(255,255,255,0.85)",fontWeight:900,marginTop:2,textShadow:"0 1px 8px rgba(0,0,0,0.4)"}}>
+                  XP · {(level.ratingForNext - xpNow) > 0 ? `${(level.ratingForNext - xpNow).toFixed(1)} TO ${getTitle(data, Math.min(LEVELS.length-1, level.lvl+1)).toUpperCase()}` : "MAX RANK"}
+                </div>
               </div>
               {/* DAILY BADGE RACK — floats beside the character, tap for the full record */}
               <div onClick={()=>setView("record")}
@@ -5096,13 +5123,13 @@ export default function App() {
               <div onClick={()=>setView("boss")}
                 style={{position:"absolute",right:10,bottom:14,textAlign:"right",cursor:"pointer"}}>
                 <div style={{fontSize:8,fontWeight:900,letterSpacing:1.2,color:FAINT,
-                  textShadow:"0 1px 6px rgba(0,0,0,0.8)"}}>POWER</div>
+                  textShadow:"0 1px 6px rgba(0,0,0,0.8)"}}>VS KAEDO</div>
                 <div style={{fontSize:19,fontWeight:900,lineHeight:1.05,
                   color: myForm.aura || "#fff", textShadow:`0 0 14px ${myForm.aura||"#000"}aa, 0 1px 6px rgba(0,0,0,0.9)`}}>
                   {playerPow.toLocaleString()}
                 </div>
-                <div style={{fontSize:8,fontWeight:900,letterSpacing:1,color:myForm.aura||FAINT,
-                  textShadow:"0 1px 6px rgba(0,0,0,0.8)"}}>{myForm.name}</div>
+                <div style={{fontSize:8,fontWeight:900,letterSpacing:1,color:gap>0?"#ff8a7a":GOOD,
+                  textShadow:"0 1px 6px rgba(0,0,0,0.8)"}}>{gap>0 ? `${gap.toLocaleString()} BEHIND` : "AHEAD"}</div>
               </div>
             </div>
 
@@ -5113,11 +5140,13 @@ export default function App() {
                   <div style={{height:"100%",width:`${level.lvl>=LEVELS.length-1?100:lvlProgress}%`,background:"linear-gradient(90deg,rgba(255,255,255,0.75),#ffffff)",borderRadius:6,boxShadow:"0 0 12px rgba(255,255,255,0.6)",transition:"width .6s ease"}}/>
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginTop:6,fontWeight:800}}>
-                  <span>LV {level.lvl}</span>
+                  <span>{xpNow.toFixed(1)} XP</span>
                   {level.lvl < LEVELS.length-1
-                    ? <span style={{color:"#fff"}}>{Math.max(0, Math.ceil(level.ratingForNext - rating))} pts to {getTitle(data, level.lvl+1)}</span>
+                    ? <span style={{color:"#fff"}}>
+                        {(level.ratingForNext - xpNow).toFixed(1)} XP to {getTitle(data, level.lvl+1)}
+                      </span>
                     : <span style={{color:T.accent}}>HIGHEST RANK</span>}
-                  <span>LV {level.lvl>=LEVELS.length-1?"MAX":level.lvl+1}</span>
+                  <span>{level.lvl>=LEVELS.length-1?"MAX":level.ratingForNext.toFixed(1)}</span>
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:10}}>
                   <div style={{flex:1,background:"rgba(0,0,0,0.22)",borderRadius:14,padding:"8px 11px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -5328,6 +5357,20 @@ export default function App() {
                               <div style={{position:"absolute",top:-3,left:-3,background:PRI,color:"#2a1a00",
                                 fontSize:10,fontWeight:900,padding:"1px 5px",borderRadius:8,
                                 boxShadow:`0 0 8px ${PRI}99`,pointerEvents:"none"}}>⚑</div>
+                            )}
+                            <div style={{position:"absolute",bottom:-2,right:-2,
+                              background:"rgba(0,0,0,0.75)",color:diffColor(t.importance),
+                              fontSize:8.5,fontWeight:900,letterSpacing:0.3,padding:"1px 5px",
+                              borderRadius:7,pointerEvents:"none",
+                              border:`1px solid ${diffColor(t.importance)}66`}}>{diffShort(t.importance)}</div>
+                            {(t.goals||[]).length > 0 && (
+                              <div style={{position:"absolute",top:-3,right:-3,pointerEvents:"none",
+                                background:"rgba(0,0,0,0.75)",borderRadius:9,padding:"1px 4px",
+                                border:`1px solid ${T.accent}88`,display:"flex",alignItems:"center",gap:2}}>
+                                <span style={{fontSize:9}}>👁</span>
+                                {(t.goals||[]).length > 1 &&
+                                  <span style={{fontSize:8,fontWeight:900,color:"#fff"}}>{(t.goals||[]).length}</span>}
+                              </div>
                             )}
                           </div>
                           <div style={{fontSize:fs,fontWeight:800,color:"#fff",textAlign:"center",
