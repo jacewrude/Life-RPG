@@ -4240,7 +4240,7 @@ export default function App() {
       color:on?"#fff":DIM,fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",fontFamily:FONT,letterSpacing:0.6,textShadow:PXSHADOW}),
     sectionTitle:{fontSize:14,fontWeight:700,color:TXT,letterSpacing:1.2,textTransform:"uppercase",textShadow:"2px 2px 0 #000"},
   } : {
-    app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative"},
+    app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative",background:pageBase},
     header:{padding:"calc(env(safe-area-inset-top, 0px) + 14px) 18px 10px",position:"sticky",top:0,zIndex:5,background:`linear-gradient(180deg,${T.sky[0]}f0,${T.sky[0]}00)`,backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)"},
     glass:{background:GLASS,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",border:`1px solid ${LINE}`,borderRadius:26,padding:"16px 17px",marginBottom:12,boxShadow:"0 8px 28px rgba(0,0,0,0.35)"},
     label:{fontSize:11,letterSpacing:1,color:DIM,marginBottom:10,fontWeight:800},
@@ -4513,11 +4513,11 @@ export default function App() {
           theme changes. Painting the body as well, and remounting on theme
           change, forces it to repaint. */}
       <style>{`html,body{background:${BLOCK ? "#14141a" : pageBase};}`}</style>
-      <div key={`bg-${S.theme}`} style={{position:"fixed",inset:0,zIndex:0,transform:"translateZ(0)",
-        background: BLOCK ? "#14141a" : pageBg,
-        backgroundImage: BLOCK ? TEX_DEEP : undefined,
-        backgroundSize: BLOCK ? "64px 64px" : undefined,
-        imageRendering: BLOCK ? "pixelated" : undefined}}/>
+      {/* Blockland still wants its dithered stone; every other theme is a flat
+          near-black painted on the container above, so nothing can go stale. */}
+      {BLOCK && <div key="bg-block" style={{position:"fixed",inset:0,zIndex:0,
+        background:"#14141a",backgroundImage:TEX_DEEP,backgroundSize:"64px 64px",
+        imageRendering:"pixelated"}}/>}
 
       {/* CONFETTI SHOWER (full screen) */}
       {confetti.length>0 && (
