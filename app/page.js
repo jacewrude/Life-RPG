@@ -4191,9 +4191,16 @@ export default function App() {
   const GLASS_SOFT = `rgba(${_gb},0.30)`;
   const GLASS_HEAVY = `rgba(${_gb},0.72)`;
   const skyGradient = `linear-gradient(180deg,${T.sky[0]} 0%,${T.sky[1]} 52%,${T.sky[2]} 100%)`;
-  // The app background stays dark whatever the theme, tinted only faintly by it.
-  const pageBase = shade(T.sky[0], -34);
-  const pageBg   = `linear-gradient(180deg,#060509 0%,${pageBase} 100%)`;
+  // The app background is near-black in every theme. Subtracting a flat amount
+  // left bright skies (Ember's purple) still bright, so scale the channels down
+  // instead — that lands every theme on black with only a whisper of its tint.
+  const inkify = (hex, k) => { try {
+      const n = parseInt(String(hex).slice(1), 16);
+      const r = Math.round(((n>>16)&255)*k), g = Math.round(((n>>8)&255)*k), b = Math.round((n&255)*k);
+      return `rgb(${r},${g},${b})`;
+    } catch { return "#07070b"; } };
+  const pageBase = inkify(T.sky[0], 0.16);
+  const pageBg   = `linear-gradient(180deg,#040407 0%,${pageBase} 100%)`;
   const C = BLOCK ? {
     // ── BLOCKLAND SKIN ────────────────────────────────────────────────────────
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,letterSpacing:0.3,
