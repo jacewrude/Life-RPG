@@ -2546,10 +2546,10 @@ function ShopPreview({ item }) {
 // DAILY BADGES — four ranks earned by how much of the day's quest load you clear
 // ══════════════════════════════════════════════════════════════════════════════
 const BADGE_TIERS = [
-  { t:1, need:25,  name:"SPARK",    lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
-  { t:2, need:50,  name:"TEMPERED", lore:"Half the day forged",   base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
-  { t:3, need:75,  name:"VALIANT",  lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
-  { t:4, need:100, name:"FORGED",   lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
+  { t:1, need:25,  name:"KINDLED",       lore:"A quarter cleared",        base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
+  { t:2, need:50,  name:"STEADFAST",     lore:"Half the day held",        base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
+  { t:3, need:75,  name:"BLAZING",       lore:"Three quarters down",      base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
+  { t:4, need:100, name:"WILL OF FIRE",  lore:"Nothing left standing",    base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
 ];
 function badgeTierFor(pct) {
   if (pct == null) return 0;
@@ -4344,7 +4344,7 @@ export default function App() {
     modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.62)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
     sheet:{backgroundColor:BLK.panel,backgroundImage:TEX_STONE,...PX,...bevelUp(BLK.panelL,BLK.panelD,4),
       borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"88vh",overflowY:"auto",
-      padding:"16px 18px calc(env(safe-area-inset-bottom, 0px) + 30px)"},
+      padding:"16px 18px calc(env(safe-area-inset-bottom, 0px) + 108px)"},   // clears the hotbar
     chip:(on)=>({flex:1,padding:"11px 0",...(on?bevelUp(BLK.btnL,BLK.btnD,2):bevelIn(BLK.slotL,BLK.slotD,2)),
       backgroundColor:on?BLK.btn:BLK.slot,backgroundImage:on?TEX_BTN:TEX_SLOT,...PX,
       color:on?"#fff":DIM,fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",fontFamily:FONT,letterSpacing:0.6,textShadow:PXSHADOW}),
@@ -4362,7 +4362,7 @@ export default function App() {
     navBtn:a=>({background:a?"rgba(255,255,255,0.14)":"none",border:"none",color:a?"#fff":FAINT,fontSize:7,fontWeight:800,cursor:"pointer",fontFamily:FONT,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 5px",borderRadius:12,transition:"all .2s"}),
     dayBtn:on=>({width:38,height:38,borderRadius:"50%",border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:10.5,cursor:"pointer",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}),
     modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
-    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"82vh",overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 34px)"},
+    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"82vh",overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 112px)"},   // clears the hotbar
     chip:(on)=>({flex:1,padding:"12px 0",borderRadius:16,border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:11.5,fontWeight:900,cursor:"pointer",textAlign:"center",fontFamily:FONT}),
     sectionTitle:{fontSize:15,fontWeight:900,color:TXT,textShadow:"0 1px 8px rgba(0,0,0,0.4)"},
   };
