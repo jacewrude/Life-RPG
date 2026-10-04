@@ -10,8 +10,11 @@ const GAIN_MULT  = 0.012;
 const DECAY_MULT = 0.015;
 const BONUS_PER_EXTRA = 0.25;
 const MAX_BONUS_MULT  = 2.0;
-const calcPoints = (imp) => +(imp * GAIN_MULT).toFixed(4);
-const calcDecay  = (imp) => +(imp * DECAY_MULT).toFixed(4);
+// Reward curves with difficulty rather than running flat, so an S+ mission is
+// worth several B missions. Normalised at 5 so overall pacing is unchanged.
+const DIFF_CURVE = (imp) => Math.pow(Math.max(1, Math.min(10, imp)), 1.7) / Math.pow(5, 0.7);
+const calcPoints = (imp) => +(DIFF_CURVE(imp) * GAIN_MULT).toFixed(4);
+const calcDecay  = (imp) => +(DIFF_CURVE(imp) * DECAY_MULT).toFixed(4);
 function calcEarnedPoints(basePoints, targetReps, reps) {
   if (reps <= 0) return 0;
   if (reps < targetReps) return basePoints * (reps / targetReps);
@@ -603,6 +606,9 @@ function migrate(d) {
     const { goal, ...rest } = t;
     return { ...rest, goals };
   }) };
+  // Quests store their own points; refresh them so the difficulty curve applies.
+  d = { ...d, tasks: (d.tasks||[]).map(t=>({
+    ...t, points: calcPoints(t.importance ?? 5), decayRate: calcDecay(t.importance ?? 5) })) };
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
   if (!["m","f"].includes(chr.body)) chr.body = "m";
@@ -801,6 +807,9 @@ function questStats(task) {
 // ── DAILY CHALLENGE (deterministic per date) ─────────────────────────────────
 // Three trials a day, drawn deterministically from the date so they're the same
 // all day but different tomorrow. Some are racing a clock.
+// Three trials a day, drawn from the date so they're stable until tomorrow.
+// Targets scale with how many quests you actually have, and the earlier the
+// deadline the smaller the ask — so a 2pm trial is never harder than a 6pm one.
 function dailyTrialsFor(d, todayK) {
   const dailies  = (d.tasks||[]).filter(t=>t.catId && !isWeekly(t) && isScheduledOn(t, todayK));
   const weeklies = (d.tasks||[]).filter(t=>t.catId && isWeekly(t));
@@ -808,29 +817,43 @@ function dailyTrialsFor(d, todayK) {
   let seed = todayK.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
   const rnd = () => { seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; };
   const n = dailies.length;
+  const frac = (f, min) => Math.max(min||1, Math.min(n, Math.ceil(n*f)));
   const pool = [];
   if (n >= 2) {
-    pool.push({ id:"count",   xp:0.30, need: Math.max(2, Math.min(n, 2 + Math.floor(rnd()*3))),
-                text:(g)=>`Finish ${g} quests today` });
-    pool.push({ id:"half",    xp:0.35, need: Math.ceil(n/2), by: 14,
-                text:(g)=>`Be half done — ${g} quests — before 2pm` });
-    pool.push({ id:"early",   xp:0.40, need: Math.max(1, Math.min(n, 1 + Math.floor(rnd()*2))), by: 11,
-                text:(g)=>`Clear ${g} ${g===1?"quest":"quests"} before 11am` });
-    pool.push({ id:"sweep",   xp:0.60, need: n,
-                text:(g)=>`Clear the whole board — all ${g}` });
-    pool.push({ id:"dusk",    xp:0.35, need: Math.max(2, Math.min(n, 3)), by: 18,
-                text:(g)=>`${g} quests done before 6pm` });
+    pool.push({ id:"early", xp:0.35, need:frac(0.25,1), by:11, text:g=>`Clear ${g} ${g===1?"quest":"quests"} before 11am` });
+    pool.push({ id:"half",  xp:0.40, need:frac(0.50,2), by:14, text:g=>`Be ${g} quests deep by 2pm` });
+    pool.push({ id:"dusk",  xp:0.45, need:frac(0.75,3), by:18, text:g=>`${g} quests done before 6pm` });
+    pool.push({ id:"count", xp:0.30, need:frac(0.60,2),         text:g=>`Finish ${g} quests today` });
+    pool.push({ id:"sweep", xp:0.60, need:n,                    text:g=>`Clear the whole board — all ${g}` });
+    // the hardest quests, specifically
+    const hard = [...dailies].sort((a,b)=>(b.importance||5)-(a.importance||5));
+    if ((hard[0]?.importance||5) >= 6) {
+      pool.push({ id:"toprank", xp:0.45, need:Math.min(2,hard.length), rankMin:6,
+                  text:g=>`Clear ${g} ${g===1?"mission":"missions"} of B+ or higher` });
+    }
+  }
+  // a named quest, against a clock
+  if (dailies.length) {
+    const pick = dailies[Math.floor(rnd()*dailies.length)];
+    const hour = [11,14,16,19][Math.floor(rnd()*4)];
+    pool.push({ id:`named:${pick.id}`, xp:0.40, need:1, by:hour, taskId:pick.id,
+                text:()=>`${pick.name} — done before ${hour>12?(hour-12)+"pm":hour+"am"}` });
   }
   if (weeklies.length) {
-    pool.push({ id:"weekly",  xp:0.30, need: 2 + Math.floor(rnd()*3),
-                text:(g)=>`Log ${g} weekly-habit reps today` });
+    pool.push({ id:"weekly", xp:0.30, need:2+Math.floor(rnd()*3), text:g=>`Log ${g} weekly-habit reps today` });
   }
   if (!pool.length) return [];
-  // shuffle deterministically, take three
-  const order = pool.map((p,i)=>({p, k: rnd()})).sort((a,b)=>a.k-b.k).map(x=>x.p);
-  return order.slice(0, Math.min(3, order.length)).map(t=>({
-    id:t.id, xp:t.xp, need:t.need, by:t.by || null, label:t.text(t.need),
-  }));
+  const order = pool.map(pp=>({pp, k:rnd()})).sort((a,b)=>a.k-b.k).map(x=>x.pp);
+  // keep at most one timed trial per deadline so they can't contradict each other
+  const out = []; const seenBy = new Set();
+  for (const t of order) {
+    if (t.by != null && seenBy.has(t.by)) continue;
+    if (t.by != null) seenBy.add(t.by);
+    out.push({ id:t.id, xp:t.xp, need:t.need, by:t.by||null, taskId:t.taskId||null,
+               rankMin:t.rankMin||null, label:t.text(t.need) });
+    if (out.length === 3) break;
+  }
+  return out;
 }
 
 
@@ -2892,6 +2915,16 @@ export default function App() {
   const barPreviewRef = useRef(null);
   const [listEdit, setListEdit] = useState(null);  // {kind:"list"|"item", listId, itemId, parentId, text}
   const [recCursor, setRecCursor] = useState({y:new Date().getFullYear(), m:new Date().getMonth()});
+  const [anyOverlay, setAnyOverlay] = useState(false);
+  // While a sheet is up the page behind it must not scroll — otherwise a swipe
+  // that misses the sheet drags the home screen instead.
+  useEffect(()=>{
+    if (typeof document === "undefined") return;
+    const b = document.body;
+    if (anyOverlay) { b.style.overflow = "hidden"; b.style.touchAction = "none"; }
+    else { b.style.overflow = ""; b.style.touchAction = ""; }
+    return () => { b.style.overflow = ""; b.style.touchAction = ""; };
+  }, [anyOverlay]);
   const [vw, setVw] = useState(390);
   useEffect(()=>{
     const measure = () => setVw(Math.min(window.innerWidth || 390, 430));
@@ -2903,6 +2936,9 @@ export default function App() {
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
   const [toast, setToast] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null);
+  useEffect(()=>{ setAnyOverlay(!!(trialsOpen || restoreOpen || detailTaskId || confirmBox || cardMenu)); },
+    [trialsOpen, restoreOpen, detailTaskId, confirmBox, cardMenu]);
+
   const [showLevelUp, setShowLevelUp] = useState(null);
   const [editingCat, setEditingCat] = useState(null);
   const [editingTitleLvl, setEditingTitleLvl] = useState(null);
@@ -3660,6 +3696,8 @@ export default function App() {
   const xpInt = (v) => Math.round((v||0) * 10);
   const trialProgress = (t) => {
     if (t.id === "weekly") return weeklyHabits.reduce((a,x)=>a+(getReps(x,today)||0),0);
+    if (t.taskId) { const q = data.tasks.find(x=>x.id===t.taskId); return (q && isCompletedOn(q,today)) ? 1 : 0; }
+    if (t.rankMin) return todayTasks.filter(x=>(x.importance||5) >= t.rankMin && isCompletedOn(x,today)).length;
     return todayDone;
   };
   // A timed trial can only be claimed before its hour is up.
@@ -4324,7 +4362,7 @@ export default function App() {
     navBtn:a=>({background:a?"rgba(255,255,255,0.14)":"none",border:"none",color:a?"#fff":FAINT,fontSize:7,fontWeight:800,cursor:"pointer",fontFamily:FONT,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 5px",borderRadius:12,transition:"all .2s"}),
     dayBtn:on=>({width:38,height:38,borderRadius:"50%",border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:10.5,cursor:"pointer",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}),
     modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
-    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"88vh",overflowY:"auto",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 30px)"},
+    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"82vh",overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 34px)"},
     chip:(on)=>({flex:1,padding:"12px 0",borderRadius:16,border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:11.5,fontWeight:900,cursor:"pointer",textAlign:"center",fontFamily:FONT}),
     sectionTitle:{fontSize:15,fontWeight:900,color:TXT,textShadow:"0 1px 8px rgba(0,0,0,0.4)"},
   };
@@ -6330,7 +6368,8 @@ export default function App() {
                       {!achieved && !isNext && <span style={{fontSize:11,color:FAINT}}>🔒</span>}
                     </div>
                     <div style={{fontSize:11.5,color:isNext?"#fff":DIM,marginTop:4,fontWeight:isNext?800:600}}>
-                      {achieved ? "Earned" : `Reach rating ${Math.round(L.lvl*4.2)}`}
+                      {achieved ? "Earned"
+                        : `${Math.max(0, xpInt(L.lvl*4.2 - xpNow))} XP to go`}
                     </div>
                   </div>
                   {editingTitleLvl===L.lvl ? (
@@ -6774,10 +6813,12 @@ export default function App() {
         {trialsOpen && (
           <div style={C.modal} onClick={()=>setTrialsOpen(false)}>
             <div style={C.sheet} onClick={e=>e.stopPropagation()}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,
+                position:"sticky",top:-18,zIndex:3,background:GLASS_HEAVY,
+                margin:"-18px -20px 4px",padding:"16px 20px 10px"}}>
                 <div style={{fontSize:20,fontWeight:900,color:"#fff",flex:1}}>Trials</div>
                 <button onClick={()=>setTrialsOpen(false)}
-                  style={{...C.btnSm,padding:"8px 14px",fontSize:15,lineHeight:1}}>✕</button>
+                  style={{...C.btnSm,padding:"9px 15px",fontSize:15,lineHeight:1}}>✕</button>
               </div>
               <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:0,marginBottom:14,lineHeight:1.5}}>
                 Three a day, fresh each morning. Some are racing a clock.
