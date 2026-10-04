@@ -38,6 +38,9 @@ function diffColor(imp) {
 
 
 // ── SKY THEMES (Not Boring style scenes; keys unchanged so saves migrate) ─────
+// Inlined artwork for the Dawn theme's hero banner.
+const AKATSUKI_BANNER = "data:image/png;base64,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";
+
 const THEMES = {
   ember: {
     name:"Dawn", swatch:"#f2723f",
@@ -80,6 +83,12 @@ const THEMES = {
     sky:["#030204","#090508","#1a070d"], sun:"#d81f31", stars:true, ember:true,
     m1:"#45101c", m2:"#260810", m3:"#10040a",
     accent:"#d81f31", glass:"16,6,10",
+  },
+  dawn: {
+    name:"The Dawn", swatch:"#8c1020", banner:AKATSUKI_BANNER,
+    sky:["#050206","#140509","#24060f"], sun:"#c21828", stars:true, ember:true,
+    m1:"#3a0c16", m2:"#1e060c", m3:"#0c0206",
+    accent:"#c93040", glass:"20,6,10",
   },
   voxel: {
     name:"Blockland", swatch:"#5d9e3c", blocky:true,
@@ -2226,6 +2235,23 @@ function BlockScene({ H }) {
 
 function Scene({ T, height=150 }) {
   if (T.blocky) return <BlockScene H={height}/>;
+  if (T.banner) {
+    // A theme can supply its own artwork for the hero instead of a ridgeline.
+    const stars2 = T.stars ? Array.from({length:30},(_,i)=>{
+      const x = ((i*83) % 430); const y = ((i*41) % Math.max(40, height-60));
+      const r = 0.5 + ((i*11)%10)/12;
+      return <circle key={i} cx={x} cy={y} r={r} fill="#fff" opacity={0.25 + ((i*7)%6)/12}/>;
+    }) : null;
+    return (
+      <svg width="100%" height={height} viewBox={`0 0 430 ${height}`} preserveAspectRatio="xMidYMax slice"
+        style={{display:"block",position:"absolute",bottom:0,left:0,right:0,pointerEvents:"none"}}>
+        {stars2}
+        {/* Sits high enough that your character stands in front of the line, not inside it */}
+        <image href={T.banner} x="0" y={height*0.02} width="430" height={height*0.66}
+          preserveAspectRatio="xMidYMid meet" style={{imageRendering:"pixelated"}}/>
+      </svg>
+    );
+  }
   // deterministic star field
   const stars = T.stars ? Array.from({length:26},(_,i)=>{
     const x = ((i*73) % 430); const y = ((i*37) % Math.max(40, height-70));
@@ -2812,6 +2838,21 @@ function drawEye(els, id, ex, ey, r, nk, irisOnly) {
   }
   if (!irisOnly) RING(ex,ey,r*1.0,"#2b231c",r*0.09);
   return els;
+}
+
+// Keeps <meta name="theme-color"> in step with the theme. iOS paints the area
+// beyond the page in a standalone PWA from this, which is why a stale manifest
+// colour kept showing when you overscrolled.
+function ThemeColorMeta({ color }) {
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let m = document.querySelector('meta[name="theme-color"]');
+    if (!m) { m = document.createElement("meta"); m.setAttribute("name","theme-color"); document.head.appendChild(m); }
+    m.setAttribute("content", color);
+    document.documentElement.style.backgroundColor = color;
+    document.body.style.backgroundColor = color;
+  }, [color]);
+  return null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -4194,13 +4235,16 @@ export default function App() {
   // The app background is near-black in every theme. Subtracting a flat amount
   // left bright skies (Ember's purple) still bright, so scale the channels down
   // instead — that lands every theme on black with only a whisper of its tint.
-  const inkify = (hex, k) => { try {
+  const dim = (hex, cap) => { try {
       const n = parseInt(String(hex).slice(1), 16);
-      const r = Math.round(((n>>16)&255)*k), g = Math.round(((n>>8)&255)*k), b = Math.round((n&255)*k);
+      let r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+      const lum = 0.299*r + 0.587*g + 0.114*b;
+      if (lum > cap) { const k = cap/lum; r=Math.round(r*k); g=Math.round(g*k); b=Math.round(b*k); }
       return `rgb(${r},${g},${b})`;
     } catch { return "#07070b"; } };
-  const pageBase = inkify(T.sky[0], 0.16);
-  const pageBg   = `linear-gradient(180deg,#040407 0%,${pageBase} 100%)`;
+  const pageTop  = dim(T.sky[0], 10);
+  const pageBase = dim(T.sky[2], 15);
+  const pageBg   = `linear-gradient(180deg,${pageTop} 0%,${pageBase} 100%)`;
   const C = BLOCK ? {
     // ── BLOCKLAND SKIN ────────────────────────────────────────────────────────
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,letterSpacing:0.3,
@@ -4240,7 +4284,7 @@ export default function App() {
       color:on?"#fff":DIM,fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",fontFamily:FONT,letterSpacing:0.6,textShadow:PXSHADOW}),
     sectionTitle:{fontSize:14,fontWeight:700,color:TXT,letterSpacing:1.2,textTransform:"uppercase",textShadow:"2px 2px 0 #000"},
   } : {
-    app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative",background:pageBase},
+    app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative",background:pageBg},
     header:{padding:"calc(env(safe-area-inset-top, 0px) + 14px) 18px 10px",position:"sticky",top:0,zIndex:5,background:`linear-gradient(180deg,${T.sky[0]}f0,${T.sky[0]}00)`,backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)"},
     glass:{background:GLASS,backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",border:`1px solid ${LINE}`,borderRadius:26,padding:"16px 17px",marginBottom:12,boxShadow:"0 8px 28px rgba(0,0,0,0.35)"},
     label:{fontSize:11,letterSpacing:1,color:DIM,marginBottom:10,fontWeight:800},
@@ -4513,6 +4557,9 @@ export default function App() {
           theme changes. Painting the body as well, and remounting on theme
           change, forces it to repaint. */}
       <style>{`html,body{background:${BLOCK ? "#14141a" : pageBase};}`}</style>
+      {/* In a standalone PWA iOS paints the overscroll area from theme-color, which
+          still held the colour baked into the manifest. Keep it with the theme. */}
+      <ThemeColorMeta color={BLOCK ? "#14141a" : pageBase}/>
       {/* Blockland still wants its dithered stone; every other theme is a flat
           near-black painted on the container above, so nothing can go stale. */}
       {BLOCK && <div key="bg-block" style={{position:"fixed",inset:0,zIndex:0,
