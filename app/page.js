@@ -3483,25 +3483,13 @@ export default function App() {
 
   const toggleDay = (tid, dk) => {
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
-    if (isWeekly(task)) { addRep(tid, dk); return; }  // weekly: each tap adds one rep
-    if (getReps(task, dk) > 0) clearDay(tid, dk);
-    else {
-      const target = task.targetReps || 1;
-      const earned = calcEarnedPoints(task.points, target, target);
-      const processed = dk < data.lastDecayDate;
-      const refund = (processed && isScheduledOn(task, dk)) ? (task.decayRate||0) : 0;
-      const cats = data.categories.map(c => c.id !== task.catId ? c
-        : {...c, value: Math.min(c.maxValue, c.value + earned + refund)});
-      const tasks = data.tasks.map(t => {
-        if (t.id !== tid) return t;
-        const comps = {...(t.completions||{})}; comps[dk] = target;
-        return {...t, completions: comps};
-      });
-      update({...data, categories:cats, tasks});
-      payCoins(task, `${tid}|${dk}`, dk);
-      toast$(`LOGGED ${dk}`, "#34d399");
-    }
-  };
+    if (isWeekly(task)) { addRep(tid, dk); return; }   // weekly: each tap adds one rep
+    // Dailies behave the same way: one tap is one rep, however many the quest
+    // asks for. Only once it's full does another tap clear the day.
+    const target = task.targetReps || 1;
+    if (getReps(task, dk) >= target) clearDay(tid, dk);
+    else addRep(tid, dk);
+  };;
 
   const saveEditTask = () => {
     if (!editTask) return;
@@ -4362,7 +4350,7 @@ export default function App() {
     navBtn:a=>({background:a?"rgba(255,255,255,0.14)":"none",border:"none",color:a?"#fff":FAINT,fontSize:7,fontWeight:800,cursor:"pointer",fontFamily:FONT,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 5px",borderRadius:12,transition:"all .2s"}),
     dayBtn:on=>({width:38,height:38,borderRadius:"50%",border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:10.5,cursor:"pointer",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}),
     modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
-    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"82vh",overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"18px 20px calc(env(safe-area-inset-bottom, 0px) + 112px)"},   // clears the hotbar
+    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"82vh",overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"26px 20px calc(env(safe-area-inset-bottom, 0px) + 124px)"},   // room above, clears the hotbar below
     chip:(on)=>({flex:1,padding:"12px 0",borderRadius:16,border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:11.5,fontWeight:900,cursor:"pointer",textAlign:"center",fontFamily:FONT}),
     sectionTitle:{fontSize:15,fontWeight:900,color:TXT,textShadow:"0 1px 8px rgba(0,0,0,0.4)"},
   };
