@@ -14,7 +14,46 @@ const MAX_BONUS_MULT  = 2.0;
 // worth several B missions. Normalised at 5 so overall pacing is unchanged.
 const DIFF_CURVE = (imp) => Math.pow(Math.max(1, Math.min(10, imp)), 1.7) / Math.pow(5, 0.7);
 const calcPoints = (imp) => +(DIFF_CURVE(imp) * GAIN_MULT).toFixed(4);
-const calcDecay  = (imp) => +(DIFF_CURVE(imp) * DECAY_MULT).toFixed(4);
+// CURSE MARK — the hard mode. A cursed quest pays exactly the same chakra for
+// clearing it, but the toll for leaving it undone is doubled. Reward untouched,
+// stakes raised, which is the whole point of marking a quest you must not skip.
+const CURSE_MULT = 2;
+const isCursed = (t) => !!(t && t.curse);
+// XP is shown as whole numbers — internally a point is a tenth of one. A real
+// gain never rounds away to zero, or the smallest quests would read "+0".
+const xpInt = (v) => {
+  const n = Math.round((v||0) * 10);
+  return (n === 0 && Math.abs(v||0) > 1e-9) ? ((v||0) > 0 ? 1 : -1) : n;
+};
+const CURSE_COLOR = "#c039d8";
+// Three tomoe curling round a point — the cursed-seal mark. Each is a round
+// head with a tail that tapers as it sweeps anticlockwise, so it still reads
+// as a comma at 14px on a quest card.
+function curseMarkEls(cx, cy, r, op) {
+  const els = [];
+  const P = (ang, rad) => [cx + Math.cos(ang)*rad, cy + Math.sin(ang)*rad];
+  for (let i=0;i<3;i++){
+    const a  = (i*120 - 90) * Math.PI/180;
+    const hr = r*0.21;
+    const [hx,hy] = P(a, r*0.58);
+    const [b1x,b1y] = [hx + Math.cos(a)*hr, hy + Math.sin(a)*hr];
+    const [b2x,b2y] = [hx - Math.cos(a)*hr, hy - Math.sin(a)*hr];
+    const [tx,ty]   = P(a + 1.42, r*0.80);
+    const [ox,oy]   = P(a + 0.74, r*0.99);
+    const [ix,iy]   = P(a + 0.74, r*0.60);
+    els.push(<circle key={`ch${i}`} cx={hx} cy={hy} r={hr} fill={CURSE_COLOR} opacity={op}/>);
+    els.push(<path key={`ct${i}`} opacity={op} fill={CURSE_COLOR}
+      d={`M ${b1x} ${b1y} Q ${ox} ${oy} ${tx} ${ty} Q ${ix} ${iy} ${b2x} ${b2y} Z`}/>);
+  }
+  return els;
+}
+// Round the base first, THEN double it, so a cursed quest's penalty is exactly
+// twice the number shown on the same quest uncursed — not twice-then-rounded,
+// which lands a hair off and makes the "double" claim a lie in the display.
+const calcDecay  = (imp, cursed) => {
+  const base = +(DIFF_CURVE(imp) * DECAY_MULT).toFixed(4);
+  return cursed ? +(base * CURSE_MULT).toFixed(4) : base;
+};
 function calcEarnedPoints(basePoints, targetReps, reps) {
   if (reps <= 0) return 0;
   if (reps < targetReps) return basePoints * (reps / targetReps);
@@ -608,7 +647,8 @@ function migrate(d) {
   }) };
   // Quests store their own points; refresh them so the difficulty curve applies.
   d = { ...d, tasks: (d.tasks||[]).map(t=>({
-    ...t, points: calcPoints(t.importance ?? 5), decayRate: calcDecay(t.importance ?? 5) })) };
+    ...t, curse: !!t.curse, points: calcPoints(t.importance ?? 5),
+    decayRate: calcDecay(t.importance ?? 5, !!t.curse) })) };
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
   if (!["m","f"].includes(chr.body)) chr.body = "m";
@@ -2926,11 +2966,24 @@ export default function App() {
     return () => { b.style.overflow = ""; b.style.touchAction = ""; };
   }, [anyOverlay]);
   const [vw, setVw] = useState(390);
+  // Real measured screen height. `vh` units lie inside an installed iOS PWA,
+  // so sheets get a hard pixel ceiling instead.
+  const [vpH, setVpH] = useState(0);
   useEffect(()=>{
-    const measure = () => setVw(Math.min(window.innerWidth || 390, 430));
+    const measure = () => {
+      setVw(Math.min(window.innerWidth || 390, 430));
+      const vv = window.visualViewport;
+      setVpH(Math.round((vv && vv.height) || window.innerHeight || 0));
+    };
     measure();
     window.addEventListener("resize", measure);
-    return ()=>window.removeEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", measure);
+    return ()=>{
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+      if (window.visualViewport) window.visualViewport.removeEventListener("resize", measure);
+    };
   },[]);
   useEffect(()=>{ if (detailTaskId) setWkEditCursor(dateKey()); }, [detailTaskId]);
   const [cardMenu, setCardMenu] = useState(null); // {col, cardId} for the send-to-list popover
@@ -3043,7 +3096,7 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
   }, [data]);
 
-  const [newTask, setNewTask] = useState({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+  const [newTask, setNewTask] = useState({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:"",curse:false});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
@@ -3087,7 +3140,7 @@ export default function App() {
       setPomoLeft((decayed.pomodoro.workMin||25)*60);
       persistRaw(decayed);
       if (lost > 0.005) {
-        setTimeout(()=>toast$(`THE NIGHT TOOK ITS TOLL  −${lost.toFixed(2)}`, "#ef4444"), 600);
+        setTimeout(()=>toast$(`THE NIGHT TOOK ITS TOLL  −${xpInt(lost)} XP`, "#ef4444"), 600);
       }
     })();
   }, []);
@@ -3119,7 +3172,7 @@ export default function App() {
     const { data: decayed, lost } = applyDecay(data);
     setData(decayed);
     persistRaw(decayed);
-    if (lost > 0.005) toast$(`THE NIGHT TOOK ITS TOLL  −${lost.toFixed(2)}`, "#ef4444");
+    if (lost > 0.005) toast$(`THE NIGHT TOOK ITS TOLL  −${xpInt(lost)} XP`, "#ef4444");
   }, [currentDay, data]);
 
   // ── LEVEL-UP WATCHER ────────────────────────────────────────────────────────
@@ -3166,7 +3219,7 @@ export default function App() {
     } else {
       // it escaped — the XP is taken from you
       mark(cur=>({ categories: cur.categories.map(c=>({...c, value:Math.max(0, c.value-prevBoss.xp)})) }));
-      toast$(`💀 ${prevBoss.title.toUpperCase()} ESCAPED — −${prevBoss.xp.toFixed(2)} XP ALL STATS`, "#ef4444");
+      toast$(`💀 ${prevBoss.title.toUpperCase()} ESCAPED — −${xpInt(prevBoss.xp)} XP`, "#ef4444");
     }
   }, [currentDay, data]);
 
@@ -3338,8 +3391,8 @@ export default function App() {
     // per day. The ledger key blocks re-earning by unchecking and rechecking.
     if (justDone) payCoins(task, `${tid}|${d}`, d);
     const showXP = data.settings.showXP;
-    if (justDone) toast$(showXP ? `✓ ${task.name}  +${(delta+refund).toFixed(3)}` : `✓ ${task.name}`, cat?.color || "#34d399");
-    else if (newReps > target) toast$(showXP ? `BONUS +${delta.toFixed(3)}` : "BONUS!", "#f59e0b");
+    if (justDone) toast$(showXP ? `✓ ${task.name}  +${xpInt(delta+refund)} XP` : `✓ ${task.name}`, cat?.color || "#34d399");
+    else if (newReps > target) toast$(showXP ? `BONUS +${xpInt(delta)} XP` : "BONUS!", "#f59e0b");
     else toast$(`${newReps}/${target} ${task.name}`, cat?.color);
   };
 
@@ -3499,8 +3552,9 @@ export default function App() {
       days: isWk ? [] : (editTask.days || []),
       weeklyTarget: isWk ? Math.max(1, editTask.weeklyTarget || 3) : 1,
       targetReps: isWk ? 1 : (editTask.targetReps || 1),
+      curse: !!editTask.curse,
       points: calcPoints(editTask.importance ?? 5),
-      decayRate: calcDecay(editTask.importance ?? 5) };
+      decayRate: calcDecay(editTask.importance ?? 5, !!editTask.curse) };
     update({...data, tasks: data.tasks.map(t=>t.id===editTask.id?updated:t)});
     setEditTask(null); setView("tasks");
     toast$("QUEST UPDATED ✓");
@@ -3515,9 +3569,11 @@ export default function App() {
       days: isWk ? [] : (newTask.days || []),
       weeklyTarget: isWk ? Math.max(1, newTask.weeklyTarget || 3) : 1,
       targetReps: isWk ? 1 : (newTask.targetReps || 1),
-      points: calcPoints(newTask.importance), decayRate: calcDecay(newTask.importance), completions:{} };
+      curse: !!newTask.curse,
+      points: calcPoints(newTask.importance),
+      decayRate: calcDecay(newTask.importance, !!newTask.curse), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
-    setNewTask({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:""});
+    setNewTask({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:"",curse:false});
     setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
   };
 
@@ -3681,7 +3737,6 @@ export default function App() {
     categories: cur.categories.map(c=>({...c, value: Math.min(c.maxValue, c.value + xp)})),
   });
   // XP is shown as whole numbers: internally 0.30, on screen 3.
-  const xpInt = (v) => Math.round((v||0) * 10);
   const trialProgress = (t) => {
     if (t.id === "weekly") return weeklyHabits.reduce((a,x)=>a+(getReps(x,today)||0),0);
     if (t.taskId) { const q = data.tasks.find(x=>x.id===t.taskId); return (q && isCompletedOn(q,today)) ? 1 : 0; }
@@ -3705,14 +3760,14 @@ export default function App() {
     const xp = 0.30;
     setData(cur=>{ const n={...grantXP(cur, xp), challengeClaims:{...(cur.challengeClaims||{}), [dateKey()]:true}};
       persistRaw(n); return n; });
-    toast$(`CHALLENGE COMPLETE  +${xp.toFixed(2)} XP`, "#a78bfa");
+    toast$(`CHALLENGE COMPLETE  +${xpInt(xp)} XP`, "#a78bfa");
     try { navigator.vibrate && navigator.vibrate([10,40,20]); } catch {}
   };
   const claimBoss = (boss) => {
     setData(cur=>{ if ((cur.bossClaims||{})[boss.wkStart]) return cur;
       const n={...grantXP(cur, boss.xp), bossClaims:{...(cur.bossClaims||{}), [boss.wkStart]:boss.id}};
       persistRaw(n); return n; });
-    toast$(`⚔ BOSS SLAIN  +${boss.xp.toFixed(2)} XP`, "#ff8f5e");
+    toast$(`⚔ BOSS SLAIN  +${xpInt(boss.xp)} XP`, "#ff8f5e");
     try { navigator.vibrate && navigator.vibrate([20,50,20,50,40]); } catch {}
   };
   const claimTrophy = (t) => {
@@ -4299,6 +4354,18 @@ export default function App() {
   const pageTop  = dim(T.sky[0], 10);
   const pageBase = dim(T.sky[2], 15);
   const pageBg   = `linear-gradient(180deg,${pageTop} 0%,${pageBase} 100%)`;
+  // Sheets sit in a COLUMN flex container pinned to the bottom of the screen.
+  // Column matters: the sheet then lives on the main axis, so flex-shrink can
+  // squeeze it down to fit. In a row container the vertical axis is the cross
+  // axis, nothing shrinks, and a tall sheet overflows up past the status bar.
+  // The pixel ceiling below is belt-and-braces for when vh units misreport.
+  const sheetTopGap = 74;                 // status bar + breathing room
+  const sheetCeiling = vpH ? Math.max(300, vpH - sheetTopGap) : undefined;
+  const modalBox = {position:"fixed",inset:0,zIndex:900,display:"flex",
+    flexDirection:"column",justifyContent:"flex-end",alignItems:"center",
+    boxSizing:"border-box",paddingTop:"calc(env(safe-area-inset-top, 0px) + 18px)"};
+  const sheetFit = {minHeight:0,flexShrink:1,boxSizing:"border-box",
+    maxHeight: sheetCeiling != null ? sheetCeiling : "82vh"};
   const C = BLOCK ? {
     // ── BLOCKLAND SKIN ────────────────────────────────────────────────────────
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,letterSpacing:0.3,
@@ -4329,10 +4396,11 @@ export default function App() {
     dayBtn:on=>({width:38,height:38,...(on?bevelUp(BLK.btnL,BLK.btnD,2):bevelIn(BLK.slotL,BLK.slotD,2)),
       backgroundColor:on?BLK.btn:BLK.slot,backgroundImage:on?TEX_BTN:TEX_SLOT,...PX,
       color:on?"#fff":DIM,fontSize:10,cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",textShadow:PXSHADOW}),
-    modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.62)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
+    modal:{...modalBox,background:"rgba(0,0,0,0.62)"},
     sheet:{backgroundColor:BLK.panel,backgroundImage:TEX_STONE,...PX,...bevelUp(BLK.panelL,BLK.panelD,4),
-      borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"88vh",overflowY:"auto",
-      padding:"16px 18px calc(env(safe-area-inset-bottom, 0px) + 108px)"},   // clears the hotbar
+      borderBottom:"none",width:"100%",maxWidth:430,...sheetFit,
+      overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",
+      padding:"18px 18px calc(env(safe-area-inset-bottom, 0px) + 112px)"},   // clears the hotbar
     chip:(on)=>({flex:1,padding:"11px 0",...(on?bevelUp(BLK.btnL,BLK.btnD,2):bevelIn(BLK.slotL,BLK.slotD,2)),
       backgroundColor:on?BLK.btn:BLK.slot,backgroundImage:on?TEX_BTN:TEX_SLOT,...PX,
       color:on?"#fff":DIM,fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",fontFamily:FONT,letterSpacing:0.6,textShadow:PXSHADOW}),
@@ -4349,8 +4417,8 @@ export default function App() {
     nav:{position:"fixed",bottom:"calc(env(safe-area-inset-bottom, 0px) + 10px)",left:"50%",transform:"translateX(-50%)",width:"calc(100% - 24px)",maxWidth:406,background:GLASS_HEAVY,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:`1px solid ${LINE}`,borderRadius:26,display:"flex",justifyContent:"space-around",padding:"10px 4px",zIndex:10,boxShadow:"0 10px 36px rgba(0,0,0,0.45)"},
     navBtn:a=>({background:a?"rgba(255,255,255,0.14)":"none",border:"none",color:a?"#fff":FAINT,fontSize:7,fontWeight:800,cursor:"pointer",fontFamily:FONT,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"5px 5px",borderRadius:12,transition:"all .2s"}),
     dayBtn:on=>({width:38,height:38,borderRadius:"50%",border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:10.5,cursor:"pointer",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}),
-    modal:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:900,display:"flex",alignItems:"flex-end",justifyContent:"center"},
-    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,maxHeight:"82vh",overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"26px 20px calc(env(safe-area-inset-bottom, 0px) + 124px)"},   // room above, clears the hotbar below
+    modal:{...modalBox,background:"rgba(0,0,0,0.5)"},
+    sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,...sheetFit,overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"26px 20px calc(env(safe-area-inset-bottom, 0px) + 124px)"},   // room above, clears the hotbar below
     chip:(on)=>({flex:1,padding:"12px 0",borderRadius:16,border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:11.5,fontWeight:900,cursor:"pointer",textAlign:"center",fontFamily:FONT}),
     sectionTitle:{fontSize:15,fontWeight:900,color:TXT,textShadow:"0 1px 8px rgba(0,0,0,0.4)"},
   };
@@ -4472,7 +4540,7 @@ export default function App() {
     const qlvl = questLevel(task);
     const qpct = questLevelPct(task);
     const schedToday = isScheduledOn(task, today);
-    const burstLabel = S.showXP ? `+${(task.points/target).toFixed(3)}` : "✦ NICE";
+    const burstLabel = S.showXP ? `+${xpInt(task.points/target)}` : "✦ NICE";
     const sibs = siblingIds || [];
     const sIdx = sibs.indexOf(task.id);
     const isFirst = sIdx === 0, isLast = sIdx === sibs.length-1;
@@ -4528,6 +4596,13 @@ export default function App() {
               <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap"}}>
                 <span style={{color:diffColor(task.importance)}}>{diffShort(task.importance)}</span>
                 {(task.goals||[]).length > 0 && <span style={{marginLeft:5}}>👁{(task.goals||[]).length>1?(task.goals||[]).length:""}</span>}
+                {isCursed(task) && (
+                  <span style={{display:"inline-flex",alignItems:"center",marginLeft:6,
+                    background:"rgba(0,0,0,0.62)",borderRadius:9,padding:"2px 4px",
+                    border:`1px solid ${CURSE_COLOR}aa`,verticalAlign:"-4px",lineHeight:0}}>
+                    <svg width="13" height="13" viewBox="0 0 13 13">{curseMarkEls(6.5,6.5,6,1)}</svg>
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -4554,7 +4629,7 @@ export default function App() {
   };
 
   // ── IMPORTANCE SLIDER BLOCK ─────────────────────────────────────────────────
-  const ImportanceBlock = ({ value, onChange }) => (
+  const ImportanceBlock = ({ value, onChange, cursed }) => (
     <div>
       <div style={{...C.label,marginBottom:5}}>
         DIFFICULTY: <span style={{color:"#fff"}}>{S.showXP ? `${value}/10` : diffLabel(value)}</span>
@@ -4562,15 +4637,42 @@ export default function App() {
       <input type="range" min="1" max="10" step="1" value={value}
         onChange={e=>onChange(parseInt(e.target.value))}
         style={{width:"100%",accentColor:"#ffffff"}}/>
-      {S.showXP && (
-        <div style={{marginTop:8,padding:"10px 12px",background:"rgba(0,0,0,0.25)",borderRadius:14,
-          display:"flex",justifyContent:"space-between",fontSize:11.5,fontWeight:800}}>
-          <span style={{color:GOOD}}>+{calcPoints(value).toFixed(3)} done</span>
-          <span style={{color:BAD}}>−{calcDecay(value).toFixed(3)} missed</span>
-        </div>
-      )}
+      <div style={{marginTop:8,padding:"10px 12px",background:"rgba(0,0,0,0.25)",borderRadius:14,
+        display:"flex",justifyContent:"space-between",fontSize:11.5,fontWeight:800}}>
+        <span style={{color:GOOD}}>+{xpInt(calcPoints(value))} XP done</span>
+        <span style={{color:BAD}}>
+          −{xpInt(calcDecay(value, cursed))} XP missed
+          {cursed && <span style={{color:CURSE_COLOR,marginLeft:5,fontSize:9.5}}>×2</span>}
+        </span>
+      </div>
       <div style={{fontSize:9.5,color:FAINT,marginTop:6,textAlign:"center",fontWeight:700}}>
         HARDER QUESTS = BIGGER REWARD AND RISK
+      </div>
+    </div>
+  );
+
+  // ── CURSE MARK (HARD MODE) TOGGLE ───────────────────────────────────────────
+  const CurseBlock = ({ on, onChange }) => (
+    <div onClick={()=>onChange(!on)}
+      style={{marginTop:14,padding:"13px 14px",borderRadius:16,cursor:"pointer",
+        background: on ? "rgba(124,20,140,0.26)" : "rgba(0,0,0,0.25)",
+        border:`1px solid ${on ? CURSE_COLOR+"88" : LINE}`,
+        display:"flex",alignItems:"center",gap:12}}>
+      <div style={{width:34,height:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <svg width="30" height="30" viewBox="0 0 30 30">{curseMarkEls(15,15,11,on?1:0.4)}</svg>
+      </div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12.5,fontWeight:900,color: on ? CURSE_COLOR : "#fff",letterSpacing:0.6}}>
+          CURSE MARK
+        </div>
+        <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:2,lineHeight:1.45}}>
+          Same XP for clearing it. Double the XP lost if you don&rsquo;t.
+        </div>
+      </div>
+      <div style={{width:46,height:26,borderRadius:13,flexShrink:0,position:"relative",
+        background: on ? CURSE_COLOR : "rgba(255,255,255,0.16)",transition:"background .2s"}}>
+        <div style={{position:"absolute",top:3,left: on ? 23 : 3,width:20,height:20,borderRadius:"50%",
+          background:"#fff",transition:"left .2s",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}/>
       </div>
     </div>
   );
@@ -4993,14 +5095,25 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
               <HoldRing color={detailColor} checkColor="#fff" trackColor="rgba(255,255,255,0.25)" size={76}
                 reps={getReps(detailTask,today)} target={detailTask.targetReps||1}
-                onComplete={(x,y)=>{ addRep(detailTask.id, today); fireBurst(x, y, detailColor, S.showXP?`+${(detailTask.points/(detailTask.targetReps||1)).toFixed(3)}`:"✦ NICE"); }}
+                onComplete={(x,y)=>{ addRep(detailTask.id, today); fireBurst(x, y, detailColor, S.showXP?`+${xpInt(detailTask.points/(detailTask.targetReps||1))}`:"✦ NICE"); }}
                 onShortTap={()=>toast$("HOLD TO COMPLETE")}/>
               <div style={{flex:1}}>
-                <div style={{fontSize:19,color:"#fff",fontWeight:900}}>{detailTask.name}</div>
+                <div style={{display:"flex",alignItems:"center",gap:7}}>
+                  <div style={{fontSize:19,color:"#fff",fontWeight:900,minWidth:0}}>{detailTask.name}</div>
+                  {isCursed(detailTask) && (
+                    <svg width="17" height="17" viewBox="0 0 17 17" style={{flexShrink:0}}>
+                      {curseMarkEls(8.5,8.5,8,1)}</svg>
+                  )}
+                </div>
                 <div style={{fontSize:11.5,color:DIM,marginTop:4,fontWeight:700}}>
                   {detailCat?.icon} {detailCat?.name} · {diffLabel(detailTask.importance??5)}
-                  {S.showXP && ` · +${detailTask.points.toFixed(3)} / −${detailTask.decayRate.toFixed(3)}`}
+                  {` · +${xpInt(detailTask.points)} / −${xpInt(detailTask.decayRate)} XP`}
                 </div>
+                {isCursed(detailTask) && (
+                  <div style={{fontSize:9.5,color:CURSE_COLOR,fontWeight:800,marginTop:3}}>
+                    CURSE MARK · DOUBLE XP LOST IF MISSED
+                  </div>
+                )}
                 <div style={{display:"flex",gap:18,marginTop:10}}>
                   {isWeekly(detailTask) ? (
                     <>
@@ -5283,7 +5396,7 @@ export default function App() {
                       <div key={c.id} style={{marginBottom:12}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
                           <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>{c.icon} {c.name}</span>
-                          <span style={{fontSize:12,fontWeight:900,color:"#fff"}}>{S.showXP ? c.value.toFixed(2) : `${Math.round(pct)}%`}</span>
+                          <span style={{fontSize:12,fontWeight:900,color:"#fff"}}>{S.showXP ? xpInt(c.value) : `${Math.round(pct)}%`}</span>
                         </div>
                         <div style={{height:11,background:"rgba(0,0,0,0.3)",borderRadius:6,overflow:"hidden",position:"relative"}}>
                           {gpct > pct && <div style={{position:"absolute",inset:0,width:`${gpct}%`,background:`${c.color}44`,borderRadius:6}}/>}
@@ -5433,7 +5546,7 @@ export default function App() {
                             <HoldRing color={color} checkColor="#fff" trackColor="rgba(255,255,255,0.22)"
                               reps={reps} target={target} size={ring} icon={iconFor(t,cat)}
                               onComplete={(bx,by)=>{ addRep(t.id, today);
-                                fireBurst(bx, by, color, S.showXP?`+${(t.points/target).toFixed(3)}`:"✦ NICE"); }}
+                                fireBurst(bx, by, color, S.showXP?`+${xpInt(t.points/target)}`:"✦ NICE"); }}
                               onShortTap={()=>{ setDetailTaskId(t.id);
                                 setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}/>
                             {must && (
@@ -5453,6 +5566,13 @@ export default function App() {
                                 <span style={{fontSize:9}}>👁</span>
                                 {(t.goals||[]).length > 1 &&
                                   <span style={{fontSize:8,fontWeight:900,color:"#fff"}}>{(t.goals||[]).length}</span>}
+                              </div>
+                            )}
+                            {isCursed(t) && (
+                              <div style={{position:"absolute",bottom:-3,left:-3,pointerEvents:"none",
+                                background:"rgba(0,0,0,0.8)",borderRadius:9,padding:"2px 3px",
+                                border:`1px solid ${CURSE_COLOR}99`,display:"flex",lineHeight:0}}>
+                                <svg width="12" height="12" viewBox="0 0 12 12">{curseMarkEls(6,6,5.5,1)}</svg>
                               </div>
                             )}
                           </div>
@@ -5826,7 +5946,8 @@ export default function App() {
                 </div>
                 <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>AUTO uses the category's color</div>
                 <div style={{marginTop:16}}>
-                  <ImportanceBlock value={t.importance??5} onChange={v=>set({importance:v})}/>
+                  <ImportanceBlock value={t.importance??5} onChange={v=>set({importance:v})} cursed={!!t.curse}/>
+                  <CurseBlock on={!!t.curse} onChange={v=>set({curse:v})}/>
                 </div>
                 <div style={{...C.label,marginTop:16}}>FREQUENCY</div>
                 <div style={{display:"flex",gap:8,marginBottom:4}}>
