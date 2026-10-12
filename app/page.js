@@ -14,41 +14,52 @@ const MAX_BONUS_MULT  = 2.0;
 // worth several B missions. Normalised at 5 so overall pacing is unchanged.
 const DIFF_CURVE = (imp) => Math.pow(Math.max(1, Math.min(10, imp)), 1.7) / Math.pow(5, 0.7);
 const calcPoints = (imp) => +(DIFF_CURVE(imp) * GAIN_MULT).toFixed(4);
-// CURSE MARK — the hard mode. A cursed quest pays exactly the same chakra for
+// CURSE MARK — the hard mode. A cursed mission pays exactly the same chakra for
 // clearing it, but the toll for leaving it undone is doubled. Reward untouched,
-// stakes raised, which is the whole point of marking a quest you must not skip.
+// stakes raised, which is the whole point of marking a mission you must not skip.
 const CURSE_MULT = 2;
 const isCursed = (t) => !!(t && t.curse);
 // XP is shown as whole numbers — internally a point is a tenth of one. A real
-// gain never rounds away to zero, or the smallest quests would read "+0".
+// gain never rounds away to zero, or the smallest missions would read "+0".
 const xpInt = (v) => {
   const n = Math.round((v||0) * 10);
   return (n === 0 && Math.abs(v||0) > 1e-9) ? ((v||0) > 0 ? 1 : -1) : n;
 };
 const CURSE_COLOR = "#c039d8";
-// Three tomoe curling round a point — the cursed-seal mark. Each is a round
-// head with a tail that tapers as it sweeps anticlockwise, so it still reads
-// as a comma at 14px on a quest card.
+// One magatama — a round head with a tail that tapers as it sweeps round the
+// point (cx,cy). Because it is placed by angle on a circle, a row of them
+// automatically curls along that curve instead of all pointing the same way.
+//   rad  how far out from the centre it sits
+//   size how big the glyph itself is (independent of rad)
+//   a    where on the circle, in radians
+function magatamaEls(key, cx, cy, rad, size, a, fill, op) {
+  const P = (ang, r) => [cx + Math.cos(ang)*r, cy + Math.sin(ang)*r];
+  const hr = size * 0.42;
+  const sweep = (size * 1.65) / rad;        // tail length, in radians
+  const [hx,hy]   = P(a, rad);
+  const [b1x,b1y] = [hx + Math.cos(a)*hr, hy + Math.sin(a)*hr];
+  const [b2x,b2y] = [hx - Math.cos(a)*hr, hy - Math.sin(a)*hr];
+  const [tx,ty]   = P(a + sweep,        rad + size*0.44);
+  const [ox,oy]   = P(a + sweep*0.52,   rad + size*0.82);
+  const [ix,iy]   = P(a + sweep*0.52,   rad + size*0.04);
+  return [
+    <circle key={key+"h"} cx={hx} cy={hy} r={hr} fill={fill} opacity={op}/>,
+    <path key={key+"t"} fill={fill} opacity={op}
+      d={`M ${b1x} ${b1y} Q ${ox} ${oy} ${tx} ${ty} Q ${ix} ${iy} ${b2x} ${b2y} Z`}/>,
+  ];
+}
+// Three of them round a point — the cursed-seal mark, still legible at 13px.
 function curseMarkEls(cx, cy, r, op) {
   const els = [];
-  const P = (ang, rad) => [cx + Math.cos(ang)*rad, cy + Math.sin(ang)*rad];
   for (let i=0;i<3;i++){
-    const a  = (i*120 - 90) * Math.PI/180;
-    const hr = r*0.21;
-    const [hx,hy] = P(a, r*0.58);
-    const [b1x,b1y] = [hx + Math.cos(a)*hr, hy + Math.sin(a)*hr];
-    const [b2x,b2y] = [hx - Math.cos(a)*hr, hy - Math.sin(a)*hr];
-    const [tx,ty]   = P(a + 1.42, r*0.80);
-    const [ox,oy]   = P(a + 0.74, r*0.99);
-    const [ix,iy]   = P(a + 0.74, r*0.60);
-    els.push(<circle key={`ch${i}`} cx={hx} cy={hy} r={hr} fill={CURSE_COLOR} opacity={op}/>);
-    els.push(<path key={`ct${i}`} opacity={op} fill={CURSE_COLOR}
-      d={`M ${b1x} ${b1y} Q ${ox} ${oy} ${tx} ${ty} Q ${ix} ${iy} ${b2x} ${b2y} Z`}/>);
+    const a = (i*120 - 90) * Math.PI/180;
+    magatamaEls(`cm${i}`, cx, cy, r*0.58, r*0.5, a, CURSE_COLOR, op)
+      .forEach(e=>els.push(e));
   }
   return els;
 }
-// Round the base first, THEN double it, so a cursed quest's penalty is exactly
-// twice the number shown on the same quest uncursed — not twice-then-rounded,
+// Round the base first, THEN double it, so a cursed mission's penalty is exactly
+// twice the number shown on the same mission uncursed — not twice-then-rounded,
 // which lands a hair off and makes the "double" claim a lie in the display.
 const calcDecay  = (imp, cursed) => {
   const base = +(DIFF_CURVE(imp) * DECAY_MULT).toFixed(4);
@@ -244,11 +255,11 @@ const BODIES = [["m","Champion"],["f","Champion (F)"]];
 const LIST_COLORS = ["#3b82f6","#f59e0b","#22c55e","#a855f7","#ef4444","#ec4899","#14b8a6","#f97316"];
 
 // ── REWARD ECONOMY ────────────────────────────────────────────────────────────
-// Coins are earned by completing quests (scaled to difficulty). They are BET in
+// Coins are earned by completing missions (scaled to difficulty). They are BET in
 // the spin games, which pay out Gems. Gems are spent in the Shop. The ledger is
 // lifetime-earned minus lifetime-spent, clamped at zero, so unchecking can never
 // create a negative balance or an infinite farm (spent coins are gone for good).
-const COIN_PER_IMPORTANCE = 2;          // a 10-difficulty quest mints 20 coins
+const COIN_PER_IMPORTANCE = 2;          // a 10-difficulty mission mints 20 coins
 const coinsForTask = (task) => Math.max(1, Math.round((task.importance ?? 5) * COIN_PER_IMPORTANCE));
 // Daily spins unlock as the day's earned XP crosses these fractions of the day's max.
 const SPIN_THRESHOLDS = [0.15, 0.40, 0.70, 1.0]; // up to 4 spins/day on a full day
@@ -464,9 +475,9 @@ function getDayOfWeek(dateStr) {
   return new Date(y, m-1, d).getDay();
 }
 // ── START DATE + WEEKLY RAMP ─────────────────────────────────────────────────
-// A quest can be dated into the future, and can ease itself in: week 1 two days,
+// A mission can be dated into the future, and can ease itself in: week 1 two days,
 // week 2 three days, and so on for up to 8 weeks. Once the ramp runs out the
-// quest settles onto its normal schedule. Everything downstream — the home list,
+// mission settles onto its normal schedule. Everything downstream — the home list,
 // decay, badges, the forecast — already asks isScheduledOn, so teaching that one
 // function about both is enough.
 const RAMP_MAX_WEEKS = 8;
@@ -477,12 +488,12 @@ function mondayOf(dateStr) {
   d.setHours(0,0,0,0);
   return d;
 }
-// Has this quest gone live yet? No start date means it has always been live.
+// Has this mission gone live yet? No start date means it has always been live.
 function isLiveOn(task, dateStr) {
   const st = task && task.startDate;
   return !st || dateStr >= st;
 }
-// Which ramp week a date falls in, counting from the week the quest starts.
+// Which ramp week a date falls in, counting from the week the mission starts.
 function rampWeekIndex(task, dateStr) {
   if (!task || !task.startDate) return -1;
   const diff = mondayOf(dateStr).getTime() - mondayOf(task.startDate).getTime();
@@ -524,7 +535,7 @@ function getStreak(task) {
 function totalCompletions(task) {
   return Object.keys(task.completions||{}).length;
 }
-// Per-quest level (levels up every 7 lifetime completions) — HabitForge-style badge
+// Per-mission level (levels up every 7 lifetime completions) — HabitForge-style badge
 function questLevel(task) { return Math.floor(totalCompletions(task) / 7) + 1; }
 function questLevelPct(task) { return ((totalCompletions(task) % 7) / 7) * 100; }
 // Current week (Mon → Sun) date keys
@@ -631,7 +642,7 @@ function applyDecay(data) {
   try {
     // Process every elapsed day from the anchor up to and INCLUDING yesterday.
     // (The old version started at anchor+1 and ran while < today, which skipped
-    //  the anchor day's own missed quests entirely — so rank never dropped.)
+    //  the anchor day's own missed missions entirely — so rank never dropped.)
     const cursor = new Date(anchor + "T00:00:00");
     const todayD = new Date(today + "T00:00:00");
     let safety = 0;
@@ -697,7 +708,7 @@ function migrate(d) {
     const { goal, ...rest } = t;
     return { ...rest, goals };
   }) };
-  // Quests store their own points; refresh them so the difficulty curve applies.
+  // Missions store their own points; refresh them so the difficulty curve applies.
   d = { ...d, tasks: (d.tasks||[]).map(t=>({
     ...t, curse: !!t.curse, points: calcPoints(t.importance ?? 5),
     decayRate: calcDecay(t.importance ?? 5, !!t.curse) })) };
@@ -766,7 +777,7 @@ function migrate(d) {
   return stampGlobalFreeze(out);
 }
 
-// A global freeze is open-ended, so it can't be written into the per-quest
+// A global freeze is open-ended, so it can't be written into the per-mission
 // frozen maps up front. Stamping it on every load — for every day from the
 // freeze onward — closes the gap where the app sits unopened for a week and
 // those days would otherwise be charged the moment it is unfrozen. Everything
@@ -857,7 +868,7 @@ function rollRarity() {
 }
 
 // Coin decay: for every elapsed day, lose coins proportional to the XP-weight of
-// the scheduled quests you DIDN'T complete. Skip a hard quest, lose more coins.
+// the scheduled missions you DIDN'T complete. Skip a hard mission, lose more coins.
 function applyCoinDecay(data) {
   const w = data.wallet || DEFAULT_WALLET;
   const today = dateKey();
@@ -897,7 +908,7 @@ function gemsForRarity(rarity) {
   return Math.floor(lo + Math.random()*(hi-lo+1));
 }
 
-// Per-quest stats: completion rate since the quest became active
+// Per-mission stats: completion rate since the mission became active
 function questStats(task) {
   const keys = Object.keys(task.completions||{}).sort();
   const start = task.createdAt || keys[0] || dateKey();
@@ -938,7 +949,7 @@ function questStats(task) {
 // Three trials a day, drawn deterministically from the date so they're the same
 // all day but different tomorrow. Some are racing a clock.
 // Three trials a day, drawn from the date so they're stable until tomorrow.
-// Targets scale with how many quests you actually have, and the earlier the
+// Targets scale with how many missions you actually have, and the earlier the
 // deadline the smaller the ask — so a 2pm trial is never harder than a 6pm one.
 function dailyTrialsFor(d, todayK) {
   const dailies  = (d.tasks||[]).filter(t=>t.catId && !isWeekly(t) && isScheduledOn(t, todayK));
@@ -950,19 +961,19 @@ function dailyTrialsFor(d, todayK) {
   const frac = (f, min) => Math.max(min||1, Math.min(n, Math.ceil(n*f)));
   const pool = [];
   if (n >= 2) {
-    pool.push({ id:"early", xp:0.35, need:frac(0.25,1), by:11, text:g=>`Clear ${g} ${g===1?"quest":"quests"} before 11am` });
-    pool.push({ id:"half",  xp:0.40, need:frac(0.50,2), by:14, text:g=>`Be ${g} quests deep by 2pm` });
-    pool.push({ id:"dusk",  xp:0.45, need:frac(0.75,3), by:18, text:g=>`${g} quests done before 6pm` });
-    pool.push({ id:"count", xp:0.30, need:frac(0.60,2),         text:g=>`Finish ${g} quests today` });
+    pool.push({ id:"early", xp:0.35, need:frac(0.25,1), by:11, text:g=>`Clear ${g} ${g===1?"mission":"missions"} before 11am` });
+    pool.push({ id:"half",  xp:0.40, need:frac(0.50,2), by:14, text:g=>`Be ${g} missions deep by 2pm` });
+    pool.push({ id:"dusk",  xp:0.45, need:frac(0.75,3), by:18, text:g=>`${g} missions done before 6pm` });
+    pool.push({ id:"count", xp:0.30, need:frac(0.60,2),         text:g=>`Finish ${g} missions today` });
     pool.push({ id:"sweep", xp:0.60, need:n,                    text:g=>`Clear the whole board — all ${g}` });
-    // the hardest quests, specifically
+    // the hardest missions, specifically
     const hard = [...dailies].sort((a,b)=>(b.importance||5)-(a.importance||5));
     if ((hard[0]?.importance||5) >= 6) {
       pool.push({ id:"toprank", xp:0.45, need:Math.min(2,hard.length), rankMin:6,
                   text:g=>`Clear ${g} ${g===1?"mission":"missions"} of B+ or higher` });
     }
   }
-  // a named quest, against a clock
+  // a named mission, against a clock
   if (dailies.length) {
     const pick = dailies[Math.floor(rnd()*dailies.length)];
     const hour = [11,14,16,19][Math.floor(rnd()*4)];
@@ -1231,7 +1242,7 @@ function BossArt({ id, style }) {
 // ── WEEKLY BOSS (deterministic per week; every completion deals damage) ──────
 const BOSSES = [
   { id:"sloth",    name:"Sloth Behemoth",     icon:"🦥", desc:"A mountain of fur that grows heavier every hour you wait. It feeds on \u201Clater.\u201D" },
-  { id:"procrast", name:"The Procrastinator", icon:"👹", desc:"He flips his hourglass and whispers \u201Ctomorrow.\u201D Every finished quest cracks the glass a little more." },
+  { id:"procrast", name:"The Procrastinator", icon:"👹", desc:"He flips his hourglass and whispers \u201Ctomorrow.\u201D Every finished mission cracks the glass a little more." },
   { id:"wraith",   name:"Doubt Wraith",       icon:"👻", desc:"It repeats your worst questions back in your own voice. Action is the one light it cannot survive." },
   { id:"golem",    name:"Inertia Golem",      icon:"🗿", desc:"Stone carved from abandoned plans. It only moves when you don\u2019t." },
   { id:"hydra",    name:"Distraction Hydra",  icon:"🐉", desc:"Cut off one head and three notifications grow back. Only focused strikes land." },
@@ -1285,11 +1296,11 @@ function bossForWeek(d, anyDay) {
 
 // ── TROPHIES (permanent achievements; claim once for gems) ───────────────────
 const TROPHIES = [
-  { id:"first_blood", icon:"⚔", name:"First Blood", desc:"Complete your first quest", gems:5,
+  { id:"first_blood", icon:"⚔", name:"First Blood", desc:"Complete your first mission", gems:5,
     check:(d)=>(d.tasks||[]).some(t=>totalCompletions(t)>0) },
-  { id:"streak_7", icon:"🔥", name:"On Fire", desc:"Hold a 7-day streak on any quest", gems:15,
+  { id:"streak_7", icon:"🔥", name:"On Fire", desc:"Hold a 7-day streak on any mission", gems:15,
     check:(d)=>(d.tasks||[]).some(t=>!isWeekly(t)&&getStreak(t)>=7) },
-  { id:"streak_30", icon:"☄️", name:"Unbreakable", desc:"Hold a 30-day streak on any quest", gems:40,
+  { id:"streak_30", icon:"☄️", name:"Unbreakable", desc:"Hold a 30-day streak on any mission", gems:40,
     check:(d)=>(d.tasks||[]).some(t=>!isWeekly(t)&&getStreak(t)>=30) },
   { id:"century", icon:"💯", name:"Century", desc:"100 total completions", gems:20,
     check:(d)=>(d.tasks||[]).reduce((a,t)=>a+totalCompletions(t),0)>=100 },
@@ -1299,7 +1310,7 @@ const TROPHIES = [
     check:(d)=>{ const w=(d.tasks||[]).filter(t=>t.catId&&isWeekly(t)); return w.length>0 && w.every(t=>weeklyMet(t, dateKey())); } },
   { id:"knighted", icon:"🏯", name:"Kage", desc:"Reach the highest rank", gems:25,
     check:(d)=>getLevel(getRating(d.categories||[]))>=7 },
-  { id:"war_chest", icon:"📜", name:"Devoted", desc:"Log 250 quest completions", gems:20,
+  { id:"war_chest", icon:"📜", name:"Devoted", desc:"Log 250 mission completions", gems:20,
     check:(d)=>(d.wallet?.coinsEarned||0)>=1000 },
   { id:"gem_hoard", icon:"🌀", name:"Ascendant", desc:"Reach rating 50", gems:25,
     check:(d)=>(d.wallet?.gemsEarned||0)>=100 },
@@ -1852,15 +1863,18 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(11.5,10.6,1.0,9.6,SG,0.2);                 // centre seam
     R(8.2,15.2,0.6,4.6,SG,0.2);                  // fold shadows in the skirt
     R(15.2,15.2,0.6,4.6,SG,0.2);
-    // Six magatama — two columns of three down the chest.
-    [[9.5,11.5],[9.5,12.8],[9.5,14.1],[13.9,11.5],[13.9,12.8],[13.9,14.1]]
-      .forEach(([mx,my])=>{
-        els.push(<circle key={k++} cx={mx*s} cy={my*s} r={0.46*s} fill={SI}/>);
-        els.push(<path key={k++} fill={SI}
-          d={`M ${(mx+0.12)*s} ${(my-0.44)*s} Q ${(mx+1.06)*s} ${(my-0.3)*s}
-              ${(mx+0.94)*s} ${(my+0.5)*s} Q ${(mx+0.62)*s} ${(my-0.06)*s}
-              ${(mx-0.06)*s} ${(my+0.44)*s} Z`}/>);
-      });
+    // Six magatama strung in a necklace arc below the collar. Placing them by
+    // angle on one circle is what makes them curl along the arc rather than
+    // all sitting upright in a column.
+    // Each tail sweeps about 14° and the heads sit 26° apart, so they stay six
+    // separate commas instead of smearing into one band under the chin.
+    // The span stops at x 9.4 and 14.6 so the wide sleeves, drawn later, never
+    // swallow the outermost two. Heads sit 19° apart, tails sweep 16°, so they
+    // stay six separate commas rather than smearing into one band.
+    [138,118.8,99.6,80.4,61.2,42].forEach((deg,i)=>{
+      magatamaEls(`mg${i}`, 12*s, 9.5*s, 3.5*s, 0.6*s, deg*Math.PI/180, SI, 1)
+        .forEach(e=>els.push(e));
+    });
     // Shakujo — a black staff with a ring and hanging hoops at the foot.
     R(17.9,4.8,0.5,12.4,SI,0.2);
     els.push(<circle key={k++} cx={18.15*s} cy={18.1*s} r={1.15*s}
@@ -1983,12 +1997,14 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   // panels stand up either side of the jaw, dark on their inner face. Nothing
   // is added to the head itself — the hair stays whatever he picked.
   if (sage) {
-    R(7.9,7.6,1.9,3.6,"#f2f1ec",0.4);
-    R(9.42,7.9,0.46,3.3,"#131317",0.2);
-    R(14.2,7.6,1.9,3.6,"#f2f1ec",0.4);
-    R(14.12,7.9,0.46,3.3,"#131317",0.2);
-    R(7.9,7.6,1.9,0.5,"#d6d5cf",0.2);
-    R(14.2,7.6,1.9,0.5,"#d6d5cf",0.2);
+    // Kept entirely clear of the face. An earlier version tucked dark panel
+    // edges in beside the eyes, which read as something streaming out of them.
+    R(7.05,7.0,1.55,4.4,"#f2f1ec",0.45);
+    R(15.4,7.0,1.55,4.4,"#f2f1ec",0.45);
+    R(7.05,7.0,1.55,0.55,"#ffffff",0.25);
+    R(15.4,7.0,1.55,0.55,"#ffffff",0.25);
+    R(7.05,10.6,1.55,0.8,"#d6d5cf",0.25);
+    R(15.4,10.6,1.55,0.8,"#d6d5cf",0.25);
   }
   // ── TOOL POUCH + TANTO (Jonin onward) ─────────────────────────────────────
   if (level === 3) {                             // the tanto is the Jonin's alone
@@ -2312,7 +2328,7 @@ function Switch({ on, onToggle, color=GOOD }) {
   );
 }
 
-// ── WEEK PILLS (white-on-color, for colored quest cards) ──────────────────────
+// ── WEEK PILLS (white-on-color, for colored mission cards) ──────────────────────
 function WeekPills({ task, cardColor, tinted }) {
   const wk = weekDateKeys();
   const labels = ["M","T","W","T","F","S","S"];
@@ -2706,7 +2722,7 @@ function ShopPreview({ item }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// DAILY BADGES — four ranks earned by how much of the day's quest load you clear
+// DAILY BADGES — four ranks earned by how much of the day's mission load you clear
 // ══════════════════════════════════════════════════════════════════════════════
 const BADGE_TIERS = [
   { t:1, need:25,  name:"KINDLED",       lore:"A quarter cleared",        base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
@@ -2953,7 +2969,7 @@ const STORY = [
 ];
 
 // ══════════════════════════════════════════════════════════════════════════════
-// DOJUTSU — eyes earned by holding a streak on one specific quest
+// DOJUTSU — eyes earned by holding a streak on one specific mission
 // ══════════════════════════════════════════════════════════════════════════════
 const EYES = [
   { id:"sharingan", name:"Sharingan" },
@@ -3061,7 +3077,7 @@ export default function App() {
   const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
   const [editTask, setEditTask] = useState(null);
   const [rampOpen, setRampOpen] = useState(false);   // the start-date / ramp disclosure
-  // Fold it away again whenever a different quest form opens.
+  // Fold it away again whenever a different mission form opens.
   useEffect(()=>{ setRampOpen(false); }, [editTask && editTask.id, view]);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
@@ -3167,7 +3183,7 @@ export default function App() {
     });
   }, [currentDay, data]);
 
-  // A quest goal pays out the moment its streak reaches the target, and the eye
+  // A mission goal pays out the moment its streak reaches the target, and the eye
   // stays yours afterwards no matter what the streak does.
   useEffect(()=>{
     if (!data) return;
@@ -3470,7 +3486,7 @@ export default function App() {
 
     // ── WEEKLY HABIT: each tap adds ONE completion to today (you can log many
     //    per day toward a big weekly target). Value & coins are sliced so hitting
-    //    the weekly target equals a full quest's worth. ──
+    //    the weekly target equals a full mission's worth. ──
     if (isWeekly(task)) {
       const wt = weeklyTargetOf(task);
       const doneBefore = weeklyDone(task, d);         // total reps this week before
@@ -3513,7 +3529,7 @@ export default function App() {
     update({...data, categories:cats, tasks});
     const cat = data.categories.find(c=>c.id===task.catId);
     const justDone = prevReps < target && newReps >= target;
-    // Mint coins when the quest crosses into completion — but only ONCE per task
+    // Mint coins when the mission crosses into completion — but only ONCE per task
     // per day. The ledger key blocks re-earning by unchecking and rechecking.
     if (justDone) payCoins(task, `${tid}|${d}`, d);
     const showXP = data.settings.showXP;
@@ -3531,7 +3547,7 @@ export default function App() {
   const COMBO_MULT = [1, 1.5, 2];
   const FIRST_WIN_COINS = 15;
   const payCoins = (task, key, dayKey) => {
-    return;   // currencies retired — quests pay XP through their own points now
+    return;   // currencies retired — missions pay XP through their own points now
     // eslint-disable-next-line no-unreachable
     const isToday = dayKey === dateKey();
     // precompute for toasts (cosmetic; ledger inside setData is authoritative)
@@ -3663,7 +3679,7 @@ export default function App() {
   const toggleDay = (tid, dk) => {
     const task = data.tasks.find(t=>t.id===tid); if (!task) return;
     if (isWeekly(task)) { addRep(tid, dk); return; }   // weekly: each tap adds one rep
-    // Dailies behave the same way: one tap is one rep, however many the quest
+    // Dailies behave the same way: one tap is one rep, however many the mission
     // asks for. Only once it's full does another tap clear the day.
     const target = task.targetReps || 1;
     if (getReps(task, dk) >= target) clearDay(tid, dk);
@@ -3685,7 +3701,7 @@ export default function App() {
       decayRate: calcDecay(editTask.importance ?? 5, !!editTask.curse) };
     update({...data, tasks: data.tasks.map(t=>t.id===editTask.id?updated:t)});
     setEditTask(null); setView("tasks");
-    toast$("QUEST UPDATED ✓");
+    toast$("MISSION UPDATED ✓");
   };
   const deleteTask = (id) => update({...data, tasks:data.tasks.filter(t=>t.id!==id)});
   const addTask = () => {
@@ -3704,7 +3720,7 @@ export default function App() {
       decayRate: calcDecay(newTask.importance, !!newTask.curse), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
     setNewTask({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:"",curse:false,startDate:null,ramp:[]});
-    setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
+    setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "MISSION CREATED!");
   };
 
   // ── CATEGORY ACTIONS ────────────────────────────────────────────────────────
@@ -3720,7 +3736,7 @@ export default function App() {
     update({...data,
       categories: data.categories.filter(c=>c.id!==id),
       tasks: data.tasks.map(t=>t.catId===id?{...t,catId:null}:t)});
-    toast$("CATEGORY DELETED — QUESTS NEED REASSIGNMENT", "#fb923c");
+    toast$("CATEGORY DELETED — MISSIONS NEED REASSIGNMENT", "#fb923c");
   };
 
   // ── SETTINGS / CHARACTER / TITLES ───────────────────────────────────────────
@@ -3750,7 +3766,7 @@ export default function App() {
     toast$("TITLE SAVED ✓");
   };
 
-  // ── RESET (stats only — keeps quests, names, history, customization) ────────
+  // ── RESET (stats only — keeps missions, names, history, customization) ────────
   const resetStats = () => {
     update({...data,
       categories: data.categories.map(c=>({...c, value:0})),
@@ -3793,7 +3809,7 @@ export default function App() {
     setTimeout(()=>setBursts(b=>b.filter(z=>z.id!==id)), 1100);
   };
 
-  // ── QUEST ORDER / RESET ─────────────────────────────────────────────────────
+  // ── MISSION ORDER / RESET ─────────────────────────────────────────────────────
   const moveTask = (id, dir) => {
     const sorted = [...data.tasks].sort((a,b)=>(a.order??0)-(b.order??0));
     const i = sorted.findIndex(t=>t.id===id);
@@ -3851,11 +3867,11 @@ export default function App() {
 
   const resetAllQuests = () => {
     update({...data, tasks: data.tasks.map(t=>({...t, completions:{}, frozen:{}, createdAt: dateKey()}))});
-    toast$("ALL QUEST HISTORY RESET");
+    toast$("ALL MISSION HISTORY RESET");
   };
   const resetQuest = (id) => {
     update({...data, tasks:data.tasks.map(t=>t.id===id?{...t, completions:{}, createdAt: dateKey()}:t)});
-    toast$("QUEST HISTORY RESET");
+    toast$("MISSION HISTORY RESET");
   };
 
   // ── SPIN GAMES (slot / wheel / blackjack, chosen at random) ─────────────────
@@ -3918,7 +3934,7 @@ export default function App() {
     const dk = dateKey();
     const unlocked = spinsUnlocked(data, dk);
     const used = (data.wallet.spinsUsedByDay||{})[dk]||0;
-    if (used >= unlocked) { toast$("COMPLETE MORE QUESTS TO UNLOCK A SPIN","#ffc46b"); return; }
+    if (used >= unlocked) { toast$("COMPLETE MORE MISSIONS TO UNLOCK A SPIN","#ffc46b"); return; }
     if (coinBalance(data.wallet) < SPIN_COST) { toast$(`NEED ${SPIN_COST} COINS TO PLAY`,"#ffc46b"); return; }
     const game = SPIN_GAMES[Math.floor(Math.random()*SPIN_GAMES.length)];
     setSpinGame(game); setSpinState("ready"); setSpinResult(null); setView("casino");
@@ -3930,7 +3946,7 @@ export default function App() {
     const dk = dateKey();
     const unlocked = spinsUnlocked(data, dk);
     const used = (data.wallet.spinsUsedByDay||{})[dk]||0;
-    if (used >= unlocked) { toast$("COMPLETE MORE QUESTS TO UNLOCK A SPIN","#ffc46b"); return; }
+    if (used >= unlocked) { toast$("COMPLETE MORE MISSIONS TO UNLOCK A SPIN","#ffc46b"); return; }
     if (coinBalance(data.wallet) < SPIN_COST) { toast$(`NEED ${SPIN_COST} COINS`,"#ffc46b"); return; }
     spendCoins(SPIN_COST);
     markSpinUsed(dk);
@@ -3992,7 +4008,7 @@ export default function App() {
 
   // ── FREEZE ──────────────────────────────────────────────────────────────────
   // A frozen day still shows up and can still be completed — it just costs
-  // nothing when it isn't. Days are stamped into the quest's own frozen map,
+  // nothing when it isn't. Days are stamped into the mission's own frozen map,
   // which decay, streaks and the calendar already understand.
   const FREEZE_MAX_DAYS = 7;
   const freezeDaysFor = (task) => {
@@ -4039,7 +4055,7 @@ export default function App() {
         : stampGlobalFreeze({ ...cur, freezeAll: { from: dateKey() } });
       persistRaw(nx); return nx;
     });
-    toast$(freezeAllOn ? "THAW — QUESTS COUNT AGAIN" : "❄ EVERYTHING FROZEN",
+    toast$(freezeAllOn ? "THAW — MISSIONS COUNT AGAIN" : "❄ EVERYTHING FROZEN",
            freezeAllOn ? "#ffc46b" : "#7fd4ff");
     try { navigator.vibrate && navigator.vibrate([14,34,14]); } catch {}
   };
@@ -4093,7 +4109,7 @@ export default function App() {
   // ── RESET / DEVELOPER TOOLS ─────────────────────────────────────────────────
   const resetGems = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, gemsEarned:0, gemsSpent:0}}; persistRaw(n); return n; }); toast$("GEMS RESET","#fb923c"); };
   const resetCoins = () => { setData(cur=>{ const n={...cur, wallet:{...cur.wallet, coinsEarned:0, coinsSpent:0, coinsByTaskDay:{}}}; persistRaw(n); return n; }); toast$("COINS RESET","#fb923c"); };
-  // Wardrobe = your rank and the quest history that earned it.
+  // Wardrobe = your rank and the mission history that earned it.
   const resetWardrobe = () => {
     update({...data,
       categories: data.categories.map(c=>({...c, value:0})),
@@ -4437,15 +4453,15 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([30,60,30,60,90]); } catch {}
   };
 
-  // ── DAILY BADGE MATH — what share of that day's quest load got cleared ──────
+  // ── DAILY BADGE MATH — what share of that day's mission load got cleared ──────
   // Returns pct:null when nothing was even scheduled (a genuine rest day).
   const dayPct = (dk) => {
     let total = 0, done = 0;
     data.tasks.forEach(t=>{
       if (!t.catId || !data.categories.find(c=>c.id===t.catId)) return;
       if (isWeekly(t)) return;
-      if ((t.createdAt || "0000-00-00") > dk) return;   // quest didn't exist yet
-      if (!isScheduledOn(t, dk)) return;                // rest day for this quest
+      if ((t.createdAt || "0000-00-00") > dk) return;   // mission didn't exist yet
+      if (!isScheduledOn(t, dk)) return;                // rest day for this mission
       total++;
       if (isCompletedOn(t, dk)) done++;
     });
@@ -4616,7 +4632,7 @@ export default function App() {
 
   // Home and More are pinned; everything between them is yours to arrange.
   const NAV_DEFS = {
-    tasks: { icon:"⚔",  label:"QUESTS",  on: S.questsEnabled !== false },
+    tasks: { icon:"⚔",  label:"MISSIONS",  on: S.questsEnabled !== false },
     boss:  { icon:"🔥", label:"RIVAL",   on: S.bossEnabled   !== false },
     plan:  { icon:"🗓", label:"PLAN",    on: S.planEnabled   !== false },
     board: { icon:"🧮", label:"BOARD",   on: !!S.kanbanEnabled },
@@ -4642,8 +4658,8 @@ export default function App() {
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
 
-  // ── QUEST CARD (ring on the LEFT; vivid or tinted; per-quest color) ─────────
-  // Weekly-habit card (used on Home and on the Quests page). Tap ring to log one.
+  // ── MISSION CARD (ring on the LEFT; vivid or tinted; per-mission color) ─────────
+  // Weekly-habit card (used on Home and on the Missions page). Tap ring to log one.
   const WeeklyCard = ({task, showReorder=false, siblingIds=null}) => {
     const cat = data.categories.find(c=>c.id===task.catId);
     const color = task.color || cat?.color || T.accent;
@@ -4830,7 +4846,7 @@ export default function App() {
         </span>
       </div>
       <div style={{fontSize:9.5,color:FAINT,marginTop:6,textAlign:"center",fontWeight:700}}>
-        HARDER QUESTS = BIGGER REWARD AND RISK
+        HARDER MISSIONS = BIGGER REWARD AND RISK
       </div>
     </div>
   );
@@ -4990,17 +5006,17 @@ export default function App() {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setConfirmBox(null)}>
           <div onClick={e=>e.stopPropagation()} style={{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",border:`2px solid ${BAD}`,borderRadius:26,padding:"24px 26px",maxWidth:340,width:"100%",boxShadow:`0 0 40px ${BAD}55`,animation:"popIn .25s ease"}}>
             <div style={{fontSize:12,letterSpacing:2,color:BAD,fontWeight:900,textAlign:"center",marginBottom:14}}>
-              {confirmBox.type==="reset" ? "⚠ RESET STATS" : confirmBox.type==="questReset" ? "⚠ RESET QUEST"
+              {confirmBox.type==="reset" ? "⚠ RESET STATS" : confirmBox.type==="questReset" ? "⚠ RESET MISSION"
                 : confirmBox.type==="resetCoins" ? "⚠ RESET COINS" : confirmBox.type==="resetGems" ? "⚠ RESET GEMS"
                 : confirmBox.type==="resetCosmetics" ? "⚠ RESET COSMETICS"
-                : confirmBox.type==="resetAllQuests" ? "⚠ RESET ALL QUESTS"
+                : confirmBox.type==="resetAllQuests" ? "⚠ RESET ALL MISSIONS"
                 : confirmBox.type==="resetWardrobe" ? "⚠ RESET WARDROBE"
                 : confirmBox.type==="resetDojutsu" ? "⚠ RESET DOJUTSU"
                 : confirmBox.type==="resetSummons" ? "⚠ RESET SUMMONS" : "⚠ CONFIRM DELETE"}
             </div>
             <div style={{fontSize:14.5,color:"#fff",textAlign:"center",marginBottom:10,lineHeight:1.5,fontWeight:600}}>
               {confirmBox.type==="reset"
-                ? <>Reset your champion's stats back to the start? Your quests, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
+                ? <>Reset your champion's stats back to the start? Your missions, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="questReset"
                 ? <>Wipe the history and streak of <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span> and start counting fresh from today? Your character's stats are <span style={{color:GOOD,fontWeight:900}}>unchanged</span>.</>
                 : confirmBox.type==="resetCoins"
@@ -5008,11 +5024,11 @@ export default function App() {
                 : confirmBox.type==="resetGems"
                 ? <>Set your gem balance back to <span style={{color:"#67e8f9",fontWeight:900}}>zero</span>?</>
                 : confirmBox.type==="resetAllQuests"
-                ? <>Wipe the history, streaks, and shields of <span style={{color:BAD,fontWeight:900}}>every quest</span> and start them all fresh from today? Your character's stats, coins, and gems are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
+                ? <>Wipe the history, streaks, and shields of <span style={{color:BAD,fontWeight:900}}>every mission</span> and start them all fresh from today? Your character's stats, coins, and gems are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="resetCosmetics"
                 ? <>Unequip and <span style={{color:BAD,fontWeight:900}}>permanently clear</span> every cosmetic you own? You'll have to re-earn them.</>
                 : confirmBox.type==="resetWardrobe"
-                ? <>Drop back to <span style={{color:BAD,fontWeight:900}}>Academy Student</span>. This wipes your XP and the completion history of every quest, so the whole rank ladder starts over. Your quests, summons and dojutsu are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
+                ? <>Drop back to <span style={{color:BAD,fontWeight:900}}>Academy Student</span>. This wipes your XP and the completion history of every mission, so the whole rank ladder starts over. Your missions, summons and dojutsu are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="resetDojutsu"
                 ? <>Lose <span style={{color:BAD,fontWeight:900}}>every awakened eye</span> and start their goals again? Nothing else is touched.</>
                 : confirmBox.type==="resetSummons"
@@ -5021,7 +5037,7 @@ export default function App() {
             </div>
             {confirmBox.type==="cat" && confirmBox.taskCount > 0 && (
               <div style={{fontSize:11.5,color:"#ffc46b",textAlign:"center",marginBottom:10,fontWeight:800,background:"rgba(0,0,0,0.25)",padding:"9px 11px",borderRadius:14}}>
-                {confirmBox.taskCount} quest(s) will need reassignment
+                {confirmBox.taskCount} mission(s) will need reassignment
               </div>
             )}
             <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -5029,7 +5045,7 @@ export default function App() {
               <button style={{background:BAD,color:"#fff",border:"none",borderRadius:14,padding:"13px",fontSize:12,cursor:"pointer",fontWeight:900,flex:1,fontFamily:FONT}}
                 onClick={()=>{
                   if (confirmBox.type==="cat") { deleteCat(confirmBox.id); setEditingCat(null); }
-                  else if (confirmBox.type==="task") { deleteTask(confirmBox.id); toast$("QUEST DELETED"); }
+                  else if (confirmBox.type==="task") { deleteTask(confirmBox.id); toast$("MISSION DELETED"); }
                   else if (confirmBox.type==="questReset") resetQuest(confirmBox.id);
                   else if (confirmBox.type==="list") deleteList(confirmBox.id);
                   else if (confirmBox.type==="reset") resetStats();
@@ -5326,7 +5342,7 @@ export default function App() {
                       </div>
                       <div style={{textAlign:"center"}}>
                         <div style={{fontSize:17,color:"#fff",fontWeight:900}}>LV {questLevel(detailTask)}</div>
-                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>QUEST</div>
+                        <div style={{fontSize:8,color:FAINT,fontWeight:800}}>MISSION</div>
                       </div>
                     </>
                   )}
@@ -5431,7 +5447,7 @@ export default function App() {
                     <span style={{fontSize:17}}>❄</span>
                     <span style={{flex:1,minWidth:0}}>
                       <span style={{display:"block",fontSize:12.5,fontWeight:900,color:held?"#7fd4ff":"#fff"}}>
-                        {held ? `FROZEN · ${held} DAY${held>1?"S":""} LEFT` : "FREEZE THIS QUEST"}
+                        {held ? `FROZEN · ${held} DAY${held>1?"S":""} LEFT` : "FREEZE THIS MISSION"}
                       </span>
                       <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,marginTop:1,lineHeight:1.4}}>
                         Still here, still loggable — missing it just costs nothing.
@@ -5602,9 +5618,9 @@ export default function App() {
                 </div>
               )}
 
-              {/* TODAY'S QUESTS */}
+              {/* TODAY'S MISSIONS */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"6px 2px 11px"}}>
-                <div style={C.sectionTitle}>Today's Quests</div>
+                <div style={C.sectionTitle}>Today's Missions</div>
                 <div style={{fontSize:11,color:DIM,fontWeight:800}}>{todayDone} of {todayTasks.length}</div>
               </div>
               {(()=>{
@@ -5696,11 +5712,11 @@ export default function App() {
               {allDone && (
                 <div style={{...C.glass,textAlign:"center",border:`1.5px solid ${GOOD}66`}}>
                   <div style={{fontSize:15,fontWeight:900,color:GOOD}}>✦ SUMMIT REACHED ✦</div>
-                  <div style={{fontSize:11.5,color:DIM,marginTop:4,fontWeight:600}}>Every quest complete. The realm rests easy tonight.</div>
+                  <div style={{fontSize:11.5,color:DIM,marginTop:4,fontWeight:600}}>Every mission complete. The realm rests easy tonight.</div>
                 </div>
               )}
               {todayTasks.length===0 && (
-                <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>No quests scheduled today.</div>
+                <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>No missions scheduled today.</div>
               )}
               {S.questLayout==="circles" ? (()=>{
                 const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
@@ -5882,7 +5898,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ══ QUESTS (HabitKit-style grid) ══ */}
+        {/* ══ MISSIONS (HabitKit-style grid) ══ */}
         {view==="tasks" && (()=>{
           const wkMode = S.questWeekView==="week" ? "week" : "last7";
           const wk7 = wkMode==="week" ? weekDateKeys() : last7Keys();
@@ -5896,7 +5912,7 @@ export default function App() {
           return (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={C.sectionTitle}>All Quests</div>
+              <div style={C.sectionTitle}>All Missions</div>
               <div style={{display:"flex",gap:8}}>
                 <button style={{...C.btnSm,padding:"10px 14px",fontSize:11.5}} onClick={()=>{ setForecastDate(dateKey()); setView("forecast"); }}>📅 FORECAST</button>
                 <button style={{...C.btn,padding:"10px 16px",fontSize:11.5}} onClick={()=>setView("addTask")}>+ NEW</button>
@@ -6033,7 +6049,7 @@ export default function App() {
           );
         })()}
 
-        {/* ══ ADD / EDIT QUEST ══ */}
+        {/* ══ ADD / EDIT MISSION ══ */}
         {(view==="addTask"||view==="editTask") && (()=> {
           const isEdit = view==="editTask";
           const t = isEdit ? editTask : newTask;
@@ -6041,9 +6057,9 @@ export default function App() {
           if (!t) return null;
           return (
             <div style={{padding:"14px 16px"}}>
-              <div style={{...C.sectionTitle,marginBottom:12}}>{isEdit?"Edit Quest":"New Quest"}</div>
+              <div style={{...C.sectionTitle,marginBottom:12}}>{isEdit?"Edit Mission":"New Mission"}</div>
               <div style={C.glass}>
-                <div style={C.label}>QUEST NAME</div>
+                <div style={C.label}>MISSION NAME</div>
                 <input style={C.input} value={t.name} placeholder="e.g. Morning run"
                   onChange={e=>set({name:e.target.value})}/>
                 <div style={{...C.label,marginTop:16}}>ICON <span style={{color:FAINT}}>· shown on the circle view</span></div>
@@ -6064,7 +6080,7 @@ export default function App() {
                   ))}
                 </div>
                 <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>Tap the box and use your keyboard's emoji key for anything not listed</div>
-                {/* ── GOALS: hold a streak, awaken an eye. Up to three per quest. ── */}
+                {/* ── GOALS: hold a streak, awaken an eye. Up to three per mission. ── */}
                 <div style={{...C.label,marginTop:16}}>GOALS <span style={{color:FAINT}}>· optional</span></div>
                 {(t.goals||[]).map((g,gi)=>{
                   const e = eyeById(g.eye);
@@ -6134,7 +6150,7 @@ export default function App() {
                   </button>
                 )}
 
-                <div style={{...C.label,marginTop:16}}>QUEST COLOR</div>
+                <div style={{...C.label,marginTop:16}}>MISSION COLOR</div>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
                   <button onClick={()=>set({color:null})}
                     style={{height:30,padding:"0 12px",borderRadius:15,border:!t.color?"2.5px solid #fff":"2px solid rgba(255,255,255,0.2)",
@@ -6158,7 +6174,7 @@ export default function App() {
                 <div style={{fontSize:9.5,color:FAINT,marginBottom:8,fontWeight:700,lineHeight:1.4}}>
                   {t.freq==="weekly"
                     ? "Do it any days you like — hit your weekly target to reach 100%."
-                    : "Pick the exact days this quest is due each week."}
+                    : "Pick the exact days this mission is due each week."}
                 </div>
                 {t.freq==="weekly" ? (
                   <>
@@ -6304,11 +6320,31 @@ export default function App() {
                               ＋ {ramp.length ? `ADD WEEK ${ramp.length+1}` : "ADD WEEK 1"}
                             </button>
                           )}
-                          <div style={{fontSize:9.5,color:FAINT,marginTop:10,fontWeight:700,lineHeight:1.45}}>
-                            {ramp.length
-                              ? `From week ${ramp.length+1} onward it uses the ${wk?"target":"days"} you set above.`
-                              : `Up to ${RAMP_MAX_WEEKS} weeks. Leave it empty and the quest uses the ${wk?"target":"days"} above from day one.`}
-                          </div>
+                          {/* The commonest question about a ramp is "and then
+                              what?", so the steady state is spelled out with
+                              its actual days rather than described. */}
+                          {ramp.length ? (
+                            <div style={{marginTop:12,padding:"10px 12px",borderRadius:14,
+                              background:"rgba(255,255,255,0.06)",border:`1px solid ${LINE}`}}>
+                              <div style={{fontSize:9.5,fontWeight:900,color:T.accent,letterSpacing:0.6}}>
+                                WEEK {ramp.length+1} ONWARD — FOREVER
+                              </div>
+                              <div style={{fontSize:11.5,fontWeight:800,color:"#fff",marginTop:4}}>
+                                {wk
+                                  ? `${t.weeklyTarget||1}× per week`
+                                  : ((t.days||[]).length === 7 ? "Every day"
+                                     : (t.days||[]).length === 0 ? "No days picked yet"
+                                     : (t.days||[]).slice().sort().map(d=>DAYS[d].slice(0,2).toUpperCase()).join(" "))}
+                              </div>
+                              <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:3,lineHeight:1.45}}>
+                                The ramp stops and it settles onto the normal schedule you set above.
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{fontSize:9.5,color:FAINT,marginTop:10,fontWeight:700,lineHeight:1.45}}>
+                              Up to {RAMP_MAX_WEEKS} weeks. Leave it empty and the mission uses the {wk?"target":"days"} above from day one.
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -6338,7 +6374,7 @@ export default function App() {
                 { label:"To Do", count:data.kanban.todo.length, color:"#3b82f6", icon:"☰" },
                 { label:"In Progress", count:data.kanban.doing.length, color:"#f59e0b", icon:"◑" },
                 { label:"Done", count:data.kanban.done.length, color:"#22c55e", icon:"✓" },
-                { label:"Quests Left", count:todayTasks.length-todayDone, color:T.accent, icon:"⚔" },
+                { label:"Missions Left", count:todayTasks.length-todayDone, color:T.accent, icon:"⚔" },
               ].map(tile=>(
                 <div key={tile.label} style={{
                   background:`linear-gradient(150deg,${tile.color},${shade(tile.color,-55)})`,
@@ -6728,7 +6764,7 @@ export default function App() {
                 </div>
               ))}
               <div style={{fontSize:9,color:FAINT,fontWeight:700,textAlign:"center",marginTop:10,lineHeight:1.5}}>
-                Based on the daily quests scheduled for that day. Days with nothing scheduled read as REST and don't count against you.
+                Based on the daily missions scheduled for that day. Days with nothing scheduled read as REST and don't count against you.
               </div>
             </div>
           </div>
@@ -6851,14 +6887,14 @@ export default function App() {
                   <button key={v} style={C.chip(S.statStyle===v)} onClick={()=>setSetting("statStyle",v)}>{l}</button>
                 ))}
               </div>
-              <div style={C.label}>HOME QUEST LAYOUT</div>
+              <div style={C.label}>HOME MISSION LAYOUT</div>
               <div style={{display:"flex",gap:8,marginBottom:8}}>
                 {[["list","LIST"],["circles","CIRCLES"]].map(([v,l])=>(
                   <button key={v} style={C.chip(S.questLayout===v)} onClick={()=>setSetting("questLayout",v)}>{l}</button>
                 ))}
               </div>
-              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:16}}>Circles = big tappable rings with icons, spaced out. They shrink as you add quests so everything stays on one page.</div>
-              <div style={C.label}>QUEST CARD STYLE</div>
+              <div style={{fontSize:10,color:FAINT,fontWeight:700,marginBottom:16}}>Circles = big tappable rings with icons, spaced out. They shrink as you add missions so everything stays on one page.</div>
+              <div style={C.label}>MISSION CARD STYLE</div>
               <div style={{display:"flex",gap:8,marginBottom:16}}>
                 {[["vivid","VIVID"],["tinted","TINTED"]].map(([v,l])=>(
                   <button key={v} style={C.chip(S.cardStyle===v)} onClick={()=>setSetting("cardStyle",v)}>{l}</button>
@@ -6868,7 +6904,7 @@ export default function App() {
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>"This Week" on home</div>
-                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = weekly habits show on the Quests page instead</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Off = weekly habits show on the Missions page instead</div>
                 </div>
                 <Switch on={S.weeklyOnHome!==false} onToggle={()=>setSetting("weeklyOnHome",!(S.weeklyOnHome!==false))}/>
               </div>
@@ -6953,7 +6989,7 @@ export default function App() {
             <div style={C.glass}>
               <div style={C.label}>DOJUTSU</div>
               <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:11,lineHeight:1.45}}>
-                Awakened by holding a streak on a quest. Set the goal in the quest itself.
+                Awakened by holding a streak on a mission. Set the goal in the mission itself.
                 Hidden under the ANBU mask.
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:9}}>
@@ -7008,7 +7044,7 @@ export default function App() {
                 onClick={()=>setConfirmBox({type:"resetWardrobe"})}>
                 ↺ RESET WARDROBE
                 <div style={{fontSize:9.5,color:"#ffb3b3",fontWeight:700,marginTop:3}}>
-                  wipes every quest&rsquo;s history and your rank
+                  wipes every mission&rsquo;s history and your rank
                 </div>
               </button>
             </div>
@@ -7145,7 +7181,7 @@ export default function App() {
             ) : (
               <div style={{...C.glass,textAlign:"center",padding:"14px"}}>
                 <div style={{fontSize:11.5,color:DIM,fontWeight:700,lineHeight:1.5}}>
-                  You can't challenge him from behind.<br/>Close the gap by finishing quests.
+                  You can't challenge him from behind.<br/>Close the gap by finishing missions.
                 </div>
               </div>
             )}
@@ -7330,7 +7366,7 @@ export default function App() {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13.5,fontWeight:900,color:"#fff"}}>{sn.day}</div>
                       <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:1}}>
-                        {countDone(sn.data)} completions · {(sn.data.tasks||[]).length} quests
+                        {countDone(sn.data)} completions · {(sn.data.tasks||[]).length} missions
                       </div>
                     </div>
                     <button style={{...C.btnSm,padding:"9px 13px"}}
@@ -7603,7 +7639,7 @@ export default function App() {
             <div style={{padding:"14px 16px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                 <div style={C.sectionTitle}>Forecast</div>
-                <button style={{...C.btnSm,padding:"10px 14px"}} onClick={()=>setView("tasks")}>‹ QUESTS</button>
+                <button style={{...C.btnSm,padding:"10px 14px"}} onClick={()=>setView("tasks")}>‹ MISSIONS</button>
               </div>
 
               {/* Week strip */}
@@ -7735,7 +7771,7 @@ export default function App() {
                   <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:1,lineHeight:1.4}}>
                     {freezeAllOn
                       ? `Nothing has counted against you since ${prettyDay(data.freezeAll.from)}. Tap to thaw.`
-                      : "No quest costs you XP until you turn this back off. You can still log them."}
+                      : "No mission costs you XP until you turn this back off. You can still log them."}
                   </div>
                 </div>
                 <div style={{width:46,height:26,borderRadius:13,flexShrink:0,position:"relative",
@@ -7752,7 +7788,7 @@ export default function App() {
               <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>Home and More are always on. Toggle the rest to keep your bottom bar tidy.</div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⚔ Quests</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⚔ Missions</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your missions and the weekly grid</div>
                 </div>
                 <Switch on={S.questsEnabled!==false} onToggle={()=>setSetting("questsEnabled",!(S.questsEnabled!==false))}/>
