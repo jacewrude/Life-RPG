@@ -708,7 +708,7 @@ function migrate(d) {
     goals = goals.filter(g=>g && g.eye)
       .map(g=>({ eye:g.eye, days: Math.max(1, Math.min(30, parseInt(g.days)||7)),
                  side: goalSide(g) }))
-      .slice(0,3);
+      .slice(0, MAX_GOALS);
     const { goal, ...rest } = t;
     return { ...rest, goals };
   }) };
@@ -1963,20 +1963,24 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   const cosEye = (v) => (v && eyeById(v)) ? v : null;
   const wornL = anbu ? null : cosEye(cosmetics && cosmetics.eyeL);
   const wornR = anbu ? null : cosEye(cosmetics && cosmetics.eyeR);
+  // The face is centred on x=12, and every piece of the eye is mirrored about
+  // it: whites at 10.55 and 13.45, pupils dead centre inside them. The old
+  // values drifted right by about a tenth of a unit, and the pupil drifted
+  // further than its own white, which read as him glancing off to one side.
   // sclera
-  R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
-  R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
+  R(9.85,6.8,1.4,1.8,"#ffffff",0.7);
+  R(12.75,6.8,1.4,1.8,"#ffffff",0.7);
   // the dojutsu is the iris, sitting inside the eye rather than replacing it
-  if (wornL) drawEye(els, wornL, 10.62*s, 7.78*s, 0.62*s, () => k++, true);
-  else       R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
-  if (wornR) drawEye(els, wornR, 13.52*s, 7.78*s, 0.62*s, () => k++, true);
-  else       R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
+  if (wornL) drawEye(els, wornL, 10.55*s, 7.78*s, 0.62*s, () => k++, true);
+  else       R(10.15,7.4,0.8,1.0,"#1c1410",0.4);
+  if (wornR) drawEye(els, wornR, 13.45*s, 7.78*s, 0.62*s, () => k++, true);
+  else       R(13.05,7.4,0.8,1.0,"#1c1410",0.4);
   // eyelids: a hood of skin across the top of each eye, with a lash line under it
-  R(9.82,6.72,1.56,0.62,shade(skin,-6),0.34);
-  R(12.72,6.72,1.56,0.62,shade(skin,-6),0.34);
-  R(9.86,7.26,1.48,0.17,shade(skin,-62),0.06);
-  R(12.76,7.26,1.48,0.17,shade(skin,-62),0.06);
-  R(11.2,9.4,1.7,0.55,shade(skin,-55),0.3);
+  R(9.77,6.72,1.56,0.62,shade(skin,-6),0.34);
+  R(12.67,6.72,1.56,0.62,shade(skin,-6),0.34);
+  R(9.81,7.26,1.48,0.17,shade(skin,-62),0.06);
+  R(12.71,7.26,1.48,0.17,shade(skin,-62),0.06);
+  R(11.15,9.4,1.7,0.55,shade(skin,-55),0.3);
 
   // ── ANBU PORCELAIN MASK — animal face, hair left showing above it ─────────
   if (anbu) {
@@ -3010,6 +3014,8 @@ const eyeOwnedAny = (wallet, id) => eyeOwnedOn(wallet,id,"l") || eyeOwnedOn(wall
 // and nothing already earned pays out a second time.
 const eyeLockKey  = (tid, g) => `${tid}|${g.eye}` + (goalSide(g) === "both" ? "" : `|${goalSide(g)}`);
 const SIDE_LABEL  = { both:"BOTH", left:"LEFT", right:"RIGHT" };
+// Six goals per mission: three dojutsu, one eye at a time.
+const MAX_GOALS = 6;
 
 function drawEye(els, id, ex, ey, r, nk, irisOnly) {
   const C=(x,y,rr,f,o)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill={f} opacity={o===undefined?1:o}/>);
@@ -6123,7 +6129,8 @@ export default function App() {
                   ))}
                 </div>
                 <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>Tap the box and use your keyboard's emoji key for anything not listed</div>
-                {/* ── GOALS: hold a streak, awaken an eye. Up to three per mission. ── */}
+                {/* ── GOALS: hold a streak, awaken an eye. Six per mission, so three
+                       dojutsu can be earned one pupil at a time. ── */}
                 <div style={{...C.label,marginTop:16}}>GOALS <span style={{color:FAINT}}>· optional</span></div>
                 {(t.goals||[]).map((g,gi)=>{
                   const e = eyeById(g.eye);
@@ -6136,7 +6143,9 @@ export default function App() {
                   return (
                     <div key={gi} style={{background:"rgba(0,0,0,0.2)",padding:11,borderRadius:BLOCK?0:14,marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1,color:FAINT}}>GOAL {gi+1}</div>
+                        <div style={{fontSize:9,fontWeight:900,letterSpacing:1,color:FAINT}}>
+                          GOAL {gi+1} <span style={{color:T.accent}}>· {SIDE_LABEL[side]}</span>
+                        </div>
                         <div style={{flex:1}}/>
                         <button onClick={()=>set({goals:(t.goals||[]).filter((_,i)=>i!==gi)})}
                           style={{...C.btnSm,padding:"5px 10px",fontSize:10,color:BAD}}>REMOVE</button>
@@ -6204,10 +6213,20 @@ export default function App() {
                     </div>
                   );
                 })}
-                {(t.goals||[]).length < 3 && (
-                  <button onClick={()=>set({goals:[...(t.goals||[]),
-                      {eye:EYES[Math.min(EYES.length-1,(t.goals||[]).length)].id,
-                       days:(t.goals||[]).length?15:3, side:"both"}]})}
+                {(t.goals||[]).length < MAX_GOALS && (
+                  <button onClick={()=>{
+                      const gs = t.goals||[];
+                      const last = gs[gs.length-1];
+                      const lastSide = last ? goalSide(last) : null;
+                      // Finishing a pair is the common next move, so after a
+                      // one-eyed goal the new one defaults to the same dojutsu
+                      // in the other eye.
+                      const next = (lastSide === "left" || lastSide === "right")
+                        ? { eye:last.eye, days:last.days, side: lastSide === "left" ? "right" : "left" }
+                        : { eye:EYES[Math.min(EYES.length-1, gs.length)].id,
+                            days: gs.length ? 15 : 3, side:"both" };
+                      set({goals:[...gs, next]});
+                    }}
                     style={{...C.btnSm,width:"100%",padding:"12px"}}>
                     ＋ {(t.goals||[]).length ? "ADD ANOTHER GOAL" : "ADD A GOAL"}
                   </button>
