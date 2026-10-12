@@ -240,7 +240,7 @@ const DEFAULT_SETTINGS = {
 };
 const DEFAULT_EQUIPPED = {
   headband:true, vest:true, gloves:true, anbu:true,
-  cloak:true, hat:true, sage:true,
+  cloak:true, sagemode:true, hat:true, sage:true,
 };
 const DEFAULT_CHARACTER = {
   skin:"#9c6b3c", hair:"#1a0e08", shirt:"#a16207", pants:"#1f2937",
@@ -346,23 +346,27 @@ const SHOP_TYPES = [["all","ALL"],["pet","SUMMONS"]];
 const SPIN_GAMES = ["slot","wheel","blackjack"];
 const CAT_COLORS = ["#f59e0b","#ef4444","#38bdf8","#34d399","#a78bfa","#f472b6","#fb923c","#22c55e","#e879f9","#fbbf24"];
 
+// Everything moved down a rung so rank 0 is already a Genin — the empty
+// Academy Student slot it freed up is where Sage Mode now sits, between
+// Akatsuki and Kage. The eight rungs and their XP thresholds are unchanged.
 const GEAR = [
-  { slot:"headband", lvl:1, name:"Village Headband & Sandals" },
-  { slot:"vest",     lvl:2, name:"Green Flak Vest" },
-  { slot:"gloves",   lvl:3, name:"Gloves, Sash & Tanto" },
-  { slot:"anbu",     lvl:4, name:"ANBU Mask & Black Ops Gear" },
-  { slot:"cloak",    lvl:5, name:"Akatsuki Cloak" },
+  { slot:"headband", lvl:0, name:"Village Headband & Sandals" },
+  { slot:"vest",     lvl:1, name:"Green Flak Vest" },
+  { slot:"gloves",   lvl:2, name:"Gloves, Sash & Tanto" },
+  { slot:"anbu",     lvl:3, name:"ANBU Mask & Black Ops Gear" },
+  { slot:"cloak",    lvl:4, name:"Akatsuki Cloak" },
+  { slot:"sagemode", lvl:5, name:"Sage Haori & Toad Scroll" },
   { slot:"hat",      lvl:6, name:"Kage Haori & Hat" },
   { slot:"sage",     lvl:7, name:"Sage Robe & Truth-Seeking Orbs" },
 ];
 
 const LEVELS = [
-  { lvl:0, name:"Academy Student",     unlock:"No rank yet" },
-  { lvl:1, name:"Genin",               unlock:"Village headband & sandals" },
-  { lvl:2, name:"Chunin",              unlock:"Green flak vest" },
-  { lvl:3, name:"Jonin",               unlock:"Gloves, sash & tanto" },
-  { lvl:4, name:"ANBU Black Ops",      unlock:"Porcelain mask & sleeveless armour" },
-  { lvl:5, name:"Akatsuki",            unlock:"Long red-cloud cloak" },
+  { lvl:0, name:"Genin",               unlock:"Village headband & sandals" },
+  { lvl:1, name:"Chunin",              unlock:"Green flak vest" },
+  { lvl:2, name:"Jonin",               unlock:"Gloves, sash & tanto" },
+  { lvl:3, name:"ANBU Black Ops",      unlock:"Porcelain mask & sleeveless armour" },
+  { lvl:4, name:"Akatsuki",            unlock:"Long red-cloud cloak" },
+  { lvl:5, name:"Sage Mode",           unlock:"Red toad-sage haori & scroll" },
   { lvl:6, name:"Kage",                unlock:"Kage haori & hat" },
   { lvl:7, name:"Sage of Six Paths",   unlock:"White robe, six magatama & nine orbs" },
 ];
@@ -1708,6 +1712,15 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   const s = scale;
   const W = 24, H = 24;
   const has = (slot, lvlNeeded) => level >= lvlNeeded && eq[slot] !== false;
+  // Which outfit is on top. Worked out up here rather than beside the torso,
+  // because the trousers and the scroll on the back are drawn before it.
+  const sage   = has("sage",7);                                     // Sage of Six Paths
+  const robe   = !sage && has("hat",6);                             // Kage
+  const sagemd = !sage && !robe && has("sagemode",5);               // Sage Mode
+  const cloak  = !sage && !robe && !sagemd && has("cloak",4);       // Akatsuki
+  const anbu   = !sage && !robe && !sagemd && !cloak && has("anbu",3);
+  const vest   = !sage && !robe && !sagemd && !cloak && has("vest",1);
+  const SAGE_ORANGE = "#e2701c";
   const els = [];
   let k = 0;
   const R = (x,y,w,h,fill,rx) => els.push(
@@ -1782,6 +1795,23 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(8.2,10.4,7.6,1.2,shade(capeC.color,28),0.8);
   }
 
+  // ── SAGE MODE: THE TOAD SCROLL ────────────────────────────────────────────
+  // Slung across his back, so it is drawn before the body and only its two
+  // ends show past the shoulders.
+  if (sagemd) {
+    // Sat high across the shoulders: any lower and the head and torso hide the
+    // paper entirely, leaving two red discs that read as pauldrons.
+    R(5.0,8.1,14.0,2.9,"#dccb9f",0.95);
+    R(5.0,8.1,14.0,0.8,"#f0e4c0",0.45);                 // lit top edge
+    R(5.0,10.2,14.0,0.8,"#b49c6b",0.45);                // shaded underside
+    [5.8,18.2].forEach(cx=>{
+      els.push(<circle key={k++} cx={cx*s} cy={9.55*s} r={1.75*s} fill="#8e2219"/>);
+      els.push(<circle key={k++} cx={cx*s} cy={9.55*s} r={1.75*s} fill="none"
+        stroke="#5e1510" strokeWidth={0.24*s}/>);
+      els.push(<circle key={k++} cx={cx*s} cy={9.55*s} r={0.6*s} fill="#4a100c"/>);
+    });
+  }
+
   // ── THE SAGE'S TRUTH-SEEKING ORBS ─────────────────────────────────────────
   // Nine black spheres hanging in the air around him, drawn before the body so
   // they read as floating behind. Kept out in the margins so they never crowd
@@ -1797,10 +1827,15 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     });
   }
 
-  R(9,16,2.2,4.4,pants,0.5);
-  R(12.8,16,2.2,4.4,pants,0.5);
-  R(9,16,5.9,1.2,pants,0.4);
-  if (has("headband",1)) {
+  const legColor = sagemd ? SAGE_ORANGE : pants;
+  R(9,16,2.2,4.4,legColor,0.5);
+  R(12.8,16,2.2,4.4,legColor,0.5);
+  R(9,16,5.9,1.2,legColor,0.4);
+  if (sagemd) {                      // the dark band round each shin
+    R(9,19.0,2.2,0.7,"#23272e",0.3);
+    R(12.8,19.0,2.2,0.7,"#23272e",0.3);
+  }
+  if (has("headband",0)) {
     // open-toe shinobi sandals with wrapped shins
     R(8.9,18.4,2.4,1.5,"#2b3340",0.4); R(12.7,18.4,2.4,1.5,"#2b3340",0.4);
     R(8.4,19.9,3.4,1.5,"#1a2029",0.5); R(8.4,20.7,3.4,0.9,"#0f141b",0.4);
@@ -1810,11 +1845,6 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   }
 
   const fem = cz.body === "f";
-  const sage   = has("sage",7);
-  const robe   = !sage && has("hat",6);
-  const cloak  = !sage && !robe && has("cloak",5);
-  const anbu   = !sage && !robe && !cloak && has("anbu",4);
-  const vest   = !sage && !robe && !cloak && has("vest",2);
   const steel = false, leather = false;   // retired: knight plate
   let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
   if (fem) {
@@ -1875,7 +1905,17 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     [7.8,9.4,11.0,12.6,14.2,15.6].forEach(x=> R(x,17.5,1.0,1.0,"#b3281f",0.3));
     [8.6,10.2,11.8,13.4,15.0].forEach(x=> R(x,17.9,0.8,0.7,"#d8452f",0.3));
   }
-  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─
+  // ── SAGE MODE — orange jumpsuit under a red haori that hangs open ─────────
+  // The haori is two panels rather than one slab: the orange has to stay
+  // visible down the middle or the whole figure reads as a red blob.
+  if (sagemd) {
+    R(8.5,10.3,7.0,5.9,SAGE_ORANGE,0.9);                // jumpsuit torso
+    R(8.5,10.3,7.0,1.0,"#2b303a",0.45);                 // black yoke across the chest
+    R(11.6,11.0,0.8,5.3,"#2b303a",0.25);                // zip line
+    R(8.5,15.3,7.0,0.9,"#b85a12",0.4);                  // shadow under the ribs
+  }
+
+  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─
   if (sage) {
     const SW = "#f2f1ec", SG = "#d6d5cf", SD = "#b9b8b2", SI = "#131317";
     // The robe flares toward the floor, so it's built from two blocks rather
@@ -1894,11 +1934,26 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
       <ellipse key={k++} cx={(18.15+dx)*s} cy={19.6*s} rx={0.36*s} ry={0.72*s}
         fill="none" stroke={SI} strokeWidth={0.22*s}/>));
   }
-  const armColor = sage ? "#f7e7b8" : robe ? "#f4f1e8" : cloak ? "#15131b"
-                 : anbu ? skin : vest ? "#24402f" : (level>=1 ? shirt : skin);
+  const armColor = sage ? "#f7e7b8" : robe ? "#f4f1e8" : sagemd ? SAGE_ORANGE
+                 : cloak ? "#15131b"
+                 : anbu ? skin : vest ? "#24402f" : (level>=0 ? shirt : skin);
   R(7.6,11.2,1.3,4.0,armColor,0.6);
   R(15.1,11.2,1.3,4.0,armColor,0.6);
-  if (sage) {
+  if (sagemd) {
+    // Panels hung over the outside of each arm, so the orange sleeve still
+    // shows between the red and the chest.
+    const H = "#c0392b", HL = "#d9503a", FL = "#14141a";
+    [6.4, 15.6].forEach(px=>{
+      R(px,10.0,2.0,8.6,H,0.7);
+      R(px,10.0,2.0,0.9,HL,0.4);
+      R(px,16.8,2.0,1.6,FL,0.3);                          // black band at the hem
+      [px+0.05, px+1.0].forEach(fx=> els.push(
+        <path key={k++} fill={FL}
+          d={`M ${fx*s} ${17.0*s} Q ${(fx+0.47)*s} ${15.2*s} ${(fx+0.95)*s} ${17.0*s} Z`}/>));
+      R(px,18.2,2.0,0.4,"#8d241c",0.2);
+    });
+    R(9.3,10.4,1.0,6.0,"#3b2a1b",0.3);                    // strap holding the scroll
+  } else if (sage) {
     R(6.7,10.9,2.5,5.8,"#f2f1ec",0.7);                    // wide sage sleeves
     R(14.8,10.9,2.5,5.8,"#f2f1ec",0.7);
     R(6.9,16.0,2.1,0.75,"#131317",0.3);                   // black lining inside the cuffs
@@ -1917,12 +1972,14 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
         (12 + Math.cos(th)*4.9)*s, (9.0 + Math.sin(th)*4.9)*s,
         0.95*s, deg, "#131317", 1).forEach(e=>els.push(e));
     });
-  } else if (has("gloves",3)) {
+  } else if (has("gloves",2)) {
     R(7.5,14.4,1.5,1.5,"#20252e",0.5);
     R(15.0,14.4,1.5,1.5,"#20252e",0.5);
     R(7.6,14.6,1.3,0.4,"#39404e",0.2);
     R(15.1,14.6,1.3,0.4,"#39404e",0.2);
-    if (level === 3) R(8.4,15.6,7.2,0.8,"#2b4a7a",0.3);   // the sash belongs to Jonin alone
+    // The sash is the Jonin's alone, in the same green as the flak vest it
+    // sits over — it used to be blue, which belonged to no other tier.
+    if (level === 2) R(8.4,15.6,7.2,0.8,"#1f3b2e",0.3);
   } else {
     R(7.6,14.9,1.3,1.2,skin,0.6);
     R(15.1,14.9,1.3,1.2,skin,0.6);
@@ -2002,7 +2059,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(13.4,8.0,1.5,0.45,"#c0392b",0.2);
   }
   // ── VILLAGE HEADBAND ───────────────────────────────────────────────────────
-  if (has("headband",1) && !robe && !sage) {
+  if (has("headband",0) && !robe && !sage) {
     R(7.9,4.6,8.2,1.7,"#15181f",0.4);
     R(10.2,4.7,3.6,1.5,"#9aa6b4",0.35);
     R(10.2,4.7,3.6,0.4,"#c3ccd8",0.2);
@@ -2025,7 +2082,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   // and read as panels floating beside his face both times — the robe, the
   // magatama and the orbs carry the look on their own.
   // ── TOOL POUCH + TANTO (Jonin onward) ─────────────────────────────────────
-  if (level === 3) {                             // the tanto is the Jonin's alone
+  if (level === 2) {                             // the tanto is the Jonin's alone
     const wc = weaponC ? weaponC.color : null;
     R(16.2,6.6,0.9,7.6, wc||"#dfe6ef",0.3);
     R(17.1,6.6,0.5,7.6, wc?shade(wc,30):"#aab6c4",0.3);
@@ -6221,7 +6278,7 @@ export default function App() {
                         <div style={{width:92,height:72,overflow:"hidden",position:"relative",flexShrink:0,
                           borderRadius:BLOCK?0:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${LINE}`}}>
                           <div style={{position:"absolute",left:-64,top:-18}}>
-                            <PixelCharacter level={wornLvl===4 ? 3 : wornLvl} character={cz} scale={9}
+                            <PixelCharacter level={wornLvl===3 ? 2 : wornLvl} character={cz} scale={9}
                               cosmetics={{...cosmetics,
                                 eyeL: side==="right" ? null : g.eye,
                                 eyeR: side==="left"  ? null : g.eye}}/>
