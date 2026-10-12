@@ -3017,6 +3017,30 @@ const SIDE_LABEL  = { both:"BOTH", left:"LEFT", right:"RIGHT" };
 // Six goals per mission: three dojutsu, one eye at a time.
 const MAX_GOALS = 6;
 
+// The next dojutsu this mission is working toward, and how many more days of
+// streak it needs — a countdown to look forward to rather than a goal count.
+// Of several unearned goals it picks the nearest one. `streak` can be passed in
+// where the caller already has it, since walking a streak is not free.
+//   null            → this mission has no eye goals at all
+//   { done:true }   → every goal on it is already awakened
+//   { eye, left }   → `left` more days on `eye`
+function nextEyeFor(task, wallet, streak) {
+  const gs = (task && task.goals) || [];
+  if (!gs.length) return null;
+  const weekly = isWeekly(task);
+  const st = (typeof streak === "number") ? streak : (weekly ? weeklyStreak(task) : getStreak(task));
+  let best = null;
+  gs.forEach(g=>{
+    if (!g || !g.eye || !g.days) return;
+    // A goal still counts as pending while any eye it covers is unawakened.
+    const pending = sideSlots(goalSide(g)).some(lr=>!eyeOwnedOn(wallet, g.eye, lr));
+    if (!pending) return;
+    const left = Math.max(0, g.days - st);
+    if (!best || left < best.left) best = { eye:g.eye, left, side:goalSide(g), weekly };
+  });
+  return best || { done:true };
+}
+
 function drawEye(els, id, ex, ey, r, nk, irisOnly) {
   const C=(x,y,rr,f,o)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill={f} opacity={o===undefined?1:o}/>);
   const RING=(x,y,rr,st,w)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill="none" stroke={st} strokeWidth={w}/>);
@@ -4840,19 +4864,11 @@ export default function App() {
             <div style={{height:6,background:"rgba(0,0,0,0.3)",borderRadius:3,overflow:"hidden",marginTop:7,marginBottom:7}}>
               <div style={{height:"100%",width:`${qpct}%`,background:tinted?color:"rgba(255,255,255,0.92)",borderRadius:3,transition:"width .5s ease"}}/>
             </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-              <WeekPills task={task} cardColor={color} tinted={tinted}/>
-              <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap"}}>
-                <span style={{color:diffColor(task.importance)}}>{diffShort(task.importance)}</span>
-                {(task.goals||[]).length > 0 && <span style={{marginLeft:5}}>👁{(task.goals||[]).length>1?(task.goals||[]).length:""}</span>}
-                {isCursed(task) && (
-                  <span style={{display:"inline-flex",alignItems:"center",marginLeft:6,
-                    background:"rgba(0,0,0,0.62)",borderRadius:9,padding:"2px 4px",
-                    border:`1px solid ${CURSE_COLOR}aa`,verticalAlign:"-4px",lineHeight:0}}>
-                    <svg width="13" height="13" viewBox="0 0 13 13">{curseMarkEls(6.5,6.5,6,1)}</svg>
-                  </span>
-                )}
-              </div>
+            <WeekPills task={task} cardColor={color} tinted={tinted}/>
+            {/* Its own line: seven day pills plus three badges will not fit on
+                one, and wrapping them mid-strip was worse than a second row. */}
+            <div style={{marginTop:7}}>
+              <MissionBadges task={task} streak={isWeekly(task)?weeklyStreak(task):streak}/>
             </div>
           </div>
           {/* Level badge — right side */}
@@ -4901,6 +4917,43 @@ export default function App() {
   );
 
   // ── CURSE MARK (HARD MODE) TOGGLE ───────────────────────────────────────────
+  // ── MISSION BADGES ──────────────────────────────────────────────────────────
+  // Rank, the dojutsu countdown and the curse mark, in one strip. They used to
+  // sit at three different corners of a mission, which meant hunting for them;
+  // kept together they read as one line of status.
+  const MissionBadges = ({ task, streak, align }) => {
+    const nx = nextEyeFor(task, data.wallet, streak);
+    const rank = diffColor(task.importance);
+    const chip = (border) => ({ display:"inline-flex", alignItems:"center", gap:3,
+      height:18, padding:"0 5px", borderRadius:BLOCK?0:7, lineHeight:0,
+      background:"rgba(0,0,0,0.6)", border:`1px solid ${border}`, whiteSpace:"nowrap" });
+    let q = 0;
+    return (
+      <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",
+        justifyContent: align==="center" ? "center" : align==="start" ? "flex-start" : "flex-end"}}>
+        <span style={{...chip(rank+"66"), color:rank, fontSize:9, fontWeight:900,
+          letterSpacing:0.3, fontFamily:FONT}}>{diffShort(task.importance)}</span>
+        {nx && (
+          <span style={{...chip(nx.done ? LINE : T.accent+"88"), opacity: nx.done ? 0.55 : 1}}>
+            <svg width="12" height="12" viewBox="0 0 28 28" style={{display:"block"}}>
+              {drawEye([], nx.done ? ((task.goals[0]||{}).eye) : nx.eye, 14, 14, 12, ()=>q++)}
+            </svg>
+            <span style={{fontSize:8.5,fontWeight:900,color:"#fff",fontFamily:FONT}}>
+              {nx.done ? "✓" : nx.left === 0 ? "!" : `${nx.left}${nx.weekly ? "w" : "d"}`}
+            </span>
+          </span>
+        )}
+        {isCursed(task) && (
+          <span style={chip(CURSE_COLOR+"aa")}>
+            <svg width="12" height="12" viewBox="0 0 13 13" style={{display:"block"}}>
+              {curseMarkEls(6.5,6.5,6,1)}
+            </svg>
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const CurseBlock = ({ on, onChange }) => (
     <div onClick={()=>onChange(!on)}
       style={{marginTop:14,padding:"13px 14px",borderRadius:16,cursor:"pointer",
@@ -5807,36 +5860,20 @@ export default function App() {
                                 fireBurst(bx, by, color, S.showXP?`+${xpInt(t.points/target)}`:"✦ NICE"); }}
                               onShortTap={()=>{ setDetailTaskId(t.id);
                                 setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}/>
+                            {/* The must-do flag stays on the ring — it marks
+                                today's order, not a reward. */}
                             {must && (
                               <div style={{position:"absolute",top:-3,left:-3,background:PRI,color:"#2a1a00",
                                 fontSize:10,fontWeight:900,padding:"1px 5px",borderRadius:8,
                                 boxShadow:`0 0 8px ${PRI}99`,pointerEvents:"none"}}>⚑</div>
                             )}
-                            <div style={{position:"absolute",bottom:-2,right:-2,
-                              background:"rgba(0,0,0,0.75)",color:diffColor(t.importance),
-                              fontSize:8.5,fontWeight:900,letterSpacing:0.3,padding:"1px 5px",
-                              borderRadius:7,pointerEvents:"none",
-                              border:`1px solid ${diffColor(t.importance)}66`}}>{diffShort(t.importance)}</div>
-                            {(t.goals||[]).length > 0 && (
-                              <div style={{position:"absolute",top:-3,right:-3,pointerEvents:"none",
-                                background:"rgba(0,0,0,0.75)",borderRadius:9,padding:"1px 4px",
-                                border:`1px solid ${T.accent}88`,display:"flex",alignItems:"center",gap:2}}>
-                                <span style={{fontSize:9}}>👁</span>
-                                {(t.goals||[]).length > 1 &&
-                                  <span style={{fontSize:8,fontWeight:900,color:"#fff"}}>{(t.goals||[]).length}</span>}
-                              </div>
-                            )}
-                            {isCursed(t) && (
-                              <div style={{position:"absolute",bottom:-3,left:-3,pointerEvents:"none",
-                                background:"rgba(0,0,0,0.8)",borderRadius:9,padding:"2px 3px",
-                                border:`1px solid ${CURSE_COLOR}99`,display:"flex",lineHeight:0}}>
-                                <svg width="12" height="12" viewBox="0 0 12 12">{curseMarkEls(6,6,5.5,1)}</svg>
-                              </div>
-                            )}
+                          </div>
+                          <div style={{marginTop:-3,pointerEvents:"none"}}>
+                            <MissionBadges task={t} align="center"/>
                           </div>
                           <div style={{fontSize:fs,fontWeight:800,color:"#fff",textAlign:"center",
                             lineHeight:1.2,width:"100%",wordBreak:"break-word",opacity:done?0.5:1,
-                            textDecoration:done?"line-through":"none"}}>{t.name}</div>
+                            marginTop:-3,textDecoration:done?"line-through":"none"}}>{t.name}</div>
                         </div>
                       );
                     })}
@@ -6001,7 +6038,11 @@ export default function App() {
               return (
                 <div key={task.id}
                   onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
-                  style={{...C.glass,padding:"11px 13px",marginBottom:9,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+                  style={{...C.glass,padding:"11px 13px",marginBottom:9,cursor:"pointer"}}>
+                  {/* The name column here is only about 70px wide once the week
+                      grid and the reorder arrows take their share, so the badge
+                      strip gets the full width underneath instead. */}
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:38,height:38,borderRadius:12,flexShrink:0,background:`${color}33`,
                     display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>
                     {cat?.icon}
@@ -6024,6 +6065,18 @@ export default function App() {
                       {isWeekly(task) && weeklyStreak(task)>=1 && <span style={{color:"#ffc46b"}}> · 🔥{weeklyStreak(task)}w</span>}
                     </div>
                   </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
+                    <button onClick={e=>{e.stopPropagation(); moveTask(task.id,-1);}}
+                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:idx===0?FAINT:"#fff",fontSize:9,cursor:"pointer",padding:"2px 5px",fontWeight:900}}>▲</button>
+                    <button onClick={e=>{e.stopPropagation(); setEditTask({...task}); setView("editTask");}}
+                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:DIM,fontSize:9,cursor:"pointer",padding:"2px 5px"}}>✎</button>
+                    <button onClick={e=>{e.stopPropagation(); moveTask(task.id,1);}}
+                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:idx===sortedTasks.length-1?FAINT:"#fff",fontSize:9,cursor:"pointer",padding:"2px 5px",fontWeight:900}}>▼</button>
+                  </div>
+                  </div>
+                  <div style={{marginTop:9,display:"flex",alignItems:"center",
+                    justifyContent:"space-between",gap:10}}>
+                    <MissionBadges task={task} streak={isWeekly(task)?weeklyStreak(task):streak} align="start"/>
                   <div style={{display:"flex",gap:4,flexShrink:0}}>
                     {wk7.map(dk=>{
                       const wk = isWeekly(task);
@@ -6052,13 +6105,6 @@ export default function App() {
                       );
                     })}
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
-                    <button onClick={e=>{e.stopPropagation(); moveTask(task.id,-1);}}
-                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:idx===0?FAINT:"#fff",fontSize:9,cursor:"pointer",padding:"2px 5px",fontWeight:900}}>▲</button>
-                    <button onClick={e=>{e.stopPropagation(); setEditTask({...task}); setView("editTask");}}
-                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:DIM,fontSize:9,cursor:"pointer",padding:"2px 5px"}}>✎</button>
-                    <button onClick={e=>{e.stopPropagation(); moveTask(task.id,1);}}
-                      style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:6,color:idx===sortedTasks.length-1?FAINT:"#fff",fontSize:9,cursor:"pointer",padding:"2px 5px",fontWeight:900}}>▼</button>
                   </div>
                 </div>
               );
