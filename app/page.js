@@ -706,7 +706,8 @@ function migrate(d) {
     let goals = Array.isArray(t.goals) ? t.goals : [];
     if (!goals.length && t.goal && t.goal.eye) goals = [t.goal];
     goals = goals.filter(g=>g && g.eye)
-      .map(g=>({ eye:g.eye, days: Math.max(1, Math.min(30, parseInt(g.days)||7)) }))
+      .map(g=>({ eye:g.eye, days: Math.max(1, Math.min(30, parseInt(g.days)||7)),
+                 side: goalSide(g) }))
       .slice(0,3);
     const { goal, ...rest } = t;
     return { ...rest, goals };
@@ -771,7 +772,26 @@ function migrate(d) {
       spinsUsedByDay: { ...((d.wallet||{}).spinsUsedByDay||{}) },
       perfectClaimedByDay: { ...((d.wallet||{}).perfectClaimedByDay||{}) },
       owned: Array.isArray((d.wallet||{}).owned) ? d.wallet.owned : [],
-      equippedCosmetics: { ...((d.wallet||{}).equippedCosmetics||{}) },
+      eyeSides: (()=>{
+        const src = (((d.wallet||{}).eyeSides) && typeof d.wallet.eyeSides === "object") ? d.wallet.eyeSides : {};
+        const out = {};
+        Object.keys(src).forEach(k=>{ const v = src[k];
+          if (v && typeof v === "object") out[k] = { l: !!v.l, r: !!v.r }; });
+        // A save from before eyes had sides recorded only "eye_<id>" in owned,
+        // and that always meant both of them.
+        (((d.wallet||{}).owned)||[]).forEach(id=>{
+          const m = /^eye_(.+)$/.exec(String(id));
+          if (m && !out[m[1]]) out[m[1]] = { l:true, r:true };
+        });
+        return out;
+      })(),
+      equippedCosmetics: (()=>{
+        const ec = { ...((d.wallet||{}).equippedCosmetics||{}) };
+        if (ec.eyeL === undefined && ec.eyeR === undefined && ec.eye) { ec.eyeL = ec.eye; ec.eyeR = ec.eye; }
+        if (ec.eyeL === undefined) ec.eyeL = null;
+        if (ec.eyeR === undefined) ec.eyeR = null;
+        return ec;
+      })(),
     },
     lastDecayDate: d.lastDecayDate || dateKey(),
     freezeAll: (d.freezeAll && typeof d.freezeAll === "object"
@@ -1939,18 +1959,18 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
       R(8.2,3.2,7.6,1.3,hair,0.9);
     }
   }
-  const wornEye = (cosmetics && cosmetics.eye && eyeById(cosmetics.eye)) ? cosmetics.eye : null;
+  // Each eye is set on its own, so a dojutsu can sit in one and not the other.
+  const cosEye = (v) => (v && eyeById(v)) ? v : null;
+  const wornL = anbu ? null : cosEye(cosmetics && cosmetics.eyeL);
+  const wornR = anbu ? null : cosEye(cosmetics && cosmetics.eyeR);
   // sclera
   R(9.9,6.8,1.4,1.8,"#ffffff",0.7);
   R(12.8,6.8,1.4,1.8,"#ffffff",0.7);
-  if (wornEye && !anbu) {
-    // the dojutsu is the iris, sitting inside the eye rather than replacing it
-    drawEye(els, wornEye, 10.62*s, 7.78*s, 0.62*s, () => k++, true);
-    drawEye(els, wornEye, 13.52*s, 7.78*s, 0.62*s, () => k++, true);
-  } else {
-    R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
-    R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
-  }
+  // the dojutsu is the iris, sitting inside the eye rather than replacing it
+  if (wornL) drawEye(els, wornL, 10.62*s, 7.78*s, 0.62*s, () => k++, true);
+  else       R(10.3,7.4,0.8,1.0,"#1c1410",0.4);
+  if (wornR) drawEye(els, wornR, 13.52*s, 7.78*s, 0.62*s, () => k++, true);
+  else       R(13.2,7.4,0.8,1.0,"#1c1410",0.4);
   // eyelids: a hood of skin across the top of each eye, with a lash line under it
   R(9.82,6.72,1.56,0.62,shade(skin,-6),0.34);
   R(12.72,6.72,1.56,0.62,shade(skin,-6),0.34);
@@ -2976,6 +2996,21 @@ const EYES = [
 ];
 const eyeById = (id) => EYES.find(e=>e.id===id) || null;
 
+// ── WHICH EYE ────────────────────────────────────────────────────────────────
+// A goal can awaken a dojutsu in one eye or both. "left" and "right" are from
+// the viewer's side — the eye you see on the left of the screen is the left
+// one — because that is what someone picking from a preview means by it.
+// Ownership lives in wallet.eyeSides as { <eyeId>: {l, r} }; legacy saves only
+// recorded "eye_<id>" in wallet.owned, which always meant both.
+const goalSide    = (g) => (g && (g.side === "left" || g.side === "right")) ? g.side : "both";
+const sideSlots   = (side) => side === "left" ? ["l"] : side === "right" ? ["r"] : ["l","r"];
+const eyeOwnedOn  = (wallet, id, lr) => !!((((wallet||{}).eyeSides)||{})[id]||{})[lr];
+const eyeOwnedAny = (wallet, id) => eyeOwnedOn(wallet,id,"l") || eyeOwnedOn(wallet,id,"r");
+// Keep the legacy key shape for both-eye goals so existing locks keep holding
+// and nothing already earned pays out a second time.
+const eyeLockKey  = (tid, g) => `${tid}|${g.eye}` + (goalSide(g) === "both" ? "" : `|${goalSide(g)}`);
+const SIDE_LABEL  = { both:"BOTH", left:"LEFT", right:"RIGHT" };
+
 function drawEye(els, id, ex, ey, r, nk, irisOnly) {
   const C=(x,y,rr,f,o)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill={f} opacity={o===undefined?1:o}/>);
   const RING=(x,y,rr,st,w)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill="none" stroke={st} strokeWidth={w}/>);
@@ -3181,18 +3216,18 @@ export default function App() {
   // stays yours afterwards no matter what the streak does.
   useEffect(()=>{
     if (!data) return;
-    const owned = (data.wallet?.owned)||[];
-    const won = [];
+    const won = [];                       // [{ eye, slots:["l"|"r"] }]
     const lock = (data.flags||{}).eyeLock || {};
     const unlockKeys = [];
     (data.tasks||[]).forEach(t=>{
       const st = getStreak(t);
       (t.goals||[]).forEach(g=>{
         if (!g || !g.eye || !g.days) return;
-        const key = `${t.id}|${g.eye}`;
+        const key = eyeLockKey(t.id, g);
         if (lock[key]) { if (st < g.days) unlockKeys.push(key); return; }  // streak broke — goal lives again
-        if (owned.includes(`eye_${g.eye}`)) return;
-        if (st >= g.days) won.push(g.eye);
+        const slots = sideSlots(goalSide(g)).filter(lr=>!eyeOwnedOn(data.wallet, g.eye, lr));
+        if (!slots.length) return;        // already awakened in every eye it covers
+        if (st >= g.days) won.push({ eye:g.eye, slots });
       });
     });
     if (unlockKeys.length) {
@@ -3205,14 +3240,27 @@ export default function App() {
     }
     if (!won.length) return;
     setData(cur=>{
+      const sides = {...((cur.wallet||{}).eyeSides||{})};
+      let changed = false;
+      won.forEach(w=>{
+        const cell = {...(sides[w.eye]||{})};
+        w.slots.forEach(lr=>{ if (!cell[lr]) { cell[lr] = true; changed = true; } });
+        sides[w.eye] = cell;
+      });
+      if (!changed) return cur;
       const have = (cur.wallet?.owned)||[];
-      const add = won.filter(e=>!have.includes(`eye_${e}`)).map(e=>`eye_${e}`);
-      if (!add.length) return cur;
-      const n = {...cur, wallet:{...cur.wallet, owned:[...have, ...add],
-        equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), eye:(cur.wallet.equippedCosmetics||{}).eye || won[0]}}};
+      const add = won.map(w=>`eye_${w.eye}`).filter(id=>!have.includes(id));
+      // Drop it straight into any eye it covers that is still bare.
+      const ec = {...(cur.wallet.equippedCosmetics||{})};
+      won.forEach(w=>w.slots.forEach(lr=>{
+        const slot = lr === "l" ? "eyeL" : "eyeR";
+        if (!ec[slot]) ec[slot] = w.eye;
+      }));
+      const n = {...cur, wallet:{...cur.wallet, eyeSides:sides,
+        owned:[...have, ...add], equippedCosmetics:ec}};
       persistRaw(n); return n;
     });
-    const e = eyeById(won[0]);
+    const e = eyeById(won[0].eye);
     if (e) { toast$(`👁 ${e.name.toUpperCase()} AWAKENED`, "#e8333a");
       try { navigator.vibrate && navigator.vibrate([30,60,30,60,120]); } catch {} }
   }, [data]);
@@ -4120,13 +4168,14 @@ export default function App() {
       const lock = {...((cur.flags||{}).eyeLock||{})};
       (cur.tasks||[]).forEach(t=>{
         const st = getStreak(t);
-        (t.goals||[]).forEach(g=>{ if (g && g.eye && g.days && st >= g.days) lock[`${t.id}|${g.eye}`] = true; });
+        (t.goals||[]).forEach(g=>{ if (g && g.eye && g.days && st >= g.days) lock[eyeLockKey(t.id, g)] = true; });
       });
       const n = {...cur,
         flags:{...(cur.flags||{}), eyeLock: lock},
         wallet:{...cur.wallet,
           owned:((cur.wallet.owned)||[]).filter(id=>!String(id).startsWith("eye_")),
-          equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), eye:null}}};
+          eyeSides:{},
+          equippedCosmetics:{...(cur.wallet.equippedCosmetics||{}), eye:null, eyeL:null, eyeR:null}}};
       persistRaw(n); return n;
     });
     toast$("DOJUTSU RESET — RE-EARN THEM WITH A FRESH STREAK", "#fb923c");
@@ -6078,7 +6127,9 @@ export default function App() {
                 <div style={{...C.label,marginTop:16}}>GOALS <span style={{color:FAINT}}>· optional</span></div>
                 {(t.goals||[]).map((g,gi)=>{
                   const e = eyeById(g.eye);
-                  const have = ((data.wallet||{}).owned||[]).includes("eye_"+g.eye);
+                  const side = goalSide(g);
+                  // Awakened only once it is in every eye this goal covers.
+                  const have = sideSlots(side).every(lr=>eyeOwnedOn(data.wallet, g.eye, lr));
                   const cur = t.id ? getStreak(t) : 0;
                   const setGoal = (patch) => set({goals:(t.goals||[]).map((x,i)=>i===gi?{...x,...patch}:x)});
                   let q2 = 0;
@@ -6093,7 +6144,7 @@ export default function App() {
                       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                         {EYES.map(ey=>{
                           const on = g.eye===ey.id;
-                          const ownedEye = ((data.wallet||{}).owned||[]).includes("eye_"+ey.id);
+                          const ownedEye = eyeOwnedAny(data.wallet, ey.id);
                           let q1 = 0;
                           return (
                             <button key={ey.id} onClick={()=>setGoal({eye:ey.id})}
@@ -6116,7 +6167,9 @@ export default function App() {
                           borderRadius:BLOCK?0:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${LINE}`}}>
                           <div style={{position:"absolute",left:-64,top:-18}}>
                             <PixelCharacter level={wornLvl===4 ? 3 : wornLvl} character={cz} scale={9}
-                              cosmetics={{...cosmetics, eye:g.eye}}/>
+                              cosmetics={{...cosmetics,
+                                eyeL: side==="right" ? null : g.eye,
+                                eyeR: side==="left"  ? null : g.eye}}/>
                           </div>
                         </div>
                         <div style={{flex:1,minWidth:0}}>
@@ -6127,7 +6180,22 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                      <div style={{...C.label,marginTop:11,marginBottom:6}}>
+                      <div style={{...C.label,marginTop:12,marginBottom:6}}>WHICH EYE</div>
+                      <div style={{display:"flex",gap:6}}>
+                        {["left","both","right"].map(sd=>(
+                          <button key={sd} onClick={()=>setGoal({side:sd})}
+                            style={{flex:1,padding:"10px 0",borderRadius:BLOCK?0:12,cursor:"pointer",
+                              fontFamily:FONT,fontWeight:900,fontSize:10.5,letterSpacing:0.5,
+                              border: side===sd ? "2px solid #fff" : `1px solid ${LINE}`,
+                              background: side===sd ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.25)",
+                              color: side===sd ? "#fff" : DIM}}>{SIDE_LABEL[sd]}</button>
+                        ))}
+                      </div>
+                      <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700,lineHeight:1.45}}>
+                        As you look at him. Two goals can fill one eye each, so you end up
+                        with a different dojutsu on either side.
+                      </div>
+                      <div style={{...C.label,marginTop:12,marginBottom:6}}>
                         HOLD A STREAK OF <span style={{color:"#fff"}}>{g.days}</span> {g.days===1?"DAY":"DAYS"}
                       </div>
                       <input type="range" min="1" max="30" step="1" value={g.days}
@@ -6138,7 +6206,8 @@ export default function App() {
                 })}
                 {(t.goals||[]).length < 3 && (
                   <button onClick={()=>set({goals:[...(t.goals||[]),
-                      {eye:EYES[Math.min(EYES.length-1,(t.goals||[]).length)].id, days:(t.goals||[]).length?15:3}]})}
+                      {eye:EYES[Math.min(EYES.length-1,(t.goals||[]).length)].id,
+                       days:(t.goals||[]).length?15:3, side:"both"}]})}
                     style={{...C.btnSm,width:"100%",padding:"12px"}}>
                     ＋ {(t.goals||[]).length ? "ADD ANOTHER GOAL" : "ADD A GOAL"}
                   </button>
@@ -6979,39 +7048,55 @@ export default function App() {
               })}
             </div>
 
-            {/* DOJUTSU */}
+            {/* DOJUTSU — each eye is set on its own */}
             <div style={C.glass}>
               <div style={C.label}>DOJUTSU</div>
               <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:11,lineHeight:1.45}}>
                 Awakened by holding a streak on a mission. Set the goal in the mission itself.
-                Hidden under the ANBU mask.
+                Left and right are as you look at him. Hidden under the ANBU mask.
               </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:9}}>
-                <button onClick={()=>setCos("eye", null)}
-                  style={{height:54,padding:"0 14px",borderRadius:14,cursor:"pointer",fontFamily:FONT,
-                    fontSize:10,fontWeight:900,color:"#fff",background:"rgba(255,255,255,0.06)",
-                    border:!cosmetics.eye?`2px solid ${T.accent}`:`1px solid ${LINE}`}}>NONE</button>
-                {EYES.map(e=>{
-                  const have = ((data.wallet||{}).owned||[]).includes("eye_"+e.id);
-                  const on = cosmetics.eye===e.id;
-                  let q = 0;
-                  return (
-                    <button key={e.id} onClick={()=>have && setCos("eye", on?null:e.id)}
-                      title={e.name}
-                      style={{width:54,height:54,padding:0,borderRadius:14,position:"relative",
-                        cursor:have?"pointer":"default",background:"rgba(255,255,255,0.06)",
-                        border:on?`2px solid ${T.accent}`:`1px solid ${LINE}`,
-                        filter:have?"none":"grayscale(1) brightness(0.45)"}}>
-                      <svg width="40" height="40" viewBox="0 0 40 40" style={{display:"block",margin:"0 auto"}}>
-                        {drawEye([], e.id, 20, 20, 17, ()=>q++)}
-                      </svg>
-                      {!have && <span style={{position:"absolute",top:3,right:4,fontSize:11}}>🔒</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{fontSize:10,color:DIM,fontWeight:800,marginTop:10}}>
-                {cosmetics.eye ? (eyeById(cosmetics.eye)||{}).name : "No dojutsu equipped"}
+              {[["eyeL","l","LEFT EYE"],["eyeR","r","RIGHT EYE"]].map(([slot,lr,label])=>(
+                <div key={slot} style={{marginBottom:14}}>
+                  <div style={{...C.label,marginBottom:7}}>{label}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:9}}>
+                    <button onClick={()=>setCos(slot, null)}
+                      style={{height:48,padding:"0 13px",borderRadius:14,cursor:"pointer",fontFamily:FONT,
+                        fontSize:10,fontWeight:900,color:"#fff",background:"rgba(255,255,255,0.06)",
+                        border:!cosmetics[slot]?`2px solid ${T.accent}`:`1px solid ${LINE}`}}>NONE</button>
+                    {EYES.map(e=>{
+                      const have = eyeOwnedOn(data.wallet, e.id, lr);
+                      const on = cosmetics[slot]===e.id;
+                      let q = 0;
+                      return (
+                        <button key={e.id} onClick={()=>have && setCos(slot, on?null:e.id)}
+                          title={e.name}
+                          style={{width:48,height:48,padding:0,borderRadius:14,position:"relative",
+                            cursor:have?"pointer":"default",background:"rgba(255,255,255,0.06)",
+                            border:on?`2px solid ${T.accent}`:`1px solid ${LINE}`,
+                            filter:have?"none":"grayscale(1) brightness(0.45)"}}>
+                          <svg width="35" height="35" viewBox="0 0 40 40" style={{display:"block",margin:"0 auto"}}>
+                            {drawEye([], e.id, 20, 20, 17, ()=>q++)}
+                          </svg>
+                          {!have && <span style={{position:"absolute",top:2,right:3,fontSize:10}}>🔒</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{fontSize:10,color:DIM,fontWeight:800,marginTop:8}}>
+                    {cosmetics[slot] ? (eyeById(cosmetics[slot])||{}).name : "Nothing in this eye"}
+                  </div>
+                </div>
+              ))}
+              {/* One tap when you want the pair to match rather than clash. */}
+              <div style={{display:"flex",gap:8}}>
+                <button style={{...C.btnSm,flex:1,padding:"11px",fontSize:10.5}}
+                  onClick={()=>{ const v = cosmetics.eyeL;
+                    if (v && !eyeOwnedOn(data.wallet, v, "r")) { toast$("NOT AWAKENED IN THE RIGHT EYE YET","#ffc46b"); return; }
+                    setCos("eyeR", v || null); }}>MATCH LEFT →</button>
+                <button style={{...C.btnSm,flex:1,padding:"11px",fontSize:10.5}}
+                  onClick={()=>{ const v = cosmetics.eyeR;
+                    if (v && !eyeOwnedOn(data.wallet, v, "l")) { toast$("NOT AWAKENED IN THE LEFT EYE YET","#ffc46b"); return; }
+                    setCos("eyeL", v || null); }}>← MATCH RIGHT</button>
               </div>
             </div>
 
