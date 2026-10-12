@@ -339,7 +339,7 @@ const GEAR = [
   { slot:"anbu",     lvl:4, name:"ANBU Mask & Black Ops Gear" },
   { slot:"cloak",    lvl:5, name:"Akatsuki Cloak" },
   { slot:"hat",      lvl:6, name:"Kage Haori & Hat" },
-  { slot:"sage",     lvl:7, name:"Sage Robe & Halo" },
+  { slot:"sage",     lvl:7, name:"Sage Robe & Truth-Seeking Orbs" },
 ];
 
 const LEVELS = [
@@ -350,7 +350,7 @@ const LEVELS = [
   { lvl:4, name:"ANBU Black Ops",      unlock:"Porcelain mask & sleeveless armour" },
   { lvl:5, name:"Akatsuki",            unlock:"Long red-cloud cloak" },
   { lvl:6, name:"Kage",                unlock:"Kage haori & hat" },
-  { lvl:7, name:"Sage of Six Paths",   unlock:"Golden robe & halo" },
+  { lvl:7, name:"Sage of Six Paths",   unlock:"White robe, six magatama & nine orbs" },
 ];
 
 const QUOTES = [
@@ -445,6 +445,12 @@ function dateKey(date) {
   const d = date || new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
+// "OCT 19" — short enough to sit in a summary chip
+function prettyDay(dateStr) {
+  if (!dateStr) return "";
+  const [y,m,d] = dateStr.split("-").map(Number);
+  return `${MONTHS[(m||1)-1].slice(0,3).toUpperCase()} ${d}`;
+}
 function getReps(task, dateStr) {
   const v = task.completions && task.completions[dateStr];
   if (v === true) return 1;
@@ -457,8 +463,47 @@ function getDayOfWeek(dateStr) {
   const [y,m,d] = dateStr.split("-").map(Number);
   return new Date(y, m-1, d).getDay();
 }
+// ── START DATE + WEEKLY RAMP ─────────────────────────────────────────────────
+// A quest can be dated into the future, and can ease itself in: week 1 two days,
+// week 2 three days, and so on for up to 8 weeks. Once the ramp runs out the
+// quest settles onto its normal schedule. Everything downstream — the home list,
+// decay, badges, the forecast — already asks isScheduledOn, so teaching that one
+// function about both is enough.
+const RAMP_MAX_WEEKS = 8;
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const dow = (d.getDay() + 6) % 7;             // Mon = 0
+  d.setDate(d.getDate() - dow);
+  d.setHours(0,0,0,0);
+  return d;
+}
+// Has this quest gone live yet? No start date means it has always been live.
+function isLiveOn(task, dateStr) {
+  const st = task && task.startDate;
+  return !st || dateStr >= st;
+}
+// Which ramp week a date falls in, counting from the week the quest starts.
+function rampWeekIndex(task, dateStr) {
+  if (!task || !task.startDate) return -1;
+  const diff = mondayOf(dateStr).getTime() - mondayOf(task.startDate).getTime();
+  return Math.round(diff / 604800000);          // DST-safe: weeks are never off by more than an hour
+}
+function rampEntryOn(task, dateStr) {
+  const r = task && task.ramp;
+  if (!Array.isArray(r) || !r.length) return null;
+  const i = rampWeekIndex(task, dateStr);
+  if (i < 0 || i >= r.length) return null;
+  return r[i] || null;
+}
+function scheduledDaysOn(task, dateStr) {
+  const e = rampEntryOn(task, dateStr);
+  if (e && Array.isArray(e.days)) return e.days;
+  return task.days || [];
+}
 function isScheduledOn(task, dateStr) {
-  return (task.days||[]).includes(getDayOfWeek(dateStr));
+  if (!task) return false;
+  if (!isLiveOn(task, dateStr)) return false;
+  return scheduledDaysOn(task, dateStr).includes(getDayOfWeek(dateStr));
 }
 function getStreak(task) {
   let s = 0;
@@ -503,15 +548,22 @@ function weeklyDone(task, dateStr) {
   const keys = weekKeysFor(dateStr);
   return keys.reduce((s,dk)=> s + (getReps(task, dk) || 0), 0);
 }
-const weeklyTargetOf = (task) => Math.max(1, task.weeklyTarget || 1);
+// A weekly habit can ramp its target too — 2 a week to start, 3 the next week.
+// Defaults to today so the many call sites that pass no date stay correct.
+const weeklyTargetOf = (task, dateStr) => {
+  const e = rampEntryOn(task, dateStr || dateKey());
+  if (e && e.target) return Math.max(1, e.target);
+  return Math.max(1, task.weeklyTarget || 1);
+};
 // Weekly completion fraction (capped at 1) for the week containing dateStr
 function weeklyFrac(task, dateStr) {
-  return Math.min(1, weeklyDone(task, dateStr) / weeklyTargetOf(task));
+  return Math.min(1, weeklyDone(task, dateStr) / weeklyTargetOf(task, dateStr));
 }
-const weeklyMet = (task, dateStr) => weeklyDone(task, dateStr) >= weeklyTargetOf(task);
-// Unified "is this task active/relevant on this date?" — daily uses schedule, weekly is always active that week
+const weeklyMet = (task, dateStr) => weeklyDone(task, dateStr) >= weeklyTargetOf(task, dateStr);
+// Unified "is this task active/relevant on this date?" — daily uses schedule,
+// weekly is active any day of a week it has already started in.
 function taskActiveOn(task, dateStr) {
-  return isWeekly(task) ? true : isScheduledOn(task, dateStr);
+  return isWeekly(task) ? isLiveOn(task, dateStr) : isScheduledOn(task, dateStr);
 }
 // Weekly streak: consecutive prior weeks (excluding current in-progress) the target was met
 function weeklyStreak(task) {
@@ -655,7 +707,7 @@ function migrate(d) {
   if (!HAIRSTYLES.some(h=>h[0]===chr.hairstyle)) chr.hairstyle = "classic";
   chr.appearLevel = (typeof chr.appearLevel === "number" && chr.appearLevel >= 0
                      && chr.appearLevel < LEVELS.length) ? chr.appearLevel : null;
-  return {
+  const out = {
     ...d,
     settings,
     character: chr,
@@ -666,6 +718,13 @@ function migrate(d) {
       weeklyTarget: Math.max(1, t.weeklyTarget || 1),
       createdAt: t.createdAt || Object.keys(t.completions||{}).sort()[0] || dateKey(),
       frozen: (t.frozen && typeof t.frozen === "object") ? t.frozen : {},
+      startDate: /^\d{4}-\d{2}-\d{2}$/.test(t.startDate || "") ? t.startDate : null,
+      ramp: Array.isArray(t.ramp) ? t.ramp.slice(0, RAMP_MAX_WEEKS).map(w=>{
+        const o = {};
+        if (Array.isArray(w && w.days)) o.days = w.days.filter(n=>n>=0 && n<=6);
+        if (w && w.target) o.target = Math.max(1, Math.min(999, parseInt(w.target) || 1));
+        return o;
+      }) : [],
     })),
     customTitles: d.customTitles || {},
     kanban: (d.kanban && Array.isArray(d.kanban.todo)) ? d.kanban : { todo:[], doing:[], done:[] },
@@ -701,7 +760,38 @@ function migrate(d) {
       equippedCosmetics: { ...((d.wallet||{}).equippedCosmetics||{}) },
     },
     lastDecayDate: d.lastDecayDate || dateKey(),
+    freezeAll: (d.freezeAll && typeof d.freezeAll === "object"
+                && /^\d{4}-\d{2}-\d{2}$/.test(d.freezeAll.from || "")) ? { from: d.freezeAll.from } : null,
   };
+  return stampGlobalFreeze(out);
+}
+
+// A global freeze is open-ended, so it can't be written into the per-quest
+// frozen maps up front. Stamping it on every load — for every day from the
+// freeze onward — closes the gap where the app sits unopened for a week and
+// those days would otherwise be charged the moment it is unfrozen. Everything
+// that already understands task.frozen (decay, streaks, the calendar dots)
+// then needs no changes at all.
+function stampGlobalFreeze(d) {
+  const from = d.freezeAll && d.freezeAll.from;
+  if (!from) return d;
+  const today = dateKey();
+  if (from > today) return d;
+  const days = [];
+  const cur = new Date(from + "T00:00:00");
+  const end = new Date(today + "T00:00:00");
+  let safety = 0;
+  while (cur <= end && safety < 400) { days.push(dateKey(cur)); cur.setDate(cur.getDate()+1); safety++; }
+  let touched = false;
+  const tasks = (d.tasks||[]).map(t=>{
+    const frozen = { ...(t.frozen||{}) };
+    let changed = false;
+    days.forEach(dk=>{ if (!frozen[dk] && isScheduledOn(t, dk)) { frozen[dk] = true; changed = true; } });
+    if (!changed) return t;
+    touched = true;
+    return { ...t, frozen };
+  });
+  return touched ? { ...d, tasks } : d;
 }
 
 // Spendable balances (never negative; spent currency is gone for good)
@@ -1175,7 +1265,7 @@ function bossForWeek(d, anyDay) {
   let E = 0;
   (d.tasks||[]).forEach(t=>{
     if (!t.catId) return;
-    if (isWeekly(t)) E += weeklyTargetOf(t);
+    if (isWeekly(t)) { if (isLiveOn(t, wkStart)) E += weeklyTargetOf(t, wkStart); }
     else wk.forEach(dk=>{ if (isScheduledOn(t,dk)) E++; });
   });
   if (E === 0) return null;
@@ -1658,9 +1748,19 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(8.2,10.4,7.6,1.2,shade(capeC.color,28),0.8);
   }
 
-  // The Sage radiates
+  // ── THE SAGE'S TRUTH-SEEKING ORBS ─────────────────────────────────────────
+  // Nine black spheres hanging in the air around him, drawn before the body so
+  // they read as floating behind. Kept out in the margins so they never crowd
+  // the face, the staff arm or the summon beside him.
   if (has("sage",7)) {
-    els.push(<circle key={k++} cx={12*s} cy={11*s} r={10.5*s} fill="url(#auraGrad)" />);
+    els.push(<circle key={k++} cx={12*s} cy={11*s} r={10.8*s} fill="url(#auraGrad)" opacity="0.5"/>);
+    [[12.0,1.1],[6.0,2.4],[18.0,2.4],[2.3,6.8],[21.7,6.8],
+     [1.9,12.6],[22.1,12.6],[3.3,18.2],[20.9,17.4]].forEach(([ox,oy],i)=>{
+      els.push(<circle key={k++} cx={ox*s} cy={oy*s} r={1.15*s} fill="#17171c"/>);
+      els.push(<circle key={k++} cx={ox*s} cy={oy*s} r={1.15*s} fill="none"
+        stroke="#4a4a56" strokeWidth={0.12*s} opacity="0.8"/>);
+      els.push(<circle key={k++} cx={(ox-0.34)*s} cy={(oy-0.38)*s} r={0.3*s} fill="#6d6d7c" opacity="0.75"/>);
+    });
   }
 
   R(9,16,2.2,4.4,pants,0.5);
@@ -1741,27 +1841,43 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     [7.8,9.4,11.0,12.6,14.2,15.6].forEach(x=> R(x,17.5,1.0,1.0,"#b3281f",0.3));
     [8.6,10.2,11.8,13.4,15.0].forEach(x=> R(x,17.9,0.8,0.7,"#d8452f",0.3));
   }
-  // ── SAGE OF SIX PATHS — gold robe, magatama, halo ─────────────────────────
+  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─
   if (sage) {
-    els.push(<circle key={k++} cx={12*s} cy={11*s} r={11*s} fill="#ffd24a" opacity="0.16"/>);
-    R(7.2,10.0,9.6,9.8,"#f7e7b8",0.9);
-    R(7.2,10.0,9.6,1.1,"#e0b23a",0.4);
-    R(11.4,10.9,1.2,8.9,"#d9c27f",0.2);
-    R(7.2,19.2,9.6,0.6,"#e0b23a",0.3);
-    [[9.5,12.2],[11.5,12.2],[13.5,12.2]].forEach(([x,y])=>
-      els.push(<circle key={k++} cx={x*s} cy={y*s} r={0.5*s} fill="#8a6a16"/>));
-    R(17.2,5.0,0.7,14.0,"#c9a227",0.3);          // staff
-    els.push(<circle key={k++} cx={17.55*s} cy={4.4*s} r={1.2*s} fill="none" stroke="#e8c04a" strokeWidth={0.45*s}/>);
+    const SW = "#f2f1ec", SG = "#d6d5cf", SD = "#b9b8b2", SI = "#131317";
+    // The robe flares toward the floor, so it's built from two blocks rather
+    // than one slab — narrow through the chest, wide at the hem.
+    R(7.6,9.8,8.8,5.6,SW,0.8);
+    R(6.5,15.0,11.0,5.2,SW,0.9);
+    R(6.5,19.6,11.0,0.6,SD,0.3);                 // hem
+    R(11.5,10.6,1.0,9.6,SG,0.2);                 // centre seam
+    R(8.2,15.2,0.6,4.6,SG,0.2);                  // fold shadows in the skirt
+    R(15.2,15.2,0.6,4.6,SG,0.2);
+    // Six magatama — two columns of three down the chest.
+    [[9.5,11.5],[9.5,12.8],[9.5,14.1],[13.9,11.5],[13.9,12.8],[13.9,14.1]]
+      .forEach(([mx,my])=>{
+        els.push(<circle key={k++} cx={mx*s} cy={my*s} r={0.46*s} fill={SI}/>);
+        els.push(<path key={k++} fill={SI}
+          d={`M ${(mx+0.12)*s} ${(my-0.44)*s} Q ${(mx+1.06)*s} ${(my-0.3)*s}
+              ${(mx+0.94)*s} ${(my+0.5)*s} Q ${(mx+0.62)*s} ${(my-0.06)*s}
+              ${(mx-0.06)*s} ${(my+0.44)*s} Z`}/>);
+      });
+    // Shakujo — a black staff with a ring and hanging hoops at the foot.
+    R(17.9,4.8,0.5,12.4,SI,0.2);
+    els.push(<circle key={k++} cx={18.15*s} cy={18.1*s} r={1.15*s}
+      fill="none" stroke={SI} strokeWidth={0.36*s}/>);
+    [-0.78,0,0.78].forEach(dx=> els.push(
+      <ellipse key={k++} cx={(18.15+dx)*s} cy={19.6*s} rx={0.36*s} ry={0.72*s}
+        fill="none" stroke={SI} strokeWidth={0.22*s}/>));
   }
   const armColor = sage ? "#f7e7b8" : robe ? "#f4f1e8" : cloak ? "#15131b"
                  : anbu ? skin : vest ? "#24402f" : (level>=1 ? shirt : skin);
   R(7.6,11.2,1.3,4.0,armColor,0.6);
   R(15.1,11.2,1.3,4.0,armColor,0.6);
   if (sage) {
-    R(7.0,11.0,2.1,5.2,"#f7e7b8",0.7);                    // wide sage sleeves
-    R(14.9,11.0,2.1,5.2,"#f7e7b8",0.7);
-    R(7.0,15.4,2.1,0.8,"#e0b23a",0.3);
-    R(14.9,15.4,2.1,0.8,"#e0b23a",0.3);
+    R(6.7,10.9,2.5,5.8,"#f2f1ec",0.7);                    // wide sage sleeves
+    R(14.8,10.9,2.5,5.8,"#f2f1ec",0.7);
+    R(6.9,16.0,2.1,0.75,"#131317",0.3);                   // black lining inside the cuffs
+    R(15.0,16.0,2.1,0.75,"#131317",0.3);
   } else if (has("gloves",3)) {
     R(7.5,14.4,1.5,1.5,"#20252e",0.5);
     R(15.0,14.4,1.5,1.5,"#20252e",0.5);
@@ -1862,10 +1978,17 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(11.5,2.3,1.1,1.0,"#f4f1e8",0.2);
     R(7.6,4.5,8.8,0.9,"#2b2520",0.3);
   }
-  // ── SAGE HALO + HORNS ──────────────────────────────────────────────────────
+  // ── SAGE COLLAR ────────────────────────────────────────────────────────────
+  // Drawn after the head, or the head rect paints straight over it. The two
+  // panels stand up either side of the jaw, dark on their inner face. Nothing
+  // is added to the head itself — the hair stays whatever he picked.
   if (sage) {
-    els.push(<circle key={k++} cx={12*s} cy={6.5*s} r={6.6*s} fill="none" stroke="#ffd96b" strokeWidth={0.5*s} opacity="0.85"/>);
-    R(7.9,4.6,8.2,1.3,"#e0b23a",0.4);
+    R(7.9,7.6,1.9,3.6,"#f2f1ec",0.4);
+    R(9.42,7.9,0.46,3.3,"#131317",0.2);
+    R(14.2,7.6,1.9,3.6,"#f2f1ec",0.4);
+    R(14.12,7.9,0.46,3.3,"#131317",0.2);
+    R(7.9,7.6,1.9,0.5,"#d6d5cf",0.2);
+    R(14.2,7.6,1.9,0.5,"#d6d5cf",0.2);
   }
   // ── TOOL POUCH + TANTO (Jonin onward) ─────────────────────────────────────
   if (level === 3) {                             // the tanto is the Jonin's alone
@@ -2937,6 +3060,9 @@ export default function App() {
   const [planMonth, setPlanMonth] = useState({ y:new Date().getFullYear(), m:new Date().getMonth() });
   const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
   const [editTask, setEditTask] = useState(null);
+  const [rampOpen, setRampOpen] = useState(false);   // the start-date / ramp disclosure
+  // Fold it away again whenever a different quest form opens.
+  useEffect(()=>{ setRampOpen(false); }, [editTask && editTask.id, view]);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
@@ -3096,7 +3222,7 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([40,50,40,50,120]); } catch {}
   }, [data]);
 
-  const [newTask, setNewTask] = useState({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:"",curse:false});
+  const [newTask, setNewTask] = useState({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:"",curse:false,startDate:null,ramp:[]});
   const [newCat, setNewCat] = useState({name:"",icon:"⭐",color:"#f59e0b",maxValue:10});
   const [boardInput, setBoardInput] = useState("");
   const [drag, setDrag] = useState(null); // {col,id,text,x,y}
@@ -3553,6 +3679,8 @@ export default function App() {
       weeklyTarget: isWk ? Math.max(1, editTask.weeklyTarget || 3) : 1,
       targetReps: isWk ? 1 : (editTask.targetReps || 1),
       curse: !!editTask.curse,
+      startDate: editTask.startDate || null,
+      ramp: Array.isArray(editTask.ramp) ? editTask.ramp.slice(0, RAMP_MAX_WEEKS) : [],
       points: calcPoints(editTask.importance ?? 5),
       decayRate: calcDecay(editTask.importance ?? 5, !!editTask.curse) };
     update({...data, tasks: data.tasks.map(t=>t.id===editTask.id?updated:t)});
@@ -3570,10 +3698,12 @@ export default function App() {
       weeklyTarget: isWk ? Math.max(1, newTask.weeklyTarget || 3) : 1,
       targetReps: isWk ? 1 : (newTask.targetReps || 1),
       curse: !!newTask.curse,
+      startDate: newTask.startDate || null,
+      ramp: Array.isArray(newTask.ramp) ? newTask.ramp.slice(0, RAMP_MAX_WEEKS) : [],
       points: calcPoints(newTask.importance),
       decayRate: calcDecay(newTask.importance, !!newTask.curse), completions:{} };
     update({...data, tasks:[...data.tasks, task]});
-    setNewTask({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:"",curse:false});
+    setNewTask({name:"",catId:"xp",goals:[],importance:5,targetReps:1,days:[1,2,3,4,5],freq:"daily",weeklyTarget:3,icon:"",curse:false,startDate:null,ramp:[]});
     setView("tasks"); toast$(isWk ? "WEEKLY HABIT CREATED!" : "QUEST CREATED!");
   };
 
@@ -3858,6 +3988,60 @@ export default function App() {
     });
     toast$("🛡 DAY SHIELDED — STREAK PROTECTED", "#9db4ff");
     try { navigator.vibrate && navigator.vibrate([12,30,12]); } catch {}
+  };
+
+  // ── FREEZE ──────────────────────────────────────────────────────────────────
+  // A frozen day still shows up and can still be completed — it just costs
+  // nothing when it isn't. Days are stamped into the quest's own frozen map,
+  // which decay, streaks and the calendar already understand.
+  const FREEZE_MAX_DAYS = 7;
+  const freezeDaysFor = (task) => {
+    if (!task) return 0;
+    const f = task.frozen || {};
+    let n = 0;
+    const cur = new Date();
+    for (let i=0;i<FREEZE_MAX_DAYS;i++) { if (f[dateKey(cur)]) n++; else break; cur.setDate(cur.getDate()+1); }
+    return n;
+  };
+  const freezeQuest = (tid, days) => {
+    const task = data.tasks.find(t=>t.id===tid); if (!task) return;
+    const n = Math.max(0, Math.min(FREEZE_MAX_DAYS, days));
+    setData(cur=>{
+      const t2 = cur.tasks.map(t=>{
+        if (t.id !== tid) return t;
+        const frozen = { ...(t.frozen||{}) };
+        // Clear whatever forward window is already set, then lay down the new one.
+        const c = new Date();
+        for (let i=0;i<FREEZE_MAX_DAYS;i++) { delete frozen[dateKey(c)]; c.setDate(c.getDate()+1); }
+        const c2 = new Date();
+        for (let i=0;i<n;i++) { frozen[dateKey(c2)] = true; c2.setDate(c2.getDate()+1); }
+        return { ...t, frozen };
+      });
+      const nx = {...cur, tasks:t2}; persistRaw(nx); return nx;
+    });
+    toast$(n ? `❄ FROZEN FOR ${n} DAY${n>1?"S":""}` : "FREEZE LIFTED", n ? "#7fd4ff" : "#ffc46b");
+    try { navigator.vibrate && navigator.vibrate([12,28,12]); } catch {}
+  };
+  // Evaluated during render, so it has to survive the pre-load pass where
+  // data is still null.
+  const freezeAllOn = !!(data && data.freezeAll && data.freezeAll.from);
+  const toggleFreezeAll = () => {
+    setData(cur=>{
+      // Thawing frees today onward. Days already past stay protected — they
+      // were frozen when they happened and charging them now would be a trap.
+      const todayK = dateKey();
+      const nx = cur.freezeAll && cur.freezeAll.from
+        ? { ...cur, freezeAll: null, tasks: cur.tasks.map(t=>{
+            if (!(t.frozen||{})[todayK]) return t;
+            const frozen = {...t.frozen}; delete frozen[todayK];
+            return {...t, frozen};
+          }) }
+        : stampGlobalFreeze({ ...cur, freezeAll: { from: dateKey() } });
+      persistRaw(nx); return nx;
+    });
+    toast$(freezeAllOn ? "THAW — QUESTS COUNT AGAIN" : "❄ EVERYTHING FROZEN",
+           freezeAllOn ? "#ffc46b" : "#7fd4ff");
+    try { navigator.vibrate && navigator.vibrate([14,34,14]); } catch {}
   };
 
   // ── SHOP ────────────────────────────────────────────────────────────────────
@@ -4224,7 +4408,7 @@ export default function App() {
   const cz = data.character;
   const today = currentDay;
   const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t) && isScheduledOn(t,today));
-  const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t));
+  const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t) && isLiveOn(t, today));
   const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
   const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
   // ── THE RIVAL ───────────────────────────────────────────────────────────────
@@ -5239,23 +5423,32 @@ export default function App() {
                 onToggleDay={(dk)=>toggleDay(detailTask.id, dk)}/>
             </div>
             {(()=>{
-              const y = new Date(); y.setDate(y.getDate()-1);
-              const yk = dateKey(y);
-              const missedYest = isScheduledOn(detailTask,yk) && !isCompletedOn(detailTask,yk) && !((detailTask.frozen||{})[yk]);
-              if (!missedYest) return null;
-              const owned = data.wallet.shields||0;
+              const held = freezeDaysFor(detailTask);
               return (
-                <button onClick={()=> owned>0 ? useShield(detailTask.id, yk) : setView("shop") || setDetailTaskId(null)}
-                  style={{width:"100%",marginBottom:10,display:"flex",alignItems:"center",gap:11,background:"rgba(157,180,255,0.12)",
-                    border:"1.5px solid rgba(157,180,255,0.45)",borderRadius:15,padding:"12px 14px",cursor:"pointer",fontFamily:FONT,textAlign:"left"}}>
-                  <span style={{fontSize:18}}>🛡</span>
-                  <span style={{flex:1}}>
-                    <span style={{display:"block",fontSize:12.5,fontWeight:800,color:"#fff"}}>Yesterday was missed — shield it</span>
-                    <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>
-                      {owned>0 ? `Streak survives, decay refunded · ${owned} shield${owned>1?"s":""} owned` : "No shields owned — tap to visit the shop"}
+                <div style={{marginBottom:10,background:held?"rgba(127,212,255,0.12)":"rgba(0,0,0,0.25)",
+                  border:`1.5px solid ${held?"rgba(127,212,255,0.5)":LINE}`,borderRadius:15,padding:"12px 14px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:17}}>❄</span>
+                    <span style={{flex:1,minWidth:0}}>
+                      <span style={{display:"block",fontSize:12.5,fontWeight:900,color:held?"#7fd4ff":"#fff"}}>
+                        {held ? `FROZEN · ${held} DAY${held>1?"S":""} LEFT` : "FREEZE THIS QUEST"}
+                      </span>
+                      <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,marginTop:1,lineHeight:1.4}}>
+                        Still here, still loggable — missing it just costs nothing.
+                      </span>
                     </span>
-                  </span>
-                </button>
+                  </div>
+                  <div style={{display:"flex",gap:6,marginTop:10}}>
+                    {[0,1,2,3,4,5,6,7].map(n=>(
+                      <button key={n} onClick={()=>freezeQuest(detailTask.id, n)}
+                        style={{flex:1,height:32,borderRadius:10,cursor:"pointer",fontFamily:FONT,
+                          fontWeight:900,fontSize:11,padding:0,
+                          border: held===n ? "2px solid #7fd4ff" : `1px solid ${LINE}`,
+                          background: held===n ? "rgba(127,212,255,0.22)" : "rgba(0,0,0,0.3)",
+                          color: n===0 ? DIM : "#fff"}}>{n===0?"OFF":n}</button>
+                    ))}
+                  </div>
+                </div>
               );
             })()}
             <div style={{display:"flex",gap:8}}>
@@ -5749,11 +5942,19 @@ export default function App() {
                     {cat?.icon}
                   </div>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{task.name}</div>
+                    <div style={{fontSize:13.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                      display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{task.name}</span>
+                      {freezeDaysFor(task)>0 && <span style={{fontSize:11,flexShrink:0}}>❄</span>}
+                    </div>
                     <div style={{fontSize:9,color:DIM,fontWeight:700,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                      {isWeekly(task)
+                      {!isLiveOn(task, today)
+                        ? <span style={{color:T.accent,fontWeight:900}}>Starts {prettyDay(task.startDate)}</span>
+                        : isWeekly(task)
                         ? <span><span style={{color,fontWeight:900}}>{weeklyDone(task,today)}/{weeklyTargetOf(task)} this week</span> · weekly</span>
-                        : ((task.days||[]).length===7 ? "Every day" : (task.days||[]).map(d=>DAYS[d].slice(0,2)).join(" "))}
+                        : (scheduledDaysOn(task,today).length===7 ? "Every day" : scheduledDaysOn(task,today).map(d=>DAYS[d].slice(0,2)).join(" "))}
+                      {(task.ramp||[]).length>0 && isLiveOn(task,today) && rampEntryOn(task,today) &&
+                        <span style={{color:T.accent}}> · ramp wk {rampWeekIndex(task,today)+1}</span>}
                       {!isWeekly(task) && streak>=2 && <span style={{color:"#ffc46b"}}> · 🔥{streak}</span>}
                       {isWeekly(task) && weeklyStreak(task)>=1 && <span style={{color:"#ffc46b"}}> · 🔥{weeklyStreak(task)}w</span>}
                     </div>
@@ -5999,6 +6200,121 @@ export default function App() {
                     </div>
                   </>
                 )}
+                {/* ── START DATE + RAMP — folded away until you want it ───── */}
+                {(()=>{
+                  const wk = t.freq === "weekly";
+                  const ramp = Array.isArray(t.ramp) ? t.ramp : [];
+                  const summary = (!t.startDate && !ramp.length) ? "OFF"
+                    : [t.startDate ? prettyDay(t.startDate) : null,
+                       ramp.length ? `${ramp.length}-WEEK RAMP` : null].filter(Boolean).join(" · ");
+                  const setRamp = (i, patch) => set({ ramp: ramp.map((w,j)=> j===i ? {...w, ...patch} : w) });
+                  // Each new week starts one step harder than the last, so the
+                  // default behaviour of tapping ADD WEEK is an actual ramp.
+                  const addWeek = () => {
+                    const prev = ramp[ramp.length-1];
+                    let next;
+                    if (wk) {
+                      const base = prev ? prev.target : Math.max(1, Math.ceil((t.weeklyTarget||3)/2));
+                      next = { target: Math.min(t.weeklyTarget||999, base + (prev?1:0)) };
+                    } else {
+                      const all = (t.days||[]);
+                      if (!prev) next = { days: all.slice(0, Math.max(1, Math.ceil(all.length/2))) };
+                      else {
+                        const grow = all.find(d=>!prev.days.includes(d));
+                        next = { days: grow===undefined ? [...prev.days] : [...prev.days, grow].sort() };
+                      }
+                    }
+                    // A ramp is measured from the start date, so make sure there is one.
+                    set({ ramp:[...ramp, next], startDate: t.startDate || today });
+                  };
+                  return (
+                    <div style={{marginTop:18}}>
+                      <button onClick={()=>setRampOpen(o=>!o)}
+                        style={{...C.btnSm,width:"100%",padding:"13px 14px",display:"flex",
+                          alignItems:"center",gap:10,textAlign:"left"}}>
+                        <span style={{fontSize:15}}>⏳</span>
+                        <span style={{flex:1,fontSize:11.5,fontWeight:900,letterSpacing:0.4}}>START DATE &amp; RAMP</span>
+                        <span style={{fontSize:9.5,fontWeight:900,
+                          color: summary==="OFF" ? FAINT : T.accent}}>{summary}</span>
+                        <span style={{fontSize:12,color:FAINT}}>{rampOpen?"▴":"▾"}</span>
+                      </button>
+                      {rampOpen && (
+                        <div style={{...C.glass,marginTop:8}}>
+                          <div style={C.label}>STARTS</div>
+                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <input type="date" value={t.startDate || ""}
+                              onChange={e=>set({startDate: e.target.value || null})}
+                              style={{...C.input,flex:1,padding:"11px 13px",colorScheme:"dark"}}/>
+                            <button onClick={()=>set({startDate:null, ramp:[]})}
+                              style={{...C.btnSm,padding:"11px 14px",fontSize:10.5}}>TODAY</button>
+                          </div>
+                          <div style={{fontSize:9.5,color:FAINT,marginTop:7,fontWeight:700,lineHeight:1.45}}>
+                            {t.startDate && t.startDate > today
+                              ? "Stays off your Home page until then, and costs you nothing in the meantime."
+                              : "Live right away. Pick a date to hold it back until then."}
+                          </div>
+
+                          <div style={{...C.label,marginTop:16,marginBottom:6}}>EASE IN</div>
+                          <div style={{fontSize:9.5,color:FAINT,marginBottom:10,fontWeight:700,lineHeight:1.45}}>
+                            {wk ? "Set a smaller target for the first weeks and build up."
+                                : "Set fewer days for the first weeks and build up."}
+                          </div>
+                          {ramp.map((w,i)=>(
+                            <div key={i} style={{background:"rgba(0,0,0,0.25)",borderRadius:14,
+                              padding:"10px 12px",marginBottom:8,border:`1px solid ${LINE}`}}>
+                              <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
+                                <span style={{flex:1,fontSize:10.5,fontWeight:900,color:T.accent,letterSpacing:0.6}}>
+                                  WEEK {i+1}
+                                </span>
+                                <button onClick={()=>set({ramp: ramp.filter((_,j)=>j!==i)})}
+                                  style={{...C.btnSm,padding:"5px 10px",fontSize:10,color:BAD}}>REMOVE</button>
+                              </div>
+                              {wk ? (
+                                <div style={{display:"flex",alignItems:"center",gap:9}}>
+                                  <button onClick={()=>setRamp(i,{target:Math.max(1,(w.target||1)-1)})}
+                                    style={{...C.btnSm,padding:"9px 15px",fontSize:14,fontWeight:900}}>−</button>
+                                  <div style={{flex:1,textAlign:"center"}}>
+                                    <div style={{fontSize:19,fontWeight:900,color:"#fff"}}>{w.target||1}</div>
+                                    <div style={{fontSize:8.5,color:FAINT,fontWeight:800}}>PER WEEK</div>
+                                  </div>
+                                  <button onClick={()=>setRamp(i,{target:Math.min(999,(w.target||1)+1)})}
+                                    style={{...C.btnSm,padding:"9px 15px",fontSize:14,fontWeight:900}}>＋</button>
+                                </div>
+                              ) : (
+                                <div style={{display:"flex",gap:5,justifyContent:"space-between"}}>
+                                  {DAYS.map((d,di)=>{
+                                    const on = (w.days||[]).includes(di);
+                                    return (
+                                      <button key={d} onClick={()=>setRamp(i,{days: on
+                                          ? (w.days||[]).filter(x=>x!==di)
+                                          : [...(w.days||[]), di]})}
+                                        style={{flex:1,height:32,borderRadius:10,padding:0,cursor:"pointer",
+                                          fontFamily:FONT,fontWeight:900,fontSize:9.5,
+                                          border: on ? "2px solid #fff" : `1px solid ${LINE}`,
+                                          background: on ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.3)",
+                                          color: on ? "#fff" : DIM}}>{d.slice(0,2).toUpperCase()}</button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {ramp.length < RAMP_MAX_WEEKS && (
+                            <button onClick={addWeek} style={{...C.btnSm,width:"100%",padding:"12px"}}>
+                              ＋ {ramp.length ? `ADD WEEK ${ramp.length+1}` : "ADD WEEK 1"}
+                            </button>
+                          )}
+                          <div style={{fontSize:9.5,color:FAINT,marginTop:10,fontWeight:700,lineHeight:1.45}}>
+                            {ramp.length
+                              ? `From week ${ramp.length+1} onward it uses the ${wk?"target":"days"} you set above.`
+                              : `Up to ${RAMP_MAX_WEEKS} weeks. Leave it empty and the quest uses the ${wk?"target":"days"} above from day one.`}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div style={{display:"flex",gap:8,marginTop:20}}>
                   <button style={{...C.btnSm,flex:1,padding:"14px"}} onClick={()=>{isEdit?setEditTask(null):null; setView("tasks");}}>CANCEL</button>
                   {isEdit && (
@@ -7403,6 +7719,31 @@ export default function App() {
                 </div>
               </div>
               <div style={{fontSize:18,color:FAINT}}>›</div>
+            </div>
+
+            {/* FREEZE EVERYTHING — one switch for a holiday or a bad week */}
+            <div style={{...C.glass,padding:"13px 15px",
+              border:`1px solid ${freezeAllOn ? "rgba(127,212,255,0.5)" : LINE}`,
+              background: freezeAllOn ? "rgba(127,212,255,0.12)" : GLASS}}>
+              <div onClick={toggleFreezeAll}
+                style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                <div style={{fontSize:22}}>❄</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:900,color:freezeAllOn?"#7fd4ff":"#fff"}}>
+                    {freezeAllOn ? "Everything is frozen" : "Freeze everything"}
+                  </div>
+                  <div style={{fontSize:11,color:DIM,fontWeight:700,marginTop:1,lineHeight:1.4}}>
+                    {freezeAllOn
+                      ? `Nothing has counted against you since ${prettyDay(data.freezeAll.from)}. Tap to thaw.`
+                      : "No quest costs you XP until you turn this back off. You can still log them."}
+                  </div>
+                </div>
+                <div style={{width:46,height:26,borderRadius:13,flexShrink:0,position:"relative",
+                  background: freezeAllOn ? "#7fd4ff" : "rgba(255,255,255,0.16)",transition:"background .2s"}}>
+                  <div style={{position:"absolute",top:3,left: freezeAllOn ? 23 : 3,width:20,height:20,
+                    borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}/>
+                </div>
+              </div>
             </div>
 
             {/* PAGES */}
