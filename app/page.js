@@ -1796,23 +1796,23 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   }
 
   // ── SAGE MODE: THE TOAD SCROLL ────────────────────────────────────────────
-  // Slung across his back, so it is drawn before the body and only its two
-  // ends show past the shoulders.
+  // Slung across the small of his back at belt height, which is where it sits
+  // in the reference — not up on the shoulders. Drawn before the body so only
+  // the ends, which reach past the coat, show.
   if (sagemd) {
-    // Sat high across the shoulders: any lower and the head and torso hide the
-    // paper entirely, leaving two red discs that read as pauldrons.
-    R(5.0,8.1,14.0,2.9,"#dccb9f",0.95);
-    R(5.0,8.1,14.0,0.8,"#f0e4c0",0.45);                 // lit top edge
-    R(5.0,10.2,14.0,0.8,"#b49c6b",0.45);                // shaded underside
-    [5.8,18.2].forEach(cx=>{
-      els.push(<circle key={k++} cx={cx*s} cy={9.55*s} r={1.75*s} fill="#8e2219"/>);
-      els.push(<circle key={k++} cx={cx*s} cy={9.55*s} r={1.75*s} fill="none"
-        stroke="#5e1510" strokeWidth={0.24*s}/>);
-      els.push(<circle key={k++} cx={cx*s} cy={9.55*s} r={0.6*s} fill="#4a100c"/>);
+    R(3.6,13.2,16.8,2.5,"#5d5f45",0.4);                 // olive barrel
+    R(3.6,13.2,16.8,0.6,"#73765a",0.3);                 // lit top
+    R(3.6,15.0,16.8,0.7,"#43452f",0.3);                 // shaded underside
+    R(6.2,13.2,1.0,2.5,"#3b3d2a",0.2);                  // binding rings
+    R(16.8,13.2,1.0,2.5,"#3b3d2a",0.2);
+    [3.4, 18.2].forEach(cx=>{                           // deep red end caps
+      R(cx,12.9,2.4,3.1,"#8e2a22",0.55);
+      R(cx,12.9,2.4,0.7,"#ab382b",0.35);
+      R(cx,15.3,2.4,0.7,"#6b1d17",0.3);
     });
   }
 
-  // ── THE SAGE'S TRUTH-SEEKING ORBS ─────────────────────────────────────────
+  // ── THE SAGE'S TRUTH-SEEKING ORBS ─────────────────────────────────────────  // ── THE SAGE'S TRUTH-SEEKING ORBS ─────────────────────────────────────────
   // Nine black spheres hanging in the air around him, drawn before the body so
   // they read as floating behind. Kept out in the margins so they never crowd
   // the face, the staff arm or the summon beside him.
@@ -1846,7 +1846,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
 
   const fem = cz.body === "f";
   const steel = false, leather = false;   // retired: knight plate
-  let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (level>=1 ? shirt : "#8a7a64");
+  let torsoColor = steel ? "#9fb0c1" : leather ? "#6b3a1f" : (sagemd ? "#383d45" : shirt);
   if (fem) {
     R(9.1,10.8,5.8,5.4,torsoColor,1.1);
     R(8.8,14.6,6.4,1.6,torsoColor,0.8);
@@ -1905,17 +1905,27 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     [7.8,9.4,11.0,12.6,14.2,15.6].forEach(x=> R(x,17.5,1.0,1.0,"#b3281f",0.3));
     [8.6,10.2,11.8,13.4,15.0].forEach(x=> R(x,17.9,0.8,0.7,"#d8452f",0.3));
   }
-  // ── SAGE MODE — orange jumpsuit under a red haori that hangs open ─────────
-  // The haori is two panels rather than one slab: the orange has to stay
-  // visible down the middle or the whole figure reads as a red blob.
+  // ── SAGE MODE — long red haori over the charcoal jumpsuit ────────────────
+  // Nearly closed: a narrow strip of jumpsuit and orange trousers runs down
+  // the middle. The hem is a dark band with flames licking upward into the
+  // red, which is the way round they run in the reference.
   if (sagemd) {
-    R(8.5,10.3,7.0,5.9,SAGE_ORANGE,0.9);                // jumpsuit torso
-    R(8.5,10.3,7.0,1.0,"#2b303a",0.45);                 // black yoke across the chest
-    R(11.6,11.0,0.8,5.3,"#2b303a",0.25);                // zip line
-    R(8.5,15.3,7.0,0.9,"#b85a12",0.4);                  // shadow under the ribs
+    const H = "#c0392b", HL = "#d4503a", DK = "#3c3f2c";
+    R(7.2,10.0,9.6,9.6,H,0.8);                          // the coat
+    R(7.2,10.0,9.6,1.0,HL,0.45);                        // light across the shoulders
+    R(7.2,10.0,9.6,0.5,"#8d241c",0.25);                 // collar edge
+    // Dark hem, with flame tongues reaching up out of it.
+    R(7.2,17.8,9.6,1.8,DK,0.3);
+    [7.2,8.65,10.1,13.2,14.65,16.1].forEach(fx=> els.push(
+      <path key={k++} fill={DK}
+        d={`M ${fx*s} ${18.0*s} Q ${(fx+0.37)*s} ${15.9*s} ${(fx+0.75)*s} ${18.0*s} Z`}/>));
+    // The opening, drawn last so it runs unbroken from collar to hem.
+    R(11.35,10.3,1.3,5.5,"#383d45",0.2);                // jumpsuit
+    R(11.72,10.5,0.56,5.1,"#575d66",0.18);              // its zip
+    R(11.35,15.6,1.3,4.0,SAGE_ORANGE,0.2);              // trousers below it
   }
 
-  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─
+  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─
   if (sage) {
     const SW = "#f2f1ec", SG = "#d6d5cf", SD = "#b9b8b2", SI = "#131317";
     // The robe flares toward the floor, so it's built from two blocks rather
@@ -1934,26 +1944,32 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
       <ellipse key={k++} cx={(18.15+dx)*s} cy={19.6*s} rx={0.36*s} ry={0.72*s}
         fill="none" stroke={SI} strokeWidth={0.22*s}/>));
   }
-  const armColor = sage ? "#f7e7b8" : robe ? "#f4f1e8" : sagemd ? SAGE_ORANGE
+  const armColor = sage ? "#f7e7b8" : robe ? "#f4f1e8" : sagemd ? "#c0392b"
                  : cloak ? "#15131b"
                  : anbu ? skin : vest ? "#24402f" : (level>=0 ? shirt : skin);
   R(7.6,11.2,1.3,4.0,armColor,0.6);
   R(15.1,11.2,1.3,4.0,armColor,0.6);
   if (sagemd) {
-    // Panels hung over the outside of each arm, so the orange sleeve still
-    // shows between the red and the chest.
-    const H = "#c0392b", HL = "#d9503a", FL = "#14141a";
-    [6.4, 15.6].forEach(px=>{
-      R(px,10.0,2.0,8.6,H,0.7);
-      R(px,10.0,2.0,0.9,HL,0.4);
-      R(px,16.8,2.0,1.6,FL,0.3);                          // black band at the hem
-      [px+0.05, px+1.0].forEach(fx=> els.push(
-        <path key={k++} fill={FL}
-          d={`M ${fx*s} ${17.0*s} Q ${(fx+0.47)*s} ${15.2*s} ${(fx+0.95)*s} ${17.0*s} Z`}/>));
-      R(px,18.2,2.0,0.4,"#8d241c",0.2);
+    // Short wide sleeves, dark on the inside, sitting just proud of the coat
+    // so the scroll's barrel still shows between them and its end caps.
+    [6.4, 15.4].forEach(px=>{
+      R(px,10.0,2.2,3.8,"#c0392b",0.7);                 // elbow-length sleeve
+      R(px,10.0,2.2,0.8,"#d4503a",0.4);
     });
-    R(9.3,10.4,1.0,6.0,"#3b2a1b",0.3);                    // strap holding the scroll
-  } else if (sage) {
+    // Forearms hang at the very edge of the coat. Run further in and they read
+    // as dark slots cut out of it rather than arms in front of it.
+    [6.5, 16.2].forEach(px=>{
+      R(px,13.6,1.3,2.0,"#474d57",0.5);                 // undersuit forearm
+      R(px,15.3,1.3,1.3,skin,0.6);                      // bare hand
+    });
+    // The tan sash the scroll hangs from — right shoulder to left hip.
+    els.push(<path key={k++} fill="#9c8b63"
+      d={`M ${14.5*s} ${10.0*s} L ${15.7*s} ${10.0*s} L ${10.9*s} ${17.4*s}
+          L ${9.8*s} ${17.4*s} Z`}/>);
+    els.push(<path key={k++} fill="#7d6e49"
+      d={`M ${15.36*s} ${10.0*s} L ${15.7*s} ${10.0*s} L ${10.9*s} ${17.4*s}
+          L ${10.59*s} ${17.4*s} Z`}/>);
+    } else if (sage) {
     R(6.7,10.9,2.5,5.8,"#f2f1ec",0.7);                    // wide sage sleeves
     R(14.8,10.9,2.5,5.8,"#f2f1ec",0.7);
     R(6.9,16.0,2.1,0.75,"#131317",0.3);                   // black lining inside the cuffs
