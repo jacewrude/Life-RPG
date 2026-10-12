@@ -1800,15 +1800,15 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   // in the reference — not up on the shoulders. Drawn before the body so only
   // the ends, which reach past the coat, show.
   if (sagemd) {
-    R(3.6,13.2,16.8,2.5,"#5d5f45",0.4);                 // olive barrel
-    R(3.6,13.2,16.8,0.6,"#73765a",0.3);                 // lit top
-    R(3.6,15.0,16.8,0.7,"#43452f",0.3);                 // shaded underside
-    R(6.2,13.2,1.0,2.5,"#3b3d2a",0.2);                  // binding rings
-    R(16.8,13.2,1.0,2.5,"#3b3d2a",0.2);
-    [3.4, 18.2].forEach(cx=>{                           // deep red end caps
-      R(cx,12.9,2.4,3.1,"#8e2a22",0.55);
-      R(cx,12.9,2.4,0.7,"#ab382b",0.35);
-      R(cx,15.3,2.4,0.7,"#6b1d17",0.3);
+    R(4.0,13.2,16.0,2.5,"#5d5f45",0.4);                 // olive barrel
+    R(4.0,13.2,16.0,0.6,"#73765a",0.3);                 // lit top
+    R(4.0,15.0,16.0,0.7,"#43452f",0.3);                 // shaded underside
+    R(6.3,13.2,0.9,2.5,"#3b3d2a",0.2);                  // binding rings
+    R(16.8,13.2,0.9,2.5,"#3b3d2a",0.2);
+    [3.8, 17.9].forEach(cx=>{                           // deep red end caps
+      R(cx,12.9,2.3,3.1,"#8e2a22",0.55);
+      R(cx,12.9,2.3,0.7,"#ab382b",0.35);
+      R(cx,15.3,2.3,0.7,"#6b1d17",0.3);
     });
   }
 
@@ -1911,18 +1911,23 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   // red, which is the way round they run in the reference.
   if (sagemd) {
     const H = "#c0392b", HL = "#d4503a", DK = "#3c3f2c";
-    R(7.2,10.0,9.6,9.6,H,0.8);                          // the coat
-    R(7.2,10.0,9.6,1.0,HL,0.45);                        // light across the shoulders
-    R(7.2,10.0,9.6,0.5,"#8d241c",0.25);                 // collar edge
+    R(7.3,10.0,9.4,9.6,H,0.9);                          // the coat, Akatsuki's width
+    R(7.3,10.0,9.4,1.0,HL,0.45);                        // light across the shoulders
+    R(7.3,10.0,9.4,0.5,"#8d241c",0.25);                 // collar edge
     // Dark hem, with flame tongues reaching up out of it.
-    R(7.2,17.8,9.6,1.8,DK,0.3);
-    [7.2,8.65,10.1,13.2,14.65,16.1].forEach(fx=> els.push(
+    R(7.3,17.8,9.4,1.8,DK,0.3);
+    [7.3,8.7,10.1,13.1,14.5,15.9].forEach(fx=> els.push(
       <path key={k++} fill={DK}
         d={`M ${fx*s} ${18.0*s} Q ${(fx+0.37)*s} ${15.9*s} ${(fx+0.75)*s} ${18.0*s} Z`}/>));
-    // The opening, drawn last so it runs unbroken from collar to hem.
+    // The opening, drawn after the hem so it runs unbroken from collar down.
     R(11.35,10.3,1.3,5.5,"#383d45",0.2);                // jumpsuit
     R(11.72,10.5,0.56,5.1,"#575d66",0.18);              // its zip
     R(11.35,15.6,1.3,4.0,SAGE_ORANGE,0.2);              // trousers below it
+    // Belt at the scroll's own height, lining up with its two ends — this is
+    // what the sash runs down into, so the strap reads as holding something.
+    R(7.3,13.9,9.4,1.1,"#2b2f3a",0.3);
+    R(7.3,13.9,9.4,0.3,"#3e4453",0.2);
+    R(11.62,13.95,0.76,1.0,"#8c929e",0.22);             // buckle
   }
 
   // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─  // ── SAGE OF SIX PATHS — white high-collar robe, six magatama, ringed staff ─
@@ -1950,26 +1955,25 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   R(7.6,11.2,1.3,4.0,armColor,0.6);
   R(15.1,11.2,1.3,4.0,armColor,0.6);
   if (sagemd) {
-    // Short wide sleeves, dark on the inside, sitting just proud of the coat
-    // so the scroll's barrel still shows between them and its end caps.
-    [6.4, 15.4].forEach(px=>{
-      R(px,10.0,2.2,3.8,"#c0392b",0.7);                 // elbow-length sleeve
-      R(px,10.0,2.2,0.8,"#d4503a",0.4);
+    // Flush with the coat, not proud of it: sleeves that stuck out past the
+    // edge made him noticeably boxier than every other rank.
+    [7.3, 14.9].forEach(px=>{
+      R(px,10.0,1.8,3.8,"#c0392b",0.75);                // elbow-length sleeve
+      R(px,10.0,1.8,0.8,"#d4503a",0.4);
     });
-    // Forearms hang at the very edge of the coat. Run further in and they read
-    // as dark slots cut out of it rather than arms in front of it.
-    [6.5, 16.2].forEach(px=>{
-      R(px,13.6,1.3,2.0,"#474d57",0.5);                 // undersuit forearm
-      R(px,15.3,1.3,1.3,skin,0.6);                      // bare hand
+    [7.4, 15.4].forEach(px=>{
+      R(px,13.6,1.2,2.0,"#474d57",0.5);                 // undersuit forearm
+      R(px,15.3,1.2,1.3,skin,0.6);                      // bare hand
     });
-    // The tan sash the scroll hangs from — right shoulder to left hip.
+    // The sash runs from the shoulder down into the belt, where the scroll is
+    // slung — before, it carried on past it and connected to nothing.
     els.push(<path key={k++} fill="#9c8b63"
-      d={`M ${14.5*s} ${10.0*s} L ${15.7*s} ${10.0*s} L ${10.9*s} ${17.4*s}
-          L ${9.8*s} ${17.4*s} Z`}/>);
+      d={`M ${13.9*s} ${10.0*s} L ${15.0*s} ${10.0*s} L ${11.0*s} ${14.5*s}
+          L ${9.9*s} ${14.5*s} Z`}/>);
     els.push(<path key={k++} fill="#7d6e49"
-      d={`M ${15.36*s} ${10.0*s} L ${15.7*s} ${10.0*s} L ${10.9*s} ${17.4*s}
-          L ${10.59*s} ${17.4*s} Z`}/>);
-    } else if (sage) {
+      d={`M ${14.72*s} ${10.0*s} L ${15.0*s} ${10.0*s} L ${11.0*s} ${14.5*s}
+          L ${10.73*s} ${14.5*s} Z`}/>);
+  } else if (sage) {
     R(6.7,10.9,2.5,5.8,"#f2f1ec",0.7);                    // wide sage sleeves
     R(14.8,10.9,2.5,5.8,"#f2f1ec",0.7);
     R(6.9,16.0,2.1,0.75,"#131317",0.3);                   // black lining inside the cuffs
