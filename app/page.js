@@ -26,35 +26,38 @@ const xpInt = (v) => {
   return (n === 0 && Math.abs(v||0) > 1e-9) ? ((v||0) > 0 ? 1 : -1) : n;
 };
 const CURSE_COLOR = "#c039d8";
-// One magatama — a round head with a tail that tapers as it sweeps round the
-// point (cx,cy). Because it is placed by angle on a circle, a row of them
-// automatically curls along that curve instead of all pointing the same way.
-//   rad  how far out from the centre it sits
-//   size how big the glyph itself is (independent of rad)
-//   a    where on the circle, in radians
-function magatamaEls(key, cx, cy, rad, size, a, fill, op) {
-  const P = (ang, r) => [cx + Math.cos(ang)*r, cy + Math.sin(ang)*r];
-  const hr = size * 0.42;
-  const sweep = (size * 1.65) / rad;        // tail length, in radians
-  const [hx,hy]   = P(a, rad);
-  const [b1x,b1y] = [hx + Math.cos(a)*hr, hy + Math.sin(a)*hr];
-  const [b2x,b2y] = [hx - Math.cos(a)*hr, hy - Math.sin(a)*hr];
-  const [tx,ty]   = P(a + sweep,        rad + size*0.44);
-  const [ox,oy]   = P(a + sweep*0.52,   rad + size*0.82);
-  const [ix,iy]   = P(a + sweep*0.52,   rad + size*0.04);
+// One magatama — a ball with a tail that wraps right back around it, which is
+// what makes it read as a "9". The shape is fixed in local units and placed by
+// transform, so it keeps those proportions at any size instead of flattening
+// into a scratch. `deg` turns it, so a row of them can follow a curve.
+function magatamaEls(key, cx, cy, size, deg, fill, op) {
   return [
-    <circle key={key+"h"} cx={hx} cy={hy} r={hr} fill={fill} opacity={op}/>,
-    <path key={key+"t"} fill={fill} opacity={op}
-      d={`M ${b1x} ${b1y} Q ${ox} ${oy} ${tx} ${ty} Q ${ix} ${iy} ${b2x} ${b2y} Z`}/>,
+    <g key={key} fill={fill} opacity={op}
+       transform={`translate(${cx} ${cy}) rotate(${deg}) scale(${size}) translate(-0.26 0)`}>
+      <circle cx="0" cy="0" r="0.46"/>
+      <path d="M 0.12 -0.44 Q 1.06 -0.3 0.94 0.5 Q 0.62 -0.06 -0.06 0.44 Z"/>
+    </g>,
   ];
 }
-// Three of them round a point — the cursed-seal mark, still legible at 13px.
+// Three tomoe round a point — the cursed-seal mark, legible down to 13px. It
+// keeps its own geometry: three big commas filling a ring and six small ones
+// strung along a necklace want different proportions, and sharing one shape
+// between them made both worse.
 function curseMarkEls(cx, cy, r, op) {
   const els = [];
+  const P = (ang, rad) => [cx + Math.cos(ang)*rad, cy + Math.sin(ang)*rad];
   for (let i=0;i<3;i++){
-    const a = (i*120 - 90) * Math.PI/180;
-    magatamaEls(`cm${i}`, cx, cy, r*0.58, r*0.5, a, CURSE_COLOR, op)
-      .forEach(e=>els.push(e));
+    const a  = (i*120 - 90) * Math.PI/180;
+    const hr = r*0.21;
+    const [hx,hy]   = P(a, r*0.58);
+    const [b1x,b1y] = [hx + Math.cos(a)*hr, hy + Math.sin(a)*hr];
+    const [b2x,b2y] = [hx - Math.cos(a)*hr, hy - Math.sin(a)*hr];
+    const [tx,ty]   = P(a + 1.42, r*0.80);
+    const [ox,oy]   = P(a + 0.74, r*0.99);
+    const [ix,iy]   = P(a + 0.74, r*0.60);
+    els.push(<circle key={`ch${i}`} cx={hx} cy={hy} r={hr} fill={CURSE_COLOR} opacity={op}/>);
+    els.push(<path key={`ct${i}`} opacity={op} fill={CURSE_COLOR}
+      d={`M ${b1x} ${b1y} Q ${ox} ${oy} ${tx} ${ty} Q ${ix} ${iy} ${b2x} ${b2y} Z`}/>);
   }
   return els;
 }
@@ -1863,18 +1866,6 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(11.5,10.6,1.0,9.6,SG,0.2);                 // centre seam
     R(8.2,15.2,0.6,4.6,SG,0.2);                  // fold shadows in the skirt
     R(15.2,15.2,0.6,4.6,SG,0.2);
-    // Six magatama strung in a necklace arc below the collar. Placing them by
-    // angle on one circle is what makes them curl along the arc rather than
-    // all sitting upright in a column.
-    // Each tail sweeps about 14° and the heads sit 26° apart, so they stay six
-    // separate commas instead of smearing into one band under the chin.
-    // The span stops at x 9.4 and 14.6 so the wide sleeves, drawn later, never
-    // swallow the outermost two. Heads sit 19° apart, tails sweep 16°, so they
-    // stay six separate commas rather than smearing into one band.
-    [138,118.8,99.6,80.4,61.2,42].forEach((deg,i)=>{
-      magatamaEls(`mg${i}`, 12*s, 9.5*s, 3.5*s, 0.6*s, deg*Math.PI/180, SI, 1)
-        .forEach(e=>els.push(e));
-    });
     // Shakujo — a black staff with a ring and hanging hoops at the foot.
     R(17.9,4.8,0.5,12.4,SI,0.2);
     els.push(<circle key={k++} cx={18.15*s} cy={18.1*s} r={1.15*s}
@@ -1892,6 +1883,20 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(14.8,10.9,2.5,5.8,"#f2f1ec",0.7);
     R(6.9,16.0,2.1,0.75,"#131317",0.3);                   // black lining inside the cuffs
     R(15.0,16.0,2.1,0.75,"#131317",0.3);
+    // ── SIX MAGATAMA ────────────────────────────────────────────────────────
+    // Each comma curls tightly around ITS OWN centre, which is what makes it
+    // read as a 9; only its position and rotation follow the big arc. Curling
+    // the tails along the arc instead flattened them into dashes.
+    // Drawn after the sleeves so the arc can run the full width of the robe —
+    // the outer two sit up on the shoulders, as they should.
+    // Each one is turned by its own place on the arc, so the row splays along
+    // the curve the way a strung necklace does.
+    [150,126,102,78,54,30].forEach((deg,i)=>{
+      const th = deg*Math.PI/180;
+      magatamaEls(`mg${i}`,
+        (12 + Math.cos(th)*4.9)*s, (9.0 + Math.sin(th)*4.9)*s,
+        0.95*s, deg, "#131317", 1).forEach(e=>els.push(e));
+    });
   } else if (has("gloves",3)) {
     R(7.5,14.4,1.5,1.5,"#20252e",0.5);
     R(15.0,14.4,1.5,1.5,"#20252e",0.5);
@@ -1992,20 +1997,9 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(11.5,2.3,1.1,1.0,"#f4f1e8",0.2);
     R(7.6,4.5,8.8,0.9,"#2b2520",0.3);
   }
-  // ── SAGE COLLAR ────────────────────────────────────────────────────────────
-  // Drawn after the head, or the head rect paints straight over it. The two
-  // panels stand up either side of the jaw, dark on their inner face. Nothing
-  // is added to the head itself — the hair stays whatever he picked.
-  if (sage) {
-    // Kept entirely clear of the face. An earlier version tucked dark panel
-    // edges in beside the eyes, which read as something streaming out of them.
-    R(7.05,7.0,1.55,4.4,"#f2f1ec",0.45);
-    R(15.4,7.0,1.55,4.4,"#f2f1ec",0.45);
-    R(7.05,7.0,1.55,0.55,"#ffffff",0.25);
-    R(15.4,7.0,1.55,0.55,"#ffffff",0.25);
-    R(7.05,10.6,1.55,0.8,"#d6d5cf",0.25);
-    R(15.4,10.6,1.55,0.8,"#d6d5cf",0.25);
-  }
+  // The Sage tier adds nothing at the head. A standing collar was tried twice
+  // and read as panels floating beside his face both times — the robe, the
+  // magatama and the orbs carry the look on their own.
   // ── TOOL POUCH + TANTO (Jonin onward) ─────────────────────────────────────
   if (level === 3) {                             // the tanto is the Jonin's alone
     const wc = weaponC ? weaponC.color : null;
