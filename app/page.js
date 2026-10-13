@@ -43,7 +43,8 @@ function magatamaEls(key, cx, cy, size, deg, fill, op) {
 // keeps its own geometry: three big commas filling a ring and six small ones
 // strung along a necklace want different proportions, and sharing one shape
 // between them made both worse.
-function curseMarkEls(cx, cy, r, op) {
+function curseMarkEls(cx, cy, r, op, fill) {
+  const F = fill || CURSE_COLOR;
   const els = [];
   const P = (ang, rad) => [cx + Math.cos(ang)*rad, cy + Math.sin(ang)*rad];
   for (let i=0;i<3;i++){
@@ -55,8 +56,8 @@ function curseMarkEls(cx, cy, r, op) {
     const [tx,ty]   = P(a + 1.42, r*0.80);
     const [ox,oy]   = P(a + 0.74, r*0.99);
     const [ix,iy]   = P(a + 0.74, r*0.60);
-    els.push(<circle key={`ch${i}`} cx={hx} cy={hy} r={hr} fill={CURSE_COLOR} opacity={op}/>);
-    els.push(<path key={`ct${i}`} opacity={op} fill={CURSE_COLOR}
+    els.push(<circle key={`ch${i}`} cx={hx} cy={hy} r={hr} fill={F} opacity={op}/>);
+    els.push(<path key={`ct${i}`} opacity={op} fill={F}
       d={`M ${b1x} ${b1y} Q ${ox} ${oy} ${tx} ${ty} Q ${ix} ${iy} ${b2x} ${b2y} Z`}/>);
   }
   return els;
@@ -2859,13 +2860,14 @@ function ShopPreview({ item }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // DAILY BADGES — four ranks earned by how much of the day's mission load you clear
 // ══════════════════════════════════════════════════════════════════════════════
-// Named for the Eight Gates, which is the escalation a day actually feels
-// like, with the Will of Fire at the top.
+// The eye awakens as the day is cleared: a drawn kunai, then the first tomoe,
+// then the full pattern, then the Sharingan itself. One eye in the set, at the
+// top, so arriving there still means something.
 const BADGE_TIERS = [
-  { t:1, need:25,  name:"GATE OF OPENING", lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
-  { t:2, need:50,  name:"GATE OF LIFE",    lore:"Half the day held",     base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
-  { t:3, need:75,  name:"GATE OF LIMIT",   lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
-  { t:4, need:100, name:"WILL OF FIRE",    lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
+  { t:1, need:25,  name:"KUNAI DRAWN", lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
+  { t:2, need:50,  name:"FIRST TOMOE", lore:"Half the day held",     base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
+  { t:3, need:75,  name:"FULL TOMOE",  lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
+  { t:4, need:100, name:"SHARINGAN",   lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
 ];
 function badgeTierFor(pct) {
   if (pct == null) return 0;
@@ -2919,14 +2921,6 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
         </g>
       )}
 
-      {/* RANK 3+ — magatama flanking the plate, in place of laurels */}
-      {tier>=3 && (
-        <g opacity="0.92">
-          {magatamaEls("bl", 4.0, 22, 3.0, 200, b.light, 0.95)}
-          {magatamaEls("br", 36.0, 22, 3.0, 340, b.light, 0.95)}
-        </g>
-      )}
-
       {/* the shield plate */}
       <path d={BADGE_SHIELD} fill={`url(#${id}f)`} stroke={b.dark} strokeWidth="1.7"/>
       <path d={BADGE_SHIELD} fill={`url(#${id}g)`}/>
@@ -2935,20 +2929,8 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
       {tier>=2 && <g>{rivet(20,6.6)}{rivet(9.4,10.6)}{rivet(30.6,10.6)}</g>}
       {tier>=3 && <g>{rivet(7.6,21)}{rivet(32.4,21)}</g>}
 
-      {/* ── RANK 1 · a shuriken ── */}
+      {/* ── 25% · a drawn kunai ── */}
       {tier===1 && (
-        <g stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round">
-          {[0,90,180,270].map(ang=>(
-            <path key={ang} transform={`rotate(${ang} 20 21)`} fill="#fff6e8"
-              d="M20 10.4 L24.2 18.6 L20 21 L15.8 18.6 Z"/>
-          ))}
-          <circle cx="20" cy="21" r="2.1" fill={b.dark}/>
-          <circle cx="20" cy="21" r="0.95" fill={b.light}/>
-        </g>
-      )}
-
-      {/* ── RANK 2 · a kunai ── */}
-      {tier===2 && (
         <g stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round">
           <path d="M20 8.6 L23.4 15.4 L20 18.1 L16.6 15.4 Z" fill="#f4f9ff"/>
           <rect x="18.5" y="17.8" width="3" height="9.2" rx="0.7" fill={b.light}/>
@@ -2957,33 +2939,40 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
         </g>
       )}
 
-      {/* ── RANK 3 · a rasengan ── */}
-      {tier===3 && (
+      {/* ── 50% · the first tomoe ── drawn twice, the larger one behind, which
+           is what gives it an edge dark enough to read at 26px. */}
+      {tier===2 && (
         <g>
-          <circle cx="20" cy="21.4" r="8.4" fill="#bfe6ff" opacity="0.55"
-            stroke={b.dark} strokeWidth="1"/>
-          <circle cx="20" cy="21.4" r="8.4" fill={`url(#${id}c)`} opacity="0.75"/>
-          <path d="M20 14.2 C24.2 14.9 27.1 18 27.1 21.4 C27.1 25.2 24 27.7 20.7 27.7
-                   C17.8 27.7 15.6 25.8 15.6 23.2 C15.6 21.1 17.2 19.6 19.1 19.6
-                   C20.6 19.6 21.8 20.7 21.8 22"
-            fill="none" stroke="#ffffff" strokeWidth="1.6" strokeLinecap="round" opacity="0.95"/>
-          <circle cx="20" cy="21.4" r="1.9" fill="#ffffff" opacity="0.95"/>
+          <circle cx="20" cy="21.4" r="8.6" fill={b.dark} opacity="0.45"/>
+          {magatamaEls("t2e", 20.6, 21.0, 10.2, -35, b.dark, 0.9)}
+          {magatamaEls("t2",  20.6, 21.0, 9.2, -35, "#ffffff", 1)}
         </g>
       )}
 
-      {/* ── RANK 4 · the leaf crest ── */}
+      {/* ── 75% · all three tomoe, the pattern complete but no eye yet ── */}
+      {tier===3 && (
+        <g>
+          <circle cx="20" cy="21.4" r="8.6" fill={b.dark} opacity="0.42"/>
+          {curseMarkEls(20, 21.4, 8.9, 1, b.dark)}
+          {curseMarkEls(20, 21.4, 8.1, 1, "#fff3cf")}
+          <circle cx="20" cy="21.4" r="1.6" fill="#fff3cf"/>
+        </g>
+      )}
+
+      {/* ── 100% · the Sharingan ── the plain three-tomoe eye, not Mangekyo.
+           White sclera inside a dark rim, so the eye holds its shape whatever
+           the plate behind it is doing. */}
       {tier===4 && (
         <g>
-          <ellipse cx="20" cy="23" rx="8.4" ry="8.8" fill={`url(#${id}c)`} opacity="0.85"/>
-          <path d="M20 12.6 C25.6 15.4 28.2 19.2 28.2 23.4 C28.2 28.4 24.5 31.8 20 31.8
-                   C15.5 31.8 11.8 28.4 11.8 23.4 C11.8 19.2 14.4 15.4 20 12.6 Z"
-            fill="#fff3cf" stroke={b.dark} strokeWidth="1"/>
-          <path d="M20 16.2 C20 20 20 25.4 17.4 29.8" fill="none"
-            stroke={b.dark} strokeWidth="1.5" strokeLinecap="round"/>
-          <path d="M20.3 19.6 C22.5 20.3 24.2 21.4 25.2 22.9" fill="none"
-            stroke={b.dark} strokeWidth="1.2" strokeLinecap="round"/>
-          <path d="M19.5 23.6 C17.3 24.2 15.8 25.2 14.8 26.6" fill="none"
-            stroke={b.dark} strokeWidth="1.2" strokeLinecap="round"/>
+          <ellipse cx="20" cy="21.5" rx="9.9" ry="9.0" fill="#fff6ee"
+            stroke={b.dark} strokeWidth="1.5"/>
+          <circle cx="20" cy="21.5" r="6.2" fill="#d8121f"/>
+          <circle cx="20" cy="21.5" r="6.2" fill={`url(#${id}c)`} opacity="0.16"/>
+          <circle cx="20" cy="21.5" r="6.2" fill="none" stroke="#590207" strokeWidth="1"/>
+          {curseMarkEls(20, 21.5, 5.5, 1, "#190205")}
+          <circle cx="20" cy="21.5" r="2.05" fill="#190205"/>
+          <ellipse cx="17.2" cy="18.0" rx="1.8" ry="1.15" fill="#ffffff" opacity="0.45"
+            transform="rotate(-25 17.2 18.0)"/>
         </g>
       )}
 
