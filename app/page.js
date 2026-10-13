@@ -241,6 +241,7 @@ const DEFAULT_SETTINGS = {
   statsEnabled: true,
   trainingEnabled: true,
   navIcons: {},          // per-tab emoji overrides; empty means the defaults
+  collapsed: {},         // which Settings sections are folded shut
   weeklyOnHome: true,
   planEnabled: true,
   bossEnabled: true,
@@ -695,6 +696,8 @@ function migrate(d) {
   if (!["last7","week"].includes(settings.questWeekView)) settings.questWeekView = "last7";
   settings.navOrder = Array.isArray(settings.navOrder)
     ? settings.navOrder.filter((v,i,a)=>NAV_ORDERABLE.includes(v) && a.indexOf(v)===i) : [];
+  settings.collapsed = (settings.collapsed && typeof settings.collapsed === "object")
+    ? settings.collapsed : {};
   settings.navIcons = (()=>{
     const src = (settings.navIcons && typeof settings.navIcons === "object") ? settings.navIcons : {};
     const out = {};
@@ -763,7 +766,18 @@ function migrate(d) {
       }) : [],
     })),
     customTitles: d.customTitles || {},
-    kanban: (d.kanban && Array.isArray(d.kanban.todo)) ? d.kanban : { todo:[], doing:[], done:[] },
+    // The Done column empties overnight, so the board shows today rather than a
+    // growing pile. Done here, on load, so it still happens for every night the
+    // app sat closed. A save that has never carried the stamp just gets today's
+    // — it never wipes a column it has not seen.
+    kanban: (()=>{
+      const k = (d.kanban && Array.isArray(d.kanban.todo))
+        ? d.kanban : { todo:[], doing:[], done:[] };
+      const td = dateKey();
+      if (!k.clearedOn) return { ...k, clearedOn: td };
+      if (k.clearedOn === td) return k;
+      return { ...k, done: [], clearedOn: td };
+    })(),
     lists: Array.isArray(d.lists) ? d.lists : [],
     schedule: (d.schedule && typeof d.schedule === "object") ? d.schedule : {},
     combo: (d.combo && typeof d.combo === "object") ? { count:d.combo.count||0, lastAt:d.combo.lastAt||0 } : { count:0, lastAt:0 },
@@ -2100,19 +2114,28 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(7.9,4.6,8.2,1.7,"#15181f",0.4);
     R(10.2,4.7,3.6,1.5,"#9aa6b4",0.35);
     R(10.2,4.7,3.6,0.4,"#c3ccd8",0.2);
-    R(11.3,5.1,0.6,0.7,"#4a5362",0.2);
-    R(11.0,5.4,1.2,0.25,"#4a5362",0.1);
+    R(11.7,5.1,0.6,0.7,"#4a5362",0.2);                  // leaf crest, centred on 12
+    R(11.4,5.4,1.2,0.25,"#4a5362",0.1);
     R(15.6,5.0,0.9,3.2,"#15181f",0.3);
     R(16.2,5.6,0.7,2.6,"#1d2129",0.3);
   }
   // ── KAGE HAT ───────────────────────────────────────────────────────────────
   if (robe) {
     // wide triangular brim, peaked crown, rank plate on the front
-    els.push(<path key={k++} d={`M ${12*s} ${0.6*s} L ${18.1*s} ${4.0*s} L ${5.9*s} ${4.0*s} Z`} fill="#f4f1e8"/>);
-    els.push(<path key={k++} d={`M ${12*s} ${0.6*s} L ${18.1*s} ${4.0*s} L ${12*s} ${4.0*s} Z`} fill="#ddd8cb"/>);
-    R(5.9,3.9,12.2,0.75,"#c9c3b4",0.3);
-    els.push(<path key={k++} d={`M ${12*s} ${1.5*s} L ${15.1*s} ${3.3*s} L ${8.9*s} ${3.3*s} Z`} fill="#b3281f"/>);
-    R(11.5,2.3,1.1,1.0,"#f4f1e8",0.2);
+    // Deep red crown with a pale panel down the front carrying the kanji for
+    // fire — the Hokage's mark. The panel has to be wide enough to hold the
+    // whole character or the outer strokes spill onto red and vanish.
+    els.push(<path key={k++} d={`M ${12*s} ${0.6*s} L ${18.1*s} ${4.0*s} L ${5.9*s} ${4.0*s} Z`} fill="#a32a21"/>);
+    els.push(<path key={k++} d={`M ${12*s} ${0.6*s} L ${18.1*s} ${4.0*s} L ${12*s} ${4.0*s} Z`} fill="#8d2119"/>);
+    els.push(<path key={k++} fill="#f4f1e8"
+      d={`M ${12*s} ${0.95*s} L ${15.35*s} ${3.9*s} L ${8.65*s} ${3.9*s} Z`}/>);
+    els.push(<g key={k++} stroke="#b3281f" strokeWidth={0.32*s} strokeLinecap="round" fill="none">
+      <path d={`M ${11.08*s} ${2.46*s} L ${10.72*s} ${3.02*s}`}/>
+      <path d={`M ${12.92*s} ${2.46*s} L ${13.28*s} ${3.02*s}`}/>
+      <path d={`M ${12.0*s} ${2.1*s} L ${11.2*s} ${3.56*s}`}/>
+      <path d={`M ${12.1*s} ${2.72*s} L ${12.92*s} ${3.56*s}`}/>
+    </g>);
+    R(5.9,3.9,12.2,0.8,"#f0ece0",0.3);                  // pale brim edge
     R(7.6,4.5,8.8,0.9,"#2b2520",0.3);
   }
   // The Sage tier adds nothing at the head. A standing collar was tried twice
@@ -2836,11 +2859,13 @@ function ShopPreview({ item }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // DAILY BADGES — four ranks earned by how much of the day's mission load you clear
 // ══════════════════════════════════════════════════════════════════════════════
+// Named for the Eight Gates, which is the escalation a day actually feels
+// like, with the Will of Fire at the top.
 const BADGE_TIERS = [
-  { t:1, need:25,  name:"KINDLED",       lore:"A quarter cleared",        base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
-  { t:2, need:50,  name:"STEADFAST",     lore:"Half the day held",        base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
-  { t:3, need:75,  name:"BLAZING",       lore:"Three quarters down",      base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
-  { t:4, need:100, name:"WILL OF FIRE",  lore:"Nothing left standing",    base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
+  { t:1, need:25,  name:"GATE OF OPENING", lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
+  { t:2, need:50,  name:"GATE OF LIFE",    lore:"Half the day held",     base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
+  { t:3, need:75,  name:"GATE OF LIMIT",   lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
+  { t:4, need:100, name:"WILL OF FIRE",    lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
 ];
 function badgeTierFor(pct) {
   if (pct == null) return 0;
@@ -2894,11 +2919,11 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
         </g>
       )}
 
-      {/* RANK 3+ — laurel sprigs flanking the shield */}
+      {/* RANK 3+ — magatama flanking the plate, in place of laurels */}
       {tier>=3 && (
-        <g fill="none" stroke={b.light} strokeWidth="1.3" strokeLinecap="round" opacity="0.75">
-          <path d="M3.6 16.5 C1.4 21.5 2.4 27.5 5.8 31.2"/>
-          <path d="M36.4 16.5 C38.6 21.5 37.6 27.5 34.2 31.2"/>
+        <g opacity="0.92">
+          {magatamaEls("bl", 4.0, 22, 3.0, 200, b.light, 0.95)}
+          {magatamaEls("br", 36.0, 22, 3.0, 340, b.light, 0.95)}
         </g>
       )}
 
@@ -2910,47 +2935,58 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
       {tier>=2 && <g>{rivet(20,6.6)}{rivet(9.4,10.6)}{rivet(30.6,10.6)}</g>}
       {tier>=3 && <g>{rivet(7.6,21)}{rivet(32.4,21)}</g>}
 
-      {/* ── RANK 1 · a single lightning bolt ── */}
+      {/* ── RANK 1 · a shuriken ── */}
       {tier===1 && (
-        <path d="M23.6 10.5 L13.2 23.2 H18.6 L16.4 30.6 L26.6 17.6 H21.2 Z"
-          fill="#fff6e8" stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round"/>
+        <g stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round">
+          {[0,90,180,270].map(ang=>(
+            <path key={ang} transform={`rotate(${ang} 20 21)`} fill="#fff6e8"
+              d="M20 10.4 L24.2 18.6 L20 21 L15.8 18.6 Z"/>
+          ))}
+          <circle cx="20" cy="21" r="2.1" fill={b.dark}/>
+          <circle cx="20" cy="21" r="0.95" fill={b.light}/>
+        </g>
       )}
 
-      {/* ── RANK 2 · an upright blade ── */}
+      {/* ── RANK 2 · a kunai ── */}
       {tier===2 && (
         <g stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round">
-          <path d="M20 9.2 L22.4 14.2 V24.4 H17.6 V14.2 Z" fill="#f4f9ff"/>
-          <rect x="14.4" y="24.4" width="11.2" height="2.5" rx="1.1" fill={b.light}/>
-          <rect x="18.9" y="26.9" width="2.2" height="3.6" fill={b.light}/>
-          <circle cx="20" cy="31.4" r="1.6" fill={b.light}/>
+          <path d="M20 8.6 L23.4 15.4 L20 18.1 L16.6 15.4 Z" fill="#f4f9ff"/>
+          <rect x="18.5" y="17.8" width="3" height="9.2" rx="0.7" fill={b.light}/>
+          <circle cx="20" cy="30" r="3.1" fill="none" stroke={b.dark} strokeWidth="1.9"/>
+          <circle cx="20" cy="30" r="3.1" fill="none" stroke={b.light} strokeWidth="0.9"/>
         </g>
       )}
 
-      {/* ── RANK 3 · crossed blades ── */}
+      {/* ── RANK 3 · a rasengan ── */}
       {tier===3 && (
         <g>
-          {[-34,34].map(ang=>(
-            <g key={ang} transform={`rotate(${ang} 20 22)`} stroke={b.dark} strokeWidth="0.85" strokeLinejoin="round">
-              <path d="M20 8.6 L22.1 13.2 V27 H17.9 V13.2 Z" fill="#f4f9ff"/>
-              <rect x="14.6" y="27" width="10.8" height="2.3" rx="1" fill={b.light}/>
-              <rect x="19" y="29.3" width="2" height="3" fill={b.light}/>
-            </g>
-          ))}
+          <circle cx="20" cy="21.4" r="8.4" fill="#bfe6ff" opacity="0.55"
+            stroke={b.dark} strokeWidth="1"/>
+          <circle cx="20" cy="21.4" r="8.4" fill={`url(#${id}c)`} opacity="0.75"/>
+          <path d="M20 14.2 C24.2 14.9 27.1 18 27.1 21.4 C27.1 25.2 24 27.7 20.7 27.7
+                   C17.8 27.7 15.6 25.8 15.6 23.2 C15.6 21.1 17.2 19.6 19.1 19.6
+                   C20.6 19.6 21.8 20.7 21.8 22"
+            fill="none" stroke="#ffffff" strokeWidth="1.6" strokeLinecap="round" opacity="0.95"/>
+          <circle cx="20" cy="21.4" r="1.9" fill="#ffffff" opacity="0.95"/>
         </g>
       )}
 
-      {/* ── RANK 4 · a white-hot flame under a crown ── */}
+      {/* ── RANK 4 · the leaf crest ── */}
       {tier===4 && (
         <g>
-          <path d="M12.6 12.4 L15.4 15.6 L17.6 10.6 L20 14.4 L22.4 10.6 L24.6 15.6 L27.4 12.4 L26.2 18.2 H13.8 Z"
-            fill="#fff3cf" stroke={b.dark} strokeWidth="0.8" strokeLinejoin="round"/>
-          <ellipse cx="20" cy="26.6" rx="7.4" ry="7.9" fill={`url(#${id}c)`} opacity="0.9"/>
-          <path d="M20 17.8 C24.1 22.4 26.4 25.1 26.4 28.4 C26.4 32 23.5 34.4 20 34.4 C16.5 34.4 13.6 32 13.6 28.4 C13.6 25.1 15.9 22.4 20 17.8 Z"
-            fill="#ffd257" stroke={b.dark} strokeWidth="0.85"/>
-          <path d="M20 22.6 C22.5 25.6 23.6 27.2 23.6 29.2 C23.6 31.4 22 32.9 20 32.9 C18 32.9 16.4 31.4 16.4 29.2 C16.4 27.2 17.5 25.6 20 22.6 Z"
-            fill="#fffbe8"/>
+          <ellipse cx="20" cy="23" rx="8.4" ry="8.8" fill={`url(#${id}c)`} opacity="0.85"/>
+          <path d="M20 12.6 C25.6 15.4 28.2 19.2 28.2 23.4 C28.2 28.4 24.5 31.8 20 31.8
+                   C15.5 31.8 11.8 28.4 11.8 23.4 C11.8 19.2 14.4 15.4 20 12.6 Z"
+            fill="#fff3cf" stroke={b.dark} strokeWidth="1"/>
+          <path d="M20 16.2 C20 20 20 25.4 17.4 29.8" fill="none"
+            stroke={b.dark} strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M20.3 19.6 C22.5 20.3 24.2 21.4 25.2 22.9" fill="none"
+            stroke={b.dark} strokeWidth="1.2" strokeLinecap="round"/>
+          <path d="M19.5 23.6 C17.3 24.2 15.8 25.2 14.8 26.6" fill="none"
+            stroke={b.dark} strokeWidth="1.2" strokeLinecap="round"/>
         </g>
       )}
+
     </svg>
   );
 }
@@ -3328,6 +3364,18 @@ export default function App() {
   const [editingTitleLvl, setEditingTitleLvl] = useState(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [currentDay, setCurrentDay] = useState(dateKey());
+
+  // Migration handles the nights the app was closed; this handles it being
+  // left open across midnight.
+  useEffect(()=>{
+    if (!data || !data.kanban) return;
+    if (data.kanban.clearedOn === currentDay) return;
+    setData(cur=>{
+      if (!cur.kanban || cur.kanban.clearedOn === currentDay) return cur;
+      const n = { ...cur, kanban: { ...cur.kanban, done: [], clearedOn: currentDay } };
+      persistRaw(n); return n;
+    });
+  }, [currentDay, data && data.kanban && data.kanban.clearedOn]);
 
   // He trains every day. This catches him up for every day since you last looked.
   useEffect(()=>{
@@ -4834,7 +4882,7 @@ export default function App() {
     ...bevelIn(lit ? (col || BLK.btnL) : BLK.slotL, BLK.slotD, w),
   }) : null;
 
-  // Home and More are pinned; everything between them is yours to arrange.
+  // Home and Settings are pinned; everything between them is yours to arrange.
   // Any tab's glyph can be swapped in Settings; navIcon falls back to the default.
   const navIcon = (v) => ((S.navIcons||{})[v]) || NAV_ICON_DEFAULTS[v] || "•";
   const NAV_DEFS = {
@@ -4861,7 +4909,7 @@ export default function App() {
   const navItems = [
     { v:"dashboard", icon:navIcon("dashboard"), label:"HOME" },
     ...navOrder.filter(v=>NAV_DEFS[v] && NAV_DEFS[v].on).map(v=>({ v, ...NAV_DEFS[v] })),
-    { v:"settings", icon:navIcon("settings"), label:"MORE" },
+    { v:"settings", icon:navIcon("settings"), label:"SETTINGS" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
 
@@ -5055,6 +5103,25 @@ export default function App() {
   // Rank, the dojutsu countdown and the curse mark, in one strip. They used to
   // sit at three different corners of a mission, which meant hunting for them;
   // kept together they read as one line of status.
+  const Fold = ({ id, title, children }) => {
+    const open = !((S.collapsed||{})[id]);
+    return (
+      <div style={C.glass}>
+        <div onClick={()=>{
+            const next = {...(S.collapsed||{})};
+            if (open) next[id] = true; else delete next[id];
+            setSetting("collapsed", next);
+          }}
+          style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",
+            marginBottom: open ? 12 : 0}}>
+          <div style={{...C.label,marginBottom:0,flex:1}}>{title}</div>
+          <div style={{fontSize:13,color:FAINT,fontWeight:900}}>{open ? "▴" : "▾"}</div>
+        </div>
+        {open && children}
+      </div>
+    );
+  };
+
   const MissionBadges = ({ task, streak, align }) => {
     const nx = nextEyeFor(task, data.wallet, streak);
     const rank = diffColor(task.importance);
@@ -8234,12 +8301,11 @@ export default function App() {
             </div>
 
             {/* PAGES */}
-            <div style={C.glass}>
-              <div style={C.label}>PAGES</div>
-              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>Home and More are always on. Toggle the rest to keep your bottom bar tidy.</div>
+            <Fold id="pages" title="PAGES">
+              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>Home and Settings are always on. Toggle the rest to keep your bottom bar tidy.</div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>⚔ Missions</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("tasks")} Missions</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your missions and the weekly grid</div>
                 </div>
                 <Switch on={S.questsEnabled!==false} onToggle={()=>setSetting("questsEnabled",!(S.questsEnabled!==false))}/>
@@ -8253,50 +8319,49 @@ export default function App() {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🪵 Ascension Path</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("stats")} Ascension Path</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your attributes and the climb to Sage</div>
                 </div>
                 <Switch on={S.statsEnabled!==false} onToggle={()=>setSetting("statsEnabled",!(S.statsEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🔥 Rival</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("boss")} Rival</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Kaedo trains every day you do not</div>
                 </div>
                 <Switch on={S.bossEnabled!==false} onToggle={()=>setSetting("bossEnabled",!(S.bossEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🗓 Plan</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("plan")} Plan</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Time-block calendar for your day</div>
                 </div>
                 <Switch on={S.planEnabled!==false} onToggle={()=>setSetting("planEnabled",!(S.planEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🧮 Board</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("board")} Board</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Mission board and scroll lists</div>
                 </div>
                 <Switch on={S.kanbanEnabled} onToggle={()=>setSetting("kanbanEnabled",!S.kanbanEnabled)}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🦊 Summons</div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("shop")} Summons</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>The nine tailed beasts, earned by streak</div>
                 </div>
                 <Switch on={S.shopEnabled} onToggle={()=>setSetting("shopEnabled",!S.shopEnabled)}/>
               </div>
-            </div>
+            </Fold>
 
-            {/* BOTTOM BAR ORDER */}
-            <div style={C.glass}>
-              <div style={C.label}>TAB ICONS</div>
+            {/* TAB ICONS */}
+            <Fold id="tabicons" title="TAB ICONS">
               <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>
                 Tap a box and use your keyboard&rsquo;s emoji key. Leave it empty to go back to the default.
               </div>
               {NAV_ALL.map(v=>{
                 const def = NAV_ICON_DEFAULTS[v];
-                const label = v==="dashboard" ? "HOME" : v==="settings" ? "MORE"
+                const label = v==="dashboard" ? "HOME" : v==="settings" ? "SETTINGS"
                             : (NAV_DEFS[v]||{}).label || v.toUpperCase();
                 const custom = (S.navIcons||{})[v];
                 return (
@@ -8322,12 +8387,12 @@ export default function App() {
                   </div>
                 );
               })}
-            </div>
+            </Fold>
 
-            <div style={C.glass}>
-              <div style={C.label}>BOTTOM BAR ORDER</div>
+            {/* BOTTOM BAR ORDER */}
+            <Fold id="navorder" title="BOTTOM BAR ORDER">
               <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>
-                Home stays first and More stays last. Arrange everything in between.
+                Home stays first and Settings stays last. Arrange everything in between.
               </div>
               {navOrder.map((v,i)=>{
                 const d = NAV_DEFS[v];
@@ -8352,7 +8417,7 @@ export default function App() {
               })}
               <button style={{...C.btnSm,width:"100%",padding:"11px",marginTop:10}}
                 onClick={()=>setSetting("navOrder",[])}>↺ DEFAULT ORDER</button>
-            </div>
+            </Fold>
 
             {/* BACKUPS */}
             <div style={C.glass}>
