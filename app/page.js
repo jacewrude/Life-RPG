@@ -39,18 +39,38 @@ function magatamaEls(key, cx, cy, size, deg, fill, op) {
     </g>,
   ];
 }
+// A Sharingan tomoe: a fat comma whose hooked tail points outward from the
+// centre of the eye. Short and radial on purpose — tails swept ALONG the ring
+// run into one another and make the single bladed pinwheel of a Mangekyo,
+// which is the shape this must not be. The three slots never move, so a tomoe
+// earned at one rank sits in the same place at the next.
+const TOMOE_HEAD = 0.52;
+const TOMOE_TAIL = "M .02 -.52 C .75 -.62 1.45 -.34 1.62 .12 C 1.0 -.02 .5 .2 .18 .52 Z";
+function tomoeRing(key, cx, cy, anchorR, size, fill, n) {
+  const els = [];
+  for (let i=0;i<n;i++){
+    const deg = i*120 - 90;
+    const rad = deg * Math.PI/180;
+    els.push(
+      <g key={`${key}${i}`} fill={fill} transform={
+        `translate(${cx + Math.cos(rad)*anchorR} ${cy + Math.sin(rad)*anchorR})`
+        + ` rotate(${deg + 25}) scale(${size})`}>
+        <circle cx="0" cy="0" r={TOMOE_HEAD}/>
+        <path d={TOMOE_TAIL}/>
+      </g>
+    );
+  }
+  return els;
+}
 // Three tomoe round a point — the cursed-seal mark, legible down to 13px. It
 // keeps its own geometry: three big commas filling a ring and six small ones
 // strung along a necklace want different proportions, and sharing one shape
 // between them made both worse.
-function curseMarkEls(cx, cy, r, op, fill, n) {
+function curseMarkEls(cx, cy, r, op, fill) {
   const F = fill || CURSE_COLOR;
-  // `n` fills only the first n of the three slots, which is how a
-  // Sharingan matures — the slots never move as tomoe are added.
-  const N = (n == null) ? 3 : n;
   const els = [];
   const P = (ang, rad) => [cx + Math.cos(ang)*rad, cy + Math.sin(ang)*rad];
-  for (let i=0;i<N;i++){
+  for (let i=0;i<3;i++){
     const a  = (i*120 - 90) * Math.PI/180;
     const hr = r*0.21;
     const [hx,hy]   = P(a, r*0.58);
@@ -2863,14 +2883,14 @@ function ShopPreview({ item }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // DAILY BADGES — four ranks earned by how much of the day's mission load you clear
 // ══════════════════════════════════════════════════════════════════════════════
-// One eye, maturing across the day. A Sharingan awakens blank and gains a
-// tomoe at a time until all three are in — so the badges are four stages of
-// the same eye, not four different emblems. Three tomoe is the finished
-// Sharingan; nothing here is a Mangekyo.
+// The Sharingan's pattern assembles across the day and the eye opens only at
+// the end: one tomoe, two, all three, and then the eye awakens around them.
+// Nothing below 100% is an eye, and the eye itself is the plain three-tomoe
+// Sharingan — never a Mangekyo.
 const BADGE_TIERS = [
-  { t:1, need:25,  tomoe:0, name:"EYE AWAKENED", lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
-  { t:2, need:50,  tomoe:1, name:"ONE TOMOE",    lore:"Half the day held",     base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
-  { t:3, need:75,  tomoe:2, name:"TWO TOMOE",    lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
+  { t:1, need:25,  tomoe:1, name:"FIRST TOMOE",  lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
+  { t:2, need:50,  tomoe:2, name:"SECOND TOMOE", lore:"Half the day held",     base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
+  { t:3, need:75,  tomoe:3, name:"THE PATTERN",  lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
   { t:4, need:100, tomoe:3, name:"SHARINGAN",    lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
 ];
 function badgeTierFor(pct) {
@@ -2913,6 +2933,13 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
           <stop offset="0.55" stopColor={b.light}/>
           <stop offset="1" stopColor={b.base} stopOpacity="0"/>
         </radialGradient>
+        {/* the iris — hot at the centre, deepening to near-black at the rim,
+            which is what gives the eye its depth instead of a flat red disc */}
+        <radialGradient id={`${id}e`} cx="0.5" cy="0.46" r="0.56">
+          <stop offset="0" stopColor="#ff4a2e"/>
+          <stop offset="0.42" stopColor="#e5101b"/>
+          <stop offset="1" stopColor="#7a0008"/>
+        </radialGradient>
       </defs>
 
       {/* RANK 4 — radiant crown of rays */}
@@ -2933,20 +2960,31 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
       {tier>=2 && <g>{rivet(20,6.6)}{rivet(9.4,10.6)}{rivet(30.6,10.6)}</g>}
       {tier>=3 && <g>{rivet(7.6,21)}{rivet(32.4,21)}</g>}
 
-      {/* ── THE EYE ── the same eye at every rank; only the tomoe count
-           changes. White sclera inside a dark rim, so it holds its shape
-           against whatever the plate behind it is doing, down to 26px. */}
-      <g>
-        <ellipse cx="20" cy="21.5" rx="9.9" ry="9.0" fill="#fff6ee"
-          stroke={b.dark} strokeWidth="1.5"/>
-        <circle cx="20" cy="21.5" r="6.2" fill="#d8121f"/>
-        <circle cx="20" cy="21.5" r="6.2" fill={`url(#${id}c)`} opacity="0.16"/>
-        <circle cx="20" cy="21.5" r="6.2" fill="none" stroke="#590207" strokeWidth="1"/>
-        {curseMarkEls(20, 21.5, 5.8, 1, "#190205", b.tomoe)}
-        <circle cx="20" cy="21.5" r="1.85" fill="#190205"/>
-        <ellipse cx="17.2" cy="18.0" rx="1.8" ry="1.15" fill="#ffffff" opacity="0.45"
-          transform="rotate(-25 17.2 18.0)"/>
-      </g>
+      {/* ── 25 / 50 / 75% · the pattern assembling ── tomoe on their ring and
+           nothing else. No eye until the day is actually cleared. */}
+      {tier<4 && (
+        <g>
+          <circle cx="20" cy="21.3" r="9.0" fill={b.dark} opacity="0.58"/>
+          <circle cx="20" cy="21.3" r="5.2" fill="none" stroke={b.light}
+            strokeWidth="0.5" opacity="0.45"/>
+          <g stroke={b.dark} strokeWidth="0.13" strokeLinejoin="round">
+            {tomoeRing("ti", 20, 21.3, 4.7, 2.8, "#ffffff", b.tomoe)}
+          </g>
+        </g>
+      )}
+
+      {/* ── 100% · the Sharingan ── a red iris inside a heavy black rim, the
+           three tomoe out on the ring, a small pupil. No white of the eye and
+           no gap at the centre: that is the shape in the reference. */}
+      {tier===4 && (
+        <g>
+          <circle cx="20" cy="21.3" r="9.7" fill="#0a0406"/>
+          <circle cx="20" cy="21.3" r="8.45" fill={`url(#${id}e)`}/>
+          <circle cx="20" cy="21.3" r="5.2" fill="none" stroke="#0a0406" strokeWidth="0.5"/>
+          {tomoeRing("ts", 20, 21.3, 4.7, 2.8, "#0a0406", 3)}
+          <circle cx="20" cy="21.3" r="1.7" fill="#0a0406"/>
+        </g>
+      )}
 
     </svg>
   );
