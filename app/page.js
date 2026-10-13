@@ -156,7 +156,13 @@ const THEMES = {
 const QUEST_ICONS = ["🏋️","🏃","🚴","🚶","🤸","🧘","💧","💊","🥗","🍳","😴","🛏️","📖","📚","✍️","📝","🙏","⛪","✝️","💼","💻","📞","📊","💰","🧹","🧺","🧼","🍽️","🚿","🪥","💈","🧴","🐕","🌱","🎸","🎨","🎯","🎮","☀️","🌙","⏰","🧠","❤️","👨‍👩‍👧","🎓","🔧","📵","🚭"];
 const iconFor = (task, cat) => (task && task.icon) || (cat && cat.icon) || "⭐";
 
-const NAV_ORDERABLE = ["tasks","boss","plan","board","shop","stats"];
+const NAV_ORDERABLE = ["tasks","boss","training","plan","board","shop","stats"];
+// Every tab that can carry a custom emoji, including the two fixed ends.
+const NAV_ALL = ["dashboard", ...NAV_ORDERABLE, "settings"];
+const NAV_ICON_DEFAULTS = {
+  dashboard:"⛰", tasks:"⚔", boss:"🔥", training:"🧘", plan:"🗓",
+  board:"🧮", shop:"🦊", stats:"🪵", settings:"⚙",
+};
 const THEME_KEYS = Object.keys(THEMES);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -233,6 +239,8 @@ const DEFAULT_SETTINGS = {
   shopEnabled: true,
   questsEnabled: true,
   statsEnabled: true,
+  trainingEnabled: true,
+  navIcons: {},          // per-tab emoji overrides; empty means the defaults
   weeklyOnHome: true,
   planEnabled: true,
   bossEnabled: true,
@@ -687,6 +695,15 @@ function migrate(d) {
   if (!["last7","week"].includes(settings.questWeekView)) settings.questWeekView = "last7";
   settings.navOrder = Array.isArray(settings.navOrder)
     ? settings.navOrder.filter((v,i,a)=>NAV_ORDERABLE.includes(v) && a.indexOf(v)===i) : [];
+  settings.navIcons = (()=>{
+    const src = (settings.navIcons && typeof settings.navIcons === "object") ? settings.navIcons : {};
+    const out = {};
+    NAV_ALL.forEach(v=>{
+      const ic = src[v];
+      if (typeof ic === "string" && ic.trim() && ic.length <= 4) out[v] = ic;
+    });
+    return out;
+  })();
   // Collapse any legacy multi-attribute save into the single XP pool, keeping
   // the rating the user already earned.
   {
@@ -3118,6 +3135,42 @@ function nextEyeFor(task, wallet, streak) {
   return best || { done:true };
 }
 
+// ── TODAY'S XP LEDGER ────────────────────────────────────────────────────────
+// Everything scheduled for a given day, with exactly what it has paid, what it
+// still would pay, and what tonight's decay will take if it is left undone.
+// Weekly habits are excluded from the risk side: the decay engine only charges
+// days a mission is scheduled on, and a weekly has no scheduled days, so one
+// can never cost XP.
+//
+// The asymmetry worth knowing: GAINS are pro-rata (2 of 3 reps pays two thirds)
+// but DECAY is all-or-nothing — anything short of the full target loses the
+// whole penalty. That is what makes a part-finished day feel so expensive.
+function dayLedger(d, dk) {
+  const rows = [];
+  let banked = 0, remaining = 0, atRisk = 0, atRiskCursed = 0, cursedCount = 0;
+  (d.tasks||[]).forEach(t=>{
+    if (!t.catId) return;
+    if (!(d.categories||[]).find(c=>c.id===t.catId)) return;
+    if (isWeekly(t)) return;
+    if (!isScheduledOn(t, dk)) return;
+    const target = t.targetReps || 1;
+    const reps   = getReps(t, dk);
+    const full   = calcEarnedPoints(t.points, target, target);
+    const got    = calcEarnedPoints(t.points, target, Math.min(reps, target));
+    const left   = Math.max(0, full - got);
+    const frozen = !!((t.frozen||{})[dk]);
+    const done   = reps >= target;
+    const risk   = (done || frozen) ? 0 : (t.decayRate || 0);
+    banked += got; remaining += left; atRisk += risk;
+    if (risk > 0 && isCursed(t)) { atRiskCursed += risk; cursedCount++; }
+    rows.push({ id:t.id, name:t.name, reps, target, done, frozen,
+                cursed:isCursed(t), importance:t.importance, got, left, risk, full });
+  });
+  // Worst first: the biggest thing still bleeding XP belongs at the top.
+  rows.sort((a,b)=> (b.risk - a.risk) || (b.left - a.left) || a.name.localeCompare(b.name));
+  return { rows, banked, remaining, atRisk, atRiskCursed, cursedCount };
+}
+
 function drawEye(els, id, ex, ey, r, nk, irisOnly) {
   const C=(x,y,rr,f,o)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill={f} opacity={o===undefined?1:o}/>);
   const RING=(x,y,rr,st,w)=>els.push(<circle key={nk()} cx={x} cy={y} r={rr} fill="none" stroke={st} strokeWidth={w}/>);
@@ -3899,6 +3952,7 @@ export default function App() {
     if (view==="casino" || view==="focus") setView("dashboard");
     if (key==="questsEnabled" && !val && (view==="tasks"||view==="addTask"||view==="editTask"||view==="forecast")) setView("dashboard");
     if (key==="statsEnabled" && !val && view==="stats") setView("dashboard");
+    if (key==="trainingEnabled" && !val && view==="training") setView("dashboard");
     update(next);
   };
   const setChar = (key, val) =>
@@ -4781,13 +4835,16 @@ export default function App() {
   }) : null;
 
   // Home and More are pinned; everything between them is yours to arrange.
+  // Any tab's glyph can be swapped in Settings; navIcon falls back to the default.
+  const navIcon = (v) => ((S.navIcons||{})[v]) || NAV_ICON_DEFAULTS[v] || "•";
   const NAV_DEFS = {
-    tasks: { icon:"⚔",  label:"MISSIONS",  on: S.questsEnabled !== false },
-    boss:  { icon:"🔥", label:"RIVAL",   on: S.bossEnabled   !== false },
-    plan:  { icon:"🗓", label:"PLAN",    on: S.planEnabled   !== false },
-    board: { icon:"🧮", label:"BOARD",   on: !!S.kanbanEnabled },
-    shop:  { icon:"🦊", label:"SUMMONS", on: !!S.shopEnabled },
-    stats: { icon:"🪵", label:"ASCENT",  on: S.statsEnabled  !== false },
+    tasks:    { icon:navIcon("tasks"),    label:"MISSIONS", on: S.questsEnabled   !== false },
+    boss:     { icon:navIcon("boss"),     label:"RIVAL",    on: S.bossEnabled     !== false },
+    training: { icon:navIcon("training"), label:"TRAINING", on: S.trainingEnabled !== false },
+    plan:     { icon:navIcon("plan"),     label:"PLAN",     on: S.planEnabled     !== false },
+    board:    { icon:navIcon("board"),    label:"BOARD",    on: !!S.kanbanEnabled },
+    shop:     { icon:navIcon("shop"),     label:"SUMMONS",  on: !!S.shopEnabled },
+    stats:    { icon:navIcon("stats"),    label:"ASCENT",   on: S.statsEnabled    !== false },
   };
   const navOrder = (()=>{
     const saved = Array.isArray(S.navOrder) ? S.navOrder.filter(v=>NAV_ORDERABLE.includes(v)) : [];
@@ -4802,9 +4859,9 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate(8); } catch {}
   };
   const navItems = [
-    { v:"dashboard", icon:"⛰", label:"HOME" },
+    { v:"dashboard", icon:navIcon("dashboard"), label:"HOME" },
     ...navOrder.filter(v=>NAV_DEFS[v] && NAV_DEFS[v].on).map(v=>({ v, ...NAV_DEFS[v] })),
-    { v:"settings", icon:"⚙", label:"MORE" },
+    { v:"settings", icon:navIcon("settings"), label:"MORE" },
   ];
   const isActive=(v)=>view===v||(view==="addTask"&&v==="tasks")||(view==="editTask"&&v==="tasks")||(view==="forecast"&&v==="tasks")||(view==="record"&&v==="stats")||(view==="design"&&v==="settings");
 
@@ -4865,7 +4922,7 @@ export default function App() {
               })}
             </div>
           </div>
-          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{cat?.icon}</div>
+          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.8)",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{iconFor(task,cat)}</div>
           {showReorder && (
             <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0}}>
               <button onClick={e=>{e.stopPropagation(); (siblingIds?moveTaskWithin(task.id,-1,siblingIds):moveTask(task.id,-1));}}
@@ -6122,7 +6179,7 @@ export default function App() {
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:38,height:38,borderRadius:12,flexShrink:0,background:`${color}33`,
                     display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>
-                    {cat?.icon}
+                    {iconFor(task,cat)}
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
@@ -6973,6 +7030,179 @@ export default function App() {
               </div>
             </div>
           </div>
+          );
+        })()}
+
+        {/* ══ TRAINING GROUNDS — exactly what today is worth, and what it costs ══ */}
+        {view==="training" && (()=>{
+          const L = dayLedger(data, today);
+          // Work in the same units as the XP number on the Home bar, so these
+          // figures reconcile against the one he actually watches.
+          const SCALE = 1000 / (data.categories[0]?.maxValue || XP_MAX);
+          const px = (raw) => raw * SCALE;
+          const fmt = (v) => (Math.round(v*10)/10).toFixed(1);
+          const nowXp   = px(data.categories[0]?.value || 0);
+          const stopXp  = Math.max(0, nowXp - px(L.atRisk));
+          const finishXp = Math.min(1000, nowXp + px(L.remaining));
+          const swing   = px(L.remaining) + px(L.atRisk);
+          const allDone = L.rows.length > 0 && L.rows.every(r=>r.done || r.frozen);
+          const Stat = ({label, value, color, note}) => (
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:9,fontWeight:900,color:FAINT,letterSpacing:0.8}}>{label}</div>
+              <div style={{fontSize:21,fontWeight:900,color,marginTop:2,lineHeight:1.1}}>{value}</div>
+              {note && <div style={{fontSize:9,color:DIM,fontWeight:700,marginTop:2}}>{note}</div>}
+            </div>
+          );
+          return (
+            <div style={{padding:"14px 16px"}}>
+              <div style={{...C.sectionTitle,marginBottom:12}}>Training Grounds</div>
+
+              {/* The champion, and where he stands right now */}
+              <div style={{...C.glass,display:"flex",alignItems:"center",gap:14}}>
+                <div style={{width:92,height:96,overflow:"hidden",position:"relative",flexShrink:0}}>
+                  <div style={{position:"absolute",left:-14,top:-6}}>
+                    <PixelCharacter level={wornLvl} character={cz} scale={5.2} idle
+                      cosmetics={cosmetics} pet={pet}/>
+                  </div>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:10,fontWeight:900,color:T.accent,letterSpacing:1}}>
+                    LV {level.lvl} · {getTitle(data, level.lvl)}
+                  </div>
+                  <div style={{fontSize:30,fontWeight:900,color:"#fff",lineHeight:1.1,marginTop:2}}>
+                    {fmt(nowXp)} <span style={{fontSize:13,color:DIM}}>XP</span>
+                  </div>
+                  <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:3,lineHeight:1.45}}>
+                    {L.rows.length === 0
+                      ? "Nothing scheduled today — nothing can be lost."
+                      : allDone
+                        ? "Everything today is clear. Midnight costs you nothing."
+                        : `${L.rows.filter(r=>!r.done && !r.frozen).length} still open · midnight is in ${Math.max(0, 24 - new Date().getHours())}h`}
+                  </div>
+                </div>
+              </div>
+
+              {/* The two futures, side by side */}
+              <div style={{...C.glass}}>
+                <div style={C.label}>WHERE YOU LAND AT MIDNIGHT</div>
+                <div style={{display:"flex",gap:12,marginTop:2}}>
+                  <Stat label="IF YOU STOP NOW" value={fmt(stopXp)}
+                    color={L.atRisk > 0 ? BAD : "#fff"}
+                    note={L.atRisk > 0 ? `−${fmt(px(L.atRisk))} XP` : "nothing at risk"}/>
+                  <div style={{width:1,background:LINE}}/>
+                  <Stat label="IF YOU FINISH" value={fmt(finishXp)}
+                    color={L.remaining > 0 ? GOOD : "#fff"}
+                    note={L.remaining > 0 ? `+${fmt(px(L.remaining))} XP` : "already all earned"}/>
+                </div>
+                {swing > 0.05 && (
+                  <>
+                    <div style={{height:12,borderRadius:7,overflow:"hidden",marginTop:12,
+                      background:"rgba(0,0,0,0.35)",display:"flex"}}>
+                      <div style={{width:`${(px(L.atRisk)/swing)*100}%`,background:BAD}}/>
+                      <div style={{width:`${(px(L.remaining)/swing)*100}%`,background:GOOD}}/>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",marginTop:5}}>
+                      <span style={{fontSize:9.5,fontWeight:900,color:BAD}}>−{fmt(px(L.atRisk))} at risk</span>
+                      <span style={{fontSize:9.5,fontWeight:900,color:GOOD}}>+{fmt(px(L.remaining))} still to earn</span>
+                    </div>
+                  </>
+                )}
+                <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:10,lineHeight:1.5}}>
+                  A swing of <span style={{color:"#fff"}}>{fmt(swing)} XP</span> rests on the rest of today.
+                </div>
+              </div>
+
+              {/* The three running totals */}
+              <div style={{...C.glass,display:"flex",gap:10}}>
+                <Stat label="BANKED TODAY" value={`+${fmt(px(L.banked))}`} color={GOOD}/>
+                <Stat label="STILL TO EARN" value={`+${fmt(px(L.remaining))}`} color="#fff"/>
+                <Stat label="AT RISK TONIGHT" value={`−${fmt(px(L.atRisk))}`} color={BAD}
+                  note={L.atRiskCursed > 0
+                    ? `${fmt(px(L.atRiskCursed))} of it from ${L.cursedCount} curse mark${L.cursedCount>1?"s":""}`
+                    : null}/>
+              </div>
+
+              {/* Mission by mission, worst bleed first */}
+              <div style={{...C.sectionTitle,margin:"18px 2px 10px"}}>Mission by mission</div>
+              {L.rows.length === 0 && (
+                <div style={{...C.glass,fontSize:12,color:DIM,fontWeight:700,textAlign:"center",padding:"20px 16px"}}>
+                  Nothing is scheduled for today.
+                </div>
+              )}
+              {L.rows.map(r=>{
+                const t = data.tasks.find(x=>x.id===r.id);
+                const cat = data.categories.find(c=>c.id===t.catId);
+                const color = t.color || cat?.color || T.accent;
+                const pct = Math.min(100, (r.reps / r.target) * 100);
+                return (
+                  <div key={r.id}
+                    onClick={()=>{ setDetailTaskId(r.id);
+                      setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                    style={{...C.glass,padding:"11px 13px",marginBottom:9,cursor:"pointer",
+                      border:`1px solid ${r.risk > 0 ? BAD+"44" : r.done ? GOOD+"33" : LINE}`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:32,height:32,borderRadius:11,flexShrink:0,background:`${color}33`,
+                        display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>
+                        {iconFor(t,cat)}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:800,color:"#fff",display:"flex",
+                          alignItems:"center",gap:6,whiteSpace:"nowrap",overflow:"hidden"}}>
+                          <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</span>
+                          {r.cursed && (
+                            <svg width="12" height="12" viewBox="0 0 13 13" style={{flexShrink:0}}>
+                              {curseMarkEls(6.5,6.5,6,1)}</svg>
+                          )}
+                          {r.frozen && <span style={{fontSize:11,flexShrink:0}}>❄</span>}
+                        </div>
+                        <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:2}}>
+                          {r.reps}/{r.target} · {diffShort(r.importance)} RANK
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        {r.done ? (
+                          <div style={{fontSize:12,fontWeight:900,color:GOOD}}>+{fmt(px(r.got))}</div>
+                        ) : r.frozen ? (
+                          <div style={{fontSize:10,fontWeight:900,color:"#7fd4ff"}}>FROZEN</div>
+                        ) : (
+                          <div style={{fontSize:13,fontWeight:900,color:BAD}}>−{fmt(px(r.risk))}</div>
+                        )}
+                        <div style={{fontSize:9,color:FAINT,fontWeight:800,marginTop:1}}>
+                          {r.done ? "banked" : r.frozen ? "costs nothing" : `+${fmt(px(r.left))} if you finish`}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{height:5,borderRadius:3,background:"rgba(0,0,0,0.3)",marginTop:9,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${pct}%`,borderRadius:3,
+                        background: r.done ? GOOD : color, transition:"width .4s ease"}}/>
+                    </div>
+                    {!r.done && !r.frozen && r.reps > 0 && (
+                      <div style={{fontSize:9,color:"#ffc46b",fontWeight:800,marginTop:6,lineHeight:1.45}}>
+                        Part-done still loses the whole {fmt(px(r.risk))} — only the full {r.target} clears it.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* The rule that catches people out */}
+              <div style={{...C.glass,marginTop:4}}>
+                <div style={C.label}>HOW THE NIGHT CHARGES YOU</div>
+                <div style={{fontSize:11,color:DIM,fontWeight:700,lineHeight:1.6}}>
+                  XP you earn is pro-rata — two of three reps pays two thirds. The
+                  penalty is not: anything short of the full target loses the whole
+                  amount. A curse mark doubles only that penalty, never the reward.
+                  <br/><br/>
+                  Nothing is final. Log a missed day later from its mission calendar
+                  and the full penalty is handed straight back, curse mark included.
+                  {weeklyHabits.length > 0 && (
+                    <><br/><br/>Your {weeklyHabits.length} weekly habit{weeklyHabits.length>1?"s":""} can
+                    only ever add XP — they are never charged at midnight.</>
+                  )}
+                </div>
+              </div>
+              <div style={{height:8}}/>
+            </div>
           );
         })()}
 
@@ -7830,7 +8060,7 @@ export default function App() {
                         display:"flex",alignItems:"center",gap:8,background:`linear-gradient(135deg,${color}cc,${shade(color,-45)})`,
                         border:"none",borderRadius:14,padding:"10px 13px",cursor:"pointer",fontFamily:FONT,
                         boxShadow:`0 4px 14px ${color}44`}}>
-                        <span style={{fontSize:14}}>{cat?.icon}</span>
+                        <span style={{fontSize:14}}>{iconFor(task,cat)}</span>
                         <span style={{fontSize:12.5,fontWeight:800,color:"#fff"}}>{task.name}</span>
                         <span style={{fontSize:14,color:"rgba(255,255,255,0.85)",fontWeight:900}}>＋</span>
                       </button>
@@ -7928,7 +8158,7 @@ export default function App() {
                       <div style={{fontSize:14.5,fontWeight:800,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
                         textDecoration:done?"line-through":"none"}}>{task.name}</div>
                       <div style={{fontSize:10,color:"rgba(255,255,255,0.85)",fontWeight:800,marginTop:3}}>
-                        {cat?.icon} {cat?.name} {target>1?`· ${reps}/${target}`:""} {!canLog?"· upcoming":""}
+                        {iconFor(task,cat)} {cat?.name} {target>1?`· ${reps}/${target}`:""} {!canLog?"· upcoming":""}
                       </div>
                     </div>
                   </div>
@@ -7947,7 +8177,7 @@ export default function App() {
                     return (
                       <div key={task.id} style={{...C.glass,padding:"10px 13px",marginBottom:8,display:"flex",alignItems:"center",gap:11}}>
                         <div style={{width:34,height:34,borderRadius:11,flexShrink:0,background:`${color}33`,
-                          display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>{cat?.icon}</div>
+                          display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>{iconFor(task,cat)}</div>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:13.5,fontWeight:800,color:"#fff"}}>{task.name}</div>
                           <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:1}}>{done}/{wt} that week · weekly</div>
@@ -8016,6 +8246,13 @@ export default function App() {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("training")} Training Grounds</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Exactly what today's XP is worth, and what it costs</div>
+                </div>
+                <Switch on={S.trainingEnabled!==false} onToggle={()=>setSetting("trainingEnabled",!(S.trainingEnabled!==false))}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
                   <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>🪵 Ascension Path</div>
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Your attributes and the climb to Sage</div>
                 </div>
@@ -8052,6 +8289,41 @@ export default function App() {
             </div>
 
             {/* BOTTOM BAR ORDER */}
+            <div style={C.glass}>
+              <div style={C.label}>TAB ICONS</div>
+              <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>
+                Tap a box and use your keyboard&rsquo;s emoji key. Leave it empty to go back to the default.
+              </div>
+              {NAV_ALL.map(v=>{
+                const def = NAV_ICON_DEFAULTS[v];
+                const label = v==="dashboard" ? "HOME" : v==="settings" ? "MORE"
+                            : (NAV_DEFS[v]||{}).label || v.toUpperCase();
+                const custom = (S.navIcons||{})[v];
+                return (
+                  <div key={v} style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
+                    <input value={custom || ""} placeholder={def}
+                      onChange={e=>{
+                        const val = e.target.value.slice(0,4);
+                        const next = {...(S.navIcons||{})};
+                        if (val.trim()) next[v] = val; else delete next[v];
+                        setSetting("navIcons", next);
+                      }}
+                      style={{...C.input,width:62,padding:"9px 0",textAlign:"center",fontSize:19,flexShrink:0}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>{label}</div>
+                      <div style={{fontSize:10,color:FAINT,fontWeight:700,marginTop:1}}>
+                        {custom ? `default ${def}` : "using the default"}
+                      </div>
+                    </div>
+                    {custom && (
+                      <button onClick={()=>{ const next={...(S.navIcons||{})}; delete next[v]; setSetting("navIcons", next); }}
+                        style={{...C.btnSm,padding:"7px 11px",fontSize:10}}>RESET</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             <div style={C.glass}>
               <div style={C.label}>BOTTOM BAR ORDER</div>
               <div style={{fontSize:10.5,color:FAINT,fontWeight:700,marginTop:-6,marginBottom:12,lineHeight:1.4}}>
