@@ -43,11 +43,14 @@ function magatamaEls(key, cx, cy, size, deg, fill, op) {
 // keeps its own geometry: three big commas filling a ring and six small ones
 // strung along a necklace want different proportions, and sharing one shape
 // between them made both worse.
-function curseMarkEls(cx, cy, r, op, fill) {
+function curseMarkEls(cx, cy, r, op, fill, n) {
   const F = fill || CURSE_COLOR;
+  // `n` fills only the first n of the three slots, which is how a
+  // Sharingan matures — the slots never move as tomoe are added.
+  const N = (n == null) ? 3 : n;
   const els = [];
   const P = (ang, rad) => [cx + Math.cos(ang)*rad, cy + Math.sin(ang)*rad];
-  for (let i=0;i<3;i++){
+  for (let i=0;i<N;i++){
     const a  = (i*120 - 90) * Math.PI/180;
     const hr = r*0.21;
     const [hx,hy]   = P(a, r*0.58);
@@ -2860,14 +2863,15 @@ function ShopPreview({ item }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // DAILY BADGES — four ranks earned by how much of the day's mission load you clear
 // ══════════════════════════════════════════════════════════════════════════════
-// The eye awakens as the day is cleared: a drawn kunai, then the first tomoe,
-// then the full pattern, then the Sharingan itself. One eye in the set, at the
-// top, so arriving there still means something.
+// One eye, maturing across the day. A Sharingan awakens blank and gains a
+// tomoe at a time until all three are in — so the badges are four stages of
+// the same eye, not four different emblems. Three tomoe is the finished
+// Sharingan; nothing here is a Mangekyo.
 const BADGE_TIERS = [
-  { t:1, need:25,  name:"KUNAI DRAWN", lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
-  { t:2, need:50,  name:"FIRST TOMOE", lore:"Half the day held",     base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
-  { t:3, need:75,  name:"FULL TOMOE",  lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
-  { t:4, need:100, name:"SHARINGAN",   lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
+  { t:1, need:25,  tomoe:0, name:"EYE AWAKENED", lore:"A quarter cleared",     base:"#b0672c", light:"#e69a52", dark:"#5f330f" },
+  { t:2, need:50,  tomoe:1, name:"ONE TOMOE",    lore:"Half the day held",     base:"#8fa3b8", light:"#dde7f1", dark:"#42505f" },
+  { t:3, need:75,  tomoe:2, name:"TWO TOMOE",    lore:"Three quarters down",   base:"#e0a52a", light:"#ffd873", dark:"#7d5206" },
+  { t:4, need:100, tomoe:3, name:"SHARINGAN",    lore:"Nothing left standing", base:"#ff8c1a", light:"#ffeab0", dark:"#9c4007" },
 ];
 function badgeTierFor(pct) {
   if (pct == null) return 0;
@@ -2929,52 +2933,20 @@ function DayBadge({ tier, size=32, earned=true, pulse=false }) {
       {tier>=2 && <g>{rivet(20,6.6)}{rivet(9.4,10.6)}{rivet(30.6,10.6)}</g>}
       {tier>=3 && <g>{rivet(7.6,21)}{rivet(32.4,21)}</g>}
 
-      {/* ── 25% · a drawn kunai ── */}
-      {tier===1 && (
-        <g stroke={b.dark} strokeWidth="0.9" strokeLinejoin="round">
-          <path d="M20 8.6 L23.4 15.4 L20 18.1 L16.6 15.4 Z" fill="#f4f9ff"/>
-          <rect x="18.5" y="17.8" width="3" height="9.2" rx="0.7" fill={b.light}/>
-          <circle cx="20" cy="30" r="3.1" fill="none" stroke={b.dark} strokeWidth="1.9"/>
-          <circle cx="20" cy="30" r="3.1" fill="none" stroke={b.light} strokeWidth="0.9"/>
-        </g>
-      )}
-
-      {/* ── 50% · the first tomoe ── drawn twice, the larger one behind, which
-           is what gives it an edge dark enough to read at 26px. */}
-      {tier===2 && (
-        <g>
-          <circle cx="20" cy="21.4" r="8.6" fill={b.dark} opacity="0.45"/>
-          {magatamaEls("t2e", 20.6, 21.0, 10.2, -35, b.dark, 0.9)}
-          {magatamaEls("t2",  20.6, 21.0, 9.2, -35, "#ffffff", 1)}
-        </g>
-      )}
-
-      {/* ── 75% · all three tomoe, the pattern complete but no eye yet ── */}
-      {tier===3 && (
-        <g>
-          <circle cx="20" cy="21.4" r="8.6" fill={b.dark} opacity="0.42"/>
-          {curseMarkEls(20, 21.4, 8.9, 1, b.dark)}
-          {curseMarkEls(20, 21.4, 8.1, 1, "#fff3cf")}
-          <circle cx="20" cy="21.4" r="1.6" fill="#fff3cf"/>
-        </g>
-      )}
-
-      {/* ── 100% · the Sharingan ── the plain three-tomoe eye, not Mangekyo.
-           White sclera inside a dark rim, so the eye holds its shape whatever
-           the plate behind it is doing. */}
-      {tier===4 && (
-        <g>
-          <ellipse cx="20" cy="21.5" rx="9.9" ry="9.0" fill="#fff6ee"
-            stroke={b.dark} strokeWidth="1.5"/>
-          <circle cx="20" cy="21.5" r="6.2" fill="#d8121f"/>
-          <circle cx="20" cy="21.5" r="6.2" fill={`url(#${id}c)`} opacity="0.16"/>
-          <circle cx="20" cy="21.5" r="6.2" fill="none" stroke="#590207" strokeWidth="1"/>
-          {curseMarkEls(20, 21.5, 5.5, 1, "#190205")}
-          <circle cx="20" cy="21.5" r="2.05" fill="#190205"/>
-          <ellipse cx="17.2" cy="18.0" rx="1.8" ry="1.15" fill="#ffffff" opacity="0.45"
-            transform="rotate(-25 17.2 18.0)"/>
-        </g>
-      )}
+      {/* ── THE EYE ── the same eye at every rank; only the tomoe count
+           changes. White sclera inside a dark rim, so it holds its shape
+           against whatever the plate behind it is doing, down to 26px. */}
+      <g>
+        <ellipse cx="20" cy="21.5" rx="9.9" ry="9.0" fill="#fff6ee"
+          stroke={b.dark} strokeWidth="1.5"/>
+        <circle cx="20" cy="21.5" r="6.2" fill="#d8121f"/>
+        <circle cx="20" cy="21.5" r="6.2" fill={`url(#${id}c)`} opacity="0.16"/>
+        <circle cx="20" cy="21.5" r="6.2" fill="none" stroke="#590207" strokeWidth="1"/>
+        {curseMarkEls(20, 21.5, 5.8, 1, "#190205", b.tomoe)}
+        <circle cx="20" cy="21.5" r="1.85" fill="#190205"/>
+        <ellipse cx="17.2" cy="18.0" rx="1.8" ry="1.15" fill="#ffffff" opacity="0.45"
+          transform="rotate(-25 17.2 18.0)"/>
+      </g>
 
     </svg>
   );
