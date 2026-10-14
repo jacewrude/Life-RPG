@@ -855,6 +855,13 @@ function migrate(d) {
     lastDecayDate: d.lastDecayDate || dateKey(),
     freezeAll: (d.freezeAll && typeof d.freezeAll === "object"
                 && /^\d{4}-\d{2}-\d{2}$/.test(d.freezeAll.from || "")) ? { from: d.freezeAll.from } : null,
+    // The running order is for one day only. Anything stamped with an earlier
+    // date is dropped here, on load, so it can never bleed into a new day.
+    dayOrder: (d.dayOrder && typeof d.dayOrder === "object"
+               && d.dayOrder.date === dateKey() && Array.isArray(d.dayOrder.ids))
+              ? { date: d.dayOrder.date,
+                  ids: d.dayOrder.ids.filter(x => typeof x === "string") }
+              : null,
   };
   return stampGlobalFreeze(out);
 }
@@ -3115,6 +3122,49 @@ const STORY = [
   { t:"From Higher Up", b:"He is training again. Of course he is.\n\nThe difference is that now you know exactly what it cost him to get where he was, because you paid the same price to get there.\n\nHe is further ahead than he was when you started. He is also, for the first time, looking over his shoulder." },
 ];
 
+// ── TODAY'S RUNNING ORDER ───────────────────────────────────────────────────
+// A number you pin to a mission for one day. It lives as a single list against
+// a single date, not as a field on each mission — which is what gives both of
+// the behaviours asked for without any extra bookkeeping: clearing #1 slides
+// #2 up into its place, and a new date arrives with the list already empty.
+// (`task.order` is something else entirely: the permanent manual sort on the
+// Missions page. These two never touch.)
+const ORDER_MAX = 20;
+function dayOrderIds(d, dk) {
+  const o = d && d.dayOrder;
+  if (!o || o.date !== dk || !Array.isArray(o.ids)) return [];
+  return o.ids.filter(id => (d.tasks||[]).some(t => t.id === id));
+}
+// Ranks are dense: 1..N with no gaps, counting only what is still open. A
+// cleared mission keeps its place in the list and reports 0, so un-clearing it
+// puts every number back exactly where it was.
+function dayOrderRanks(d, dk) {
+  const map = {};
+  let n = 0;
+  dayOrderIds(d, dk).forEach(id => {
+    const t = (d.tasks||[]).find(x => x.id === id);
+    if (!t) return;
+    map[id] = isCompletedOn(t, dk) ? 0 : ++n;
+  });
+  return map;
+}
+// Insert so the mission lands on the rank actually tapped. The picker counts
+// only open missions, so walk past the cleared ones; a rank past the end just
+// means last, which is what makes a 20-button picker safe with three missions.
+function dayOrderInsert(d, dk, tid, rank) {
+  const ids = dayOrderIds(d, dk).filter(id => id !== tid);
+  if (rank <= 0) return ids;
+  let seen = 0, pos = ids.length;
+  for (let i = 0; i < ids.length; i++) {
+    const t = (d.tasks||[]).find(x => x.id === ids[i]);
+    if (t && isCompletedOn(t, dk)) continue;
+    seen++;
+    if (seen === rank) { pos = i; break; }
+  }
+  ids.splice(pos, 0, tid);
+  return ids;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // DOJUTSU — eyes earned by holding a streak on one specific mission
 // ══════════════════════════════════════════════════════════════════════════════
@@ -4678,6 +4728,29 @@ export default function App() {
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t) && isLiveOn(t, today));
   const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
   const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
+
+  // ── TODAY'S ORDER ─────────────────────────────────────────────────────────
+  // Keyed off `today`, which is currentDay and ticks over at midnight on its
+  // own — so the numbers clear themselves even if the app is left open.
+  const dayRanks   = dayOrderRanks(data, today);
+  const orderedNow = dayOrderIds(data, today)
+    .map(id => data.tasks.find(t => t.id === id))
+    .filter(t => t && !isCompletedOn(t, today));
+  const setOrderSlot = (tid, rank) => {
+    setData(cur => {
+      const dk = dateKey();
+      const ids = dayOrderInsert(cur, dk, tid, rank);
+      const nx = { ...cur, dayOrder: ids.length ? { date: dk, ids } : null };
+      persistRaw(nx); return nx;
+    });
+    toast$(rank > 0 ? `\u2460 ORDERED \u00b7 #${rank} TODAY` : "TAKEN OUT OF TODAY'S ORDER",
+           rank > 0 ? PRI : "#ffc46b");
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
+  const clearDayOrder = () => {
+    setData(cur => { const nx = { ...cur, dayOrder: null }; persistRaw(nx); return nx; });
+    toast$("ORDER CLEARED", "#ffc46b");
+  };
   // ── THE RIVAL ───────────────────────────────────────────────────────────────
   const R          = data.rival || { power:0, rate:0, tick:"", arc:1, wins:0, born:"" };
   const playerPow  = playerPowerOf(data);
@@ -5131,6 +5204,11 @@ export default function App() {
     return (
       <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",
         justifyContent: align==="center" ? "center" : align==="start" ? "flex-start" : "flex-end"}}>
+        {dayRanks[task.id] > 0 && (
+          <span style={{...chip(PRI), background:PRI, color:"#2a1a00", fontSize:9.5,
+            fontWeight:900, letterSpacing:0.2, fontFamily:FONT,
+            boxShadow:`0 0 9px ${PRI}66`}}>#{dayRanks[task.id]}</span>
+        )}
         <span style={{...chip(rank+"66"), color:rank, fontSize:9, fontWeight:900,
           letterSpacing:0.3, fontFamily:FONT}}>{diffShort(task.importance)}</span>
         {nx && (
@@ -5741,6 +5819,54 @@ export default function App() {
                 onToggleDay={(dk)=>toggleDay(detailTask.id, dk)}/>
             </div>
             {(()=>{
+              const oRank  = dayRanks[detailTask.id] || 0;
+              const listed = dayOrderIds(data, today).indexOf(detailTask.id) >= 0;
+              // One past the end of the open missions is the furthest a number
+              // can actually mean anything. Beyond that it would just land last
+              // anyway, so those buttons are shown dim and inert rather than
+              // quietly doing something else.
+              const reach = Math.min(ORDER_MAX, orderedNow.length + (oRank > 0 ? 0 : 1));
+              return (
+                <div style={{marginBottom:10,
+                  background: oRank>0 ? `${PRI}1f` : "rgba(0,0,0,0.25)",
+                  border:`1.5px solid ${oRank>0 ? PRI+"88" : LINE}`,borderRadius:15,padding:"12px 14px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:17,color:oRank>0?PRI:"#fff",fontWeight:900,
+                      width:17,textAlign:"center",lineHeight:1}}>{oRank>0?oRank:"\u2460"}</span>
+                    <span style={{flex:1,minWidth:0}}>
+                      <span style={{display:"block",fontSize:12.5,fontWeight:900,color:oRank>0?PRI:"#fff"}}>
+                        {oRank>0 ? `#${oRank} IN TODAY'S ORDER`
+                          : listed ? "CLEARED \u00b7 SLOT HELD FOR TODAY" : "ORDER THIS MISSION"}
+                      </span>
+                      <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,marginTop:1,lineHeight:1.4}}>
+                        Today only. Clear one and the rest move up a place. Gone by morning.
+                      </span>
+                    </span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(10,1fr)",gap:4,marginTop:10}}>
+                    {Array.from({length:ORDER_MAX},(_,i)=>i+1).map(n=>{
+                      const live = n <= reach, on = oRank === n;
+                      return (
+                        <button key={n} disabled={!live}
+                          onClick={()=>setOrderSlot(detailTask.id, n)}
+                          style={{height:28,borderRadius:8,padding:0,fontFamily:FONT,
+                            fontWeight:900,fontSize:10.5,cursor:live?"pointer":"default",
+                            border: on ? `2px solid ${PRI}` : `1px solid ${LINE}`,
+                            background: on ? `${PRI}33` : "rgba(0,0,0,0.3)",
+                            color: on ? PRI : live ? "#fff" : "rgba(255,255,255,0.16)"}}>{n}</button>
+                      );
+                    })}
+                  </div>
+                  {listed && (
+                    <button onClick={()=>setOrderSlot(detailTask.id, 0)}
+                      style={{...C.btnSm,width:"100%",marginTop:8,padding:"9px",color:"#ffc46b"}}>
+                      ✕ TAKE OUT OF TODAY&rsquo;S ORDER
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {(()=>{
               const held = freezeDaysFor(detailTask);
               return (
                 <div style={{marginBottom:10,background:held?"rgba(127,212,255,0.12)":"rgba(0,0,0,0.25)",
@@ -6019,6 +6145,37 @@ export default function App() {
               )}
               {todayTasks.length===0 && (
                 <div style={{...C.glass,textAlign:"center",color:DIM,fontSize:13,fontWeight:600}}>No missions scheduled today.</div>
+              )}
+              {/* THE RUNNING ORDER — the point of the numbers is seeing them in
+                  sequence, which a numbered badge scattered down a list does not
+                  give you. Clearing one drops it off here and everything below
+                  moves up. */}
+              {orderedNow.length>0 && (
+                <div style={{...C.glass,padding:"11px 13px",marginBottom:11,border:`1px solid ${PRI}44`}}>
+                  <div style={{display:"flex",alignItems:"center",marginBottom:7}}>
+                    <div style={{...C.label,flex:1,color:PRI,marginBottom:0}}>TODAY&rsquo;S ORDER</div>
+                    <button onClick={clearDayOrder}
+                      style={{background:"none",border:"none",color:FAINT,fontSize:8.5,fontWeight:900,
+                        cursor:"pointer",padding:0,fontFamily:FONT,letterSpacing:0.8}}>CLEAR ALL</button>
+                  </div>
+                  {orderedNow.map((t,i)=>{
+                    const oc = data.categories.find(c=>c.id===t.catId);
+                    return (
+                      <div key={t.id} data-ord={i+1} onClick={()=>{ setDetailTaskId(t.id);
+                          setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                        style={{display:"flex",alignItems:"center",gap:9,padding:"4px 0",cursor:"pointer"}}>
+                        <span style={{width:20,height:20,borderRadius:BLOCK?0:7,flexShrink:0,
+                          background: i===0 ? PRI : `${PRI}2e`, color: i===0 ? "#2a1a00" : PRI,
+                          fontSize:10,fontWeight:900,fontFamily:FONT,
+                          display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</span>
+                        <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:800,
+                          color: i===0 ? "#fff" : DIM,whiteSpace:"nowrap",overflow:"hidden",
+                          textOverflow:"ellipsis"}}>{t.name}</span>
+                        <span style={{fontSize:12,flexShrink:0}}>{iconFor(t,oc)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
               {S.questLayout==="circles" ? (()=>{
                 const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
