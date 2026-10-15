@@ -755,7 +755,11 @@ function migrate(d) {
     if (!goals.length && t.goal && t.goal.eye) goals = [t.goal];
     goals = goals.filter(g=>g && g.eye)
       .map(g=>({ eye:g.eye, days: Math.max(1, Math.min(30, parseInt(g.days)||7)),
-                 side: goalSide(g) }))
+                 side: goalSide(g),
+                 // Upkeep is opt-in and stays off unless it was switched on, so
+                 // no eye already earned is ever taken away by an update.
+                 lossOn: !!g.lossOn,
+                 lossDays: Math.max(1, Math.min(GOAL_LOSS_MAX, parseInt(g.lossDays)||1)) }))
       .slice(0, MAX_GOALS);
     const { goal, ...rest } = t;
     return { ...rest, goals };
@@ -844,6 +848,27 @@ function migrate(d) {
         });
         return out;
       })(),
+      // Ten standing places beside the character. A save from before this had
+      // one equipped beast and no slots — it keeps its beast, on the right.
+      petSlots: (()=>{
+        const src = ((d.wallet||{}).petSlots) || {};
+        const out = {};
+        PET_SLOTS.forEach(k=>{ out[k] = typeof src[k] === "string" ? src[k] : null; });
+        if (!PET_SLOTS.some(k=>out[k]) && (d.wallet||{}).pet) out.R1 = d.wallet.pet;
+        return out;
+      })(),
+      petKeep: (()=>{
+        const src = ((d.wallet||{}).petKeep) || {};
+        const out = {};
+        PETS.forEach(p=>{
+          const k = src[p.id];
+          if (k && typeof k === "object") {
+            out[p.id] = { on: !!k.on,
+              need: Math.max(1, Math.min(PET_KEEP_MAX, parseInt(k.need) || 1)) };
+          }
+        });
+        return out;
+      })(),
       equippedCosmetics: (()=>{
         const ec = { ...((d.wallet||{}).equippedCosmetics||{}) };
         if (ec.eyeL === undefined && ec.eyeR === undefined && ec.eye) { ec.eyeL = ec.eye; ec.eyeR = ec.eye; }
@@ -863,7 +888,7 @@ function migrate(d) {
                   ids: d.dayOrder.ids.filter(x => typeof x === "string") }
               : null,
   };
-  return stampGlobalFreeze(out);
+  return runBeastUpkeep(stampGlobalFreeze(out));
 }
 
 // A global freeze is open-ended, so it can't be written into the per-mission
@@ -1767,6 +1792,19 @@ function drawPet(els, art, color, cx, cy, s, nk) {
   }
 }
 
+
+// A beast on its own, for the slots beside the character and for the menu.
+// drawPet works on the character's 24-unit grid, so an 8-unit box around it is
+// enough to hold the longest tails.
+function BeastChip({ art, color, size = 28 }) {
+  const els = [];
+  let k = 0;
+  drawPet(els, art, color, 4, 4.3, size / 8, () => k++);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+      style={{display:"block", overflow:"visible"}}>{els}</svg>
+  );
+}
 
 function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=false, cosmetics=null, pet=null }) {
   const cz = character || DEFAULT_CHARACTER;
@@ -3122,6 +3160,110 @@ const STORY = [
   { t:"From Higher Up", b:"He is training again. Of course he is.\n\nThe difference is that now you know exactly what it cost him to get where he was, because you paid the same price to get there.\n\nHe is further ahead than he was when you started. He is also, for the first time, looking over his shoulder." },
 ];
 
+// ── MISSED DAYS IN A ROW ────────────────────────────────────────────────────
+// The mirror of getStreak: scheduled days missed, counting back from
+// YESTERDAY. Today is left out because the day is not over — an unfinished
+// mission is not yet a missed one. A frozen day neither counts nor breaks the
+// run, which is the same shield it gives the streak and the nightly decay.
+function missedStreak(task, todayStr) {
+  if (!task) return 0;
+  const cur = new Date((todayStr || dateKey()) + "T12:00:00");
+  cur.setDate(cur.getDate() - 1);
+  let n = 0;
+  for (let i = 0; i < 400; i++) {
+    const dk = dateKey(cur);
+    if ((task.createdAt || "0000-00-00") > dk) break;
+    if (isScheduledOn(task, dk)) {
+      if (isCompletedOn(task, dk)) break;
+      if (!(task.frozen||{})[dk]) n++;
+    }
+    cur.setDate(cur.getDate() - 1);
+  }
+  return n;
+}
+// A goal can be set to hand its dojutsu back. Off by default, so an eye you
+// have already earned is never taken away by an update.
+const GOAL_LOSS_MAX = 14;
+const goalLossOn   = (g) => !!(g && g.lossOn);
+const goalLossDays = (g) => Math.max(1, Math.min(GOAL_LOSS_MAX, parseInt(g && g.lossDays) || 1));
+
+// ── PERFECT DAYS BY MONTH ───────────────────────────────────────────────────
+// A Sharingan is the 100% badge, so counting them is counting the days every
+// scheduled mission was cleared. Module scope because the monthly reckoning
+// runs inside migrate, long before the component exists.
+const monthKey = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`;
+function dayPctOf(d, dk) {
+  let total = 0, done = 0;
+  (d.tasks||[]).forEach(t=>{
+    if (!t.catId || !(d.categories||[]).find(c=>c.id===t.catId)) return;
+    if (isWeekly(t)) return;
+    if ((t.createdAt || "0000-00-00") > dk) return;
+    if (!isScheduledOn(t, dk)) return;
+    total++;
+    if (isCompletedOn(t, dk)) done++;
+  });
+  return total ? Math.round((done/total)*100) : null;
+}
+function sharinganInMonth(d, year, month0) {
+  const last = new Date(year, month0 + 1, 0).getDate();
+  let n = 0;
+  for (let day = 1; day <= last; day++) {
+    if (dayPctOf(d, dateKey(new Date(year, month0, day))) === 100) n++;
+  }
+  return n;
+}
+
+// ── TAILED BEASTS ───────────────────────────────────────────────────────────
+// Ten places to stand: five down the left of the scene, five down the right.
+// They sit OUTSIDE the character sprite so nothing about his position changes.
+const PET_SLOTS = ["L1","L2","L3","L4","L5","R1","R2","R3","R4","R5"];
+const PET_KEEP_MAX = 31;
+const petKeepOf = (wallet, id) => ((wallet||{}).petKeep||{})[id] || null;
+const petSlotOf = (wallet, id) => {
+  const sl = (wallet||{}).petSlots || {};
+  return PET_SLOTS.find(k => sl[k] === id) || null;
+};
+// The first of the month is the reckoning: every beast set to need N perfect
+// days is measured against the month just gone, and leaves if it came up
+// short. Stamped by month so it fires once even if the app sat closed for
+// weeks — and when several months were missed they are judged in order, oldest
+// first, so a beast lost in March is not re-tested in April.
+function runBeastUpkeep(d) {
+  const now = new Date();
+  const nowKey = monthKey(now);
+  const stamp = ((d.flags||{}).beastMonth) || null;
+  if (!stamp) return { ...d, flags: { ...(d.flags||{}), beastMonth: nowKey } };
+  if (stamp === nowKey) return d;
+
+  const keep = (d.wallet||{}).petKeep || {};
+  let owned = [...(((d.wallet||{}).owned)||[])];
+  const slots = { ...((d.wallet||{}).petSlots||{}) };
+  let pet = (d.wallet||{}).pet || null;
+  const lost = [];
+
+  const [sy, sm] = stamp.split("-").map(Number);
+  const cur = new Date(sy, sm - 1, 1);
+  const guard = new Date(now.getFullYear(), now.getMonth(), 1);
+  for (let i = 0; i < 60 && cur < guard; i++) {
+    const got = sharinganInMonth(d, cur.getFullYear(), cur.getMonth());
+    PETS.forEach(p=>{
+      const k = keep[p.id];
+      if (!k || !k.on) return;
+      if (!owned.includes(p.id)) return;
+      if (got >= Math.max(1, Math.min(PET_KEEP_MAX, k.need || 1))) return;
+      owned = owned.filter(x => x !== p.id);
+      PET_SLOTS.forEach(sk=>{ if (slots[sk] === p.id) slots[sk] = null; });
+      if (pet === p.id) pet = null;
+      lost.push({ id:p.id, name:p.name, need:k.need, got, month: monthKey(cur) });
+    });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return { ...d,
+    wallet: { ...(d.wallet||{}), owned, petSlots: slots, pet },
+    flags: { ...(d.flags||{}), beastMonth: nowKey,
+             beastLost: lost.length ? lost : null } };
+}
+
 // ── TODAY'S RUNNING ORDER ───────────────────────────────────────────────────
 // A number you pin to a mission for one day. It lives as a single list against
 // a single date, not as a field on each mission — which is what gives both of
@@ -3354,6 +3496,7 @@ export default function App() {
   // Fold it away again whenever a different mission form opens.
   useEffect(()=>{ setRampOpen(false); }, [editTask && editTask.id, view]);
   const [detailTaskId, setDetailTaskId] = useState(null);
+  const [beastId, setBeastId] = useState(null);
   const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
   const [duel, setDuel] = useState(null);        // {stage:"fight"|"won", pw, rp}
@@ -3520,6 +3663,81 @@ export default function App() {
     const e = eyeById(won[0].eye);
     if (e) { toast$(`👁 ${e.name.toUpperCase()} AWAKENED`, "#e8333a");
       try { navigator.vibrate && navigator.vibrate([30,60,30,60,120]); } catch {} }
+  }, [data]);
+
+  // An armed goal takes its dojutsu back once the mission has been missed for
+  // as many days running as the goal allows.
+  //
+  // The guard matters: the award pass above and this one both watch `data`, so
+  // if one mission revokes an eye that ANOTHER mission's live streak would
+  // re-award, the two would hand it back and forth every render forever.
+  // Stamping the day a goal took its eye means a goal revokes at most once a
+  // day, which breaks that loop. The stamp clears the moment the mission is
+  // cleared again, so the next lapse is charged normally.
+  useEffect(()=>{
+    if (!data) return;
+    const stamps = (data.flags||{}).eyeLost || {};
+    const take = [];                      // [{ eye, slots, key, name, missed, need }]
+    const forgive = [];                   // keys whose mission is back on track
+    (data.tasks||[]).forEach(t=>{
+      const missed = missedStreak(t, currentDay);
+      (t.goals||[]).forEach(g=>{
+        if (!g || !g.eye || !g.days) return;
+        const key = eyeLockKey(t.id, g);
+        if (missed === 0) { if (stamps[key]) forgive.push(key); return; }
+        if (!goalLossOn(g)) return;
+        if (stamps[key] === currentDay) return;          // already charged today
+        const need = goalLossDays(g);
+        if (missed < need) return;
+        const slots = sideSlots(goalSide(g)).filter(lr=>eyeOwnedOn(data.wallet, g.eye, lr));
+        if (!slots.length) return;                       // nothing left to take
+        take.push({ eye:g.eye, slots, key, name:t.name, missed, need });
+      });
+    });
+    if (!take.length && !forgive.length) return;
+    setData(cur=>{
+      const st = {...((cur.flags||{}).eyeLost||{})};
+      forgive.forEach(k=>{ delete st[k]; });
+      const sides = {...((cur.wallet||{}).eyeSides||{})};
+      const ec = {...(cur.wallet.equippedCosmetics||{})};
+      let owned = [...((cur.wallet?.owned)||[])];
+      take.forEach(w=>{
+        st[w.key] = currentDay;
+        const cell = {...(sides[w.eye]||{})};
+        w.slots.forEach(lr=>{
+          delete cell[lr];
+          const slot = lr === "l" ? "eyeL" : "eyeR";
+          if (ec[slot] === w.eye) ec[slot] = null;
+        });
+        if (cell.l || cell.r) sides[w.eye] = cell; else delete sides[w.eye];
+        // The shop entry only goes once the eye is gone from both sides.
+        if (!cell.l && !cell.r) owned = owned.filter(id=>id !== `eye_${w.eye}`);
+      });
+      const n = {...cur,
+        wallet:{...cur.wallet, eyeSides:sides, owned, equippedCosmetics:ec},
+        flags:{...(cur.flags||{}), eyeLost: st}};
+      persistRaw(n); return n;
+    });
+    if (take.length) {
+      const w = take[0], e = eyeById(w.eye);
+      toast$(`\u{1f441} ${(e?e.name:"EYE").toUpperCase()} LOST \u00b7 ${w.missed} DAYS MISSED`, BAD);
+      try { navigator.vibrate && navigator.vibrate([60,40,60,40,140]); } catch {} }
+  }, [data, currentDay]);
+
+  // The monthly reckoning happens in migrate, on load, so it still runs when
+  // the 1st came and went with the app closed. All that is left here is
+  // telling him what it cost, once, and clearing the note.
+  useEffect(()=>{
+    if (!data) return;
+    const lost = (data.flags||{}).beastLost;
+    if (!lost || !lost.length) return;
+    const names = lost.map(l=>l.name.split("\u00b7")[0].trim()).join(", ");
+    toast$(`\u{1f98a} ${names.toUpperCase()} LEFT \u00b7 ${lost[0].got} SHARINGAN LAST MONTH`, BAD);
+    try { navigator.vibrate && navigator.vibrate([60,40,60,40,140]); } catch {}
+    setData(cur=>{
+      const n = {...cur, flags:{...(cur.flags||{}), beastLost:null}};
+      persistRaw(n); return n;
+    });
   }, [data]);
 
   // Crossing into a new form is an event, not a stat change. Once per form, ever.
@@ -4839,7 +5057,40 @@ export default function App() {
   const pomoToday = (data.pomodoro.sessionsByDay||{})[today]||0;
   const [qText, qAuthor] = quoteOfDay();
   const cosmetics = data.wallet.equippedCosmetics || {};
-  const pet = data.wallet.pet;
+  // The slots are the truth now. Views that show a single companion — the
+  // level-up card, the character page — show whichever beast stands first.
+  const petSlots = data.wallet.petSlots || {};
+  const pet = PET_SLOTS.map(k=>petSlots[k]).find(Boolean) || null;
+  const placedBeasts = PET_SLOTS
+    .map(k=>({ slot:k, item: SHOP.find(it=>it.id===petSlots[k]) }))
+    .filter(x=>x.item && x.item.art);
+  const lastMonthSharingan = (()=>{
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+    return sharinganInMonth(data, d.getFullYear(), d.getMonth());
+  })();
+  const placeBeast = (id, slot) => {
+    setData(cur=>{
+      const sl = {...(cur.wallet.petSlots||{})};
+      // A beast stands in one place only, so clear it out of any other slot.
+      PET_SLOTS.forEach(k=>{ if (sl[k] === id) sl[k] = null; });
+      if (slot) sl[slot] = id;
+      const n = {...cur, wallet:{...cur.wallet, petSlots:sl,
+        pet: PET_SLOTS.map(k=>sl[k]).find(Boolean) || null}};
+      persistRaw(n); return n;
+    });
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
+  const setBeastKeep = (id, patch) => {
+    setData(cur=>{
+      const kp = {...(cur.wallet.petKeep||{})};
+      const was = kp[id] || { on:false, need:1 };
+      kp[id] = { on: patch.on !== undefined ? !!patch.on : was.on,
+                 need: Math.max(1, Math.min(PET_KEEP_MAX,
+                   patch.need !== undefined ? patch.need : was.need)) };
+      const n = {...cur, wallet:{...cur.wallet, petKeep:kp}};
+      persistRaw(n); return n;
+    });
+  };
   const coins = coinBalance(data.wallet);
   const gems = gemBalance(data.wallet);
   const spinsAvail = 0;   // the casino is retired
@@ -5667,6 +5918,142 @@ export default function App() {
         </div>
       )}
 
+      {/* TAILED BEAST SHEET — where a beast is placed and its upkeep is set.
+          It opens whether or not the beast has been earned: a locked one shows
+          what streak it answers to and nothing else. */}
+      {beastId && (()=>{
+        const item = SHOP.find(it=>it.id===beastId);
+        if (!item) return null;
+        const have = (data.wallet.owned||[]).includes(item.id);
+        const slot = petSlotOf(data.wallet, item.id);
+        const keep = petKeepOf(data.wallet, item.id) || { on:false, need:1 };
+        const need = Math.max(1, Math.min(PET_KEEP_MAX, keep.need || 1));
+        const safe = lastMonthSharingan >= need;
+        return (
+          <div style={C.modal} onClick={()=>setBeastId(null)}>
+            <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
+              <div style={{width:42,height:5,background:"rgba(255,255,255,0.3)",borderRadius:3,margin:"0 auto 16px"}}/>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+                <div style={{width:72,height:72,flexShrink:0,borderRadius:BLOCK?0:18,
+                  background:`${item.color}22`,border:`1px solid ${item.color}55`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  filter: have ? "none" : "grayscale(1) brightness(0.55)"}}>
+                  <BeastChip art={item.art} color={item.color} size={54}/>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:17,fontWeight:900,color:"#fff"}}>{item.name}</div>
+                  <div style={{fontSize:10,fontWeight:900,letterSpacing:1,marginTop:3,
+                    color: RARITY[item.rarity].color}}>{RARITY[item.rarity].label}</div>
+                  <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:4}}>
+                    {have ? (slot ? `Standing at ${slot[0]==="L"?"left":"right"} ${slot.slice(1)}`
+                                  : "Earned \u00b7 not placed")
+                          : `Locked \u00b7 hold a ${item.gate.streak}-day perfect streak`}
+                  </div>
+                </div>
+              </div>
+
+              {have ? (
+                <>
+                  <div style={{...C.label,marginBottom:7}}>WHERE HE STANDS</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {[["L","LEFT"],["R","RIGHT"]].map(([side,label])=>(
+                      <div key={side} style={{flex:1}}>
+                        <div style={{fontSize:8.5,fontWeight:900,letterSpacing:1,color:FAINT,
+                          textAlign:"center",marginBottom:5}}>{label}</div>
+                        {[1,2,3,4,5].map(n=>{
+                          const k = side + n;
+                          const occupant = SHOP.find(it=>it.id===(data.wallet.petSlots||{})[k]);
+                          const mine = slot === k;
+                          return (
+                            <button key={k} onClick={()=>placeBeast(item.id, mine ? null : k)}
+                              style={{width:"100%",height:34,marginBottom:5,borderRadius:BLOCK?0:10,
+                                cursor:"pointer",fontFamily:FONT,fontWeight:900,fontSize:10,
+                                display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                                border: mine ? `2px solid ${item.color}` : `1px solid ${LINE}`,
+                                background: mine ? `${item.color}2e` : "rgba(0,0,0,0.3)",
+                                color: mine ? "#fff" : occupant ? DIM : FAINT}}>
+                              {occupant && !mine && (
+                                <span style={{width:26,flexShrink:0,display:"flex",justifyContent:"center"}}>
+                                  <BeastChip art={occupant.art} color={occupant.color} size={16}/>
+                                </span>
+                              )}
+                              {mine ? "\u2713 HERE" : occupant ? "TAKEN" : `${side}${n}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:2,lineHeight:1.45}}>
+                    Tap a place to move him there, or tap his own to send him away.
+                    A taken place swaps automatically.
+                  </div>
+
+                  {/* MONTHLY UPKEEP */}
+                  <div style={{marginTop:14,borderRadius:BLOCK?0:15,padding:"12px 14px",
+                    background: keep.on ? "rgba(232,51,58,0.14)" : "rgba(0,0,0,0.26)",
+                    border:`1px solid ${keep.on ? BAD+"77" : LINE}`}}>
+                    <div onClick={()=>setBeastKeep(item.id,{on:!keep.on})}
+                      style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                      <span style={{flex:1,minWidth:0}}>
+                        <span style={{display:"block",fontSize:11.5,fontWeight:900,letterSpacing:0.6,
+                          color: keep.on ? BAD : "#fff"}}>HE CAN LEAVE</span>
+                        <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,marginTop:2,lineHeight:1.45}}>
+                          {keep.on
+                            ? `On the 1st he checks the month just gone. Fewer than ${need} Sharingan and he goes.`
+                            : "Off \u2014 once he answers, he stays."}
+                        </span>
+                      </span>
+                      <span style={{width:42,height:24,borderRadius:12,flexShrink:0,position:"relative",
+                        background: keep.on ? BAD : "rgba(255,255,255,0.16)",transition:"background .2s"}}>
+                        <span style={{position:"absolute",top:3,left: keep.on ? 21 : 3,width:18,height:18,
+                          borderRadius:"50%",background:"#fff",transition:"left .2s",
+                          boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}/>
+                      </span>
+                    </div>
+                    {keep.on && (
+                      <>
+                        <div style={{...C.label,marginTop:11,marginBottom:6}}>
+                          SHARINGAN NEEDED <span style={{color:"#fff"}}>{need}</span> A MONTH
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:4}}>
+                          {Array.from({length:PET_KEEP_MAX},(_,i)=>i+1).map(n=>(
+                            <button key={n} onClick={()=>setBeastKeep(item.id,{need:n})}
+                              style={{height:25,borderRadius:7,padding:0,fontFamily:FONT,
+                                fontWeight:900,fontSize:9.5,cursor:"pointer",
+                                border: need===n ? `2px solid ${BAD}` : `1px solid ${LINE}`,
+                                background: need===n ? BAD+"33" : "rgba(0,0,0,0.3)",
+                                color: need===n ? "#ff8a7a" : "#fff"}}>{n}</button>
+                          ))}
+                        </div>
+                        <div style={{fontSize:10,fontWeight:800,marginTop:9,
+                          color: safe ? GOOD : BAD}}>
+                          Last month: {lastMonthSharingan} Sharingan \u00b7 {safe
+                            ? "he would have stayed"
+                            : `${need - lastMonthSharingan} short`}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div style={{...C.glass,textAlign:"center",padding:"18px 14px"}}>
+                  <div style={{fontSize:13,fontWeight:900,color:"#fff"}}>
+                    {item.gate.streak}-DAY PERFECT STREAK
+                  </div>
+                  <div style={{fontSize:10.5,color:DIM,fontWeight:700,marginTop:5,lineHeight:1.5}}>
+                    Clear every scheduled mission {item.gate.streak} day{item.gate.streak>1?"s":""} running
+                    and he answers. Best run so far: {perfectStreak}.
+                  </div>
+                </div>
+              )}
+              <button style={{...C.btn,width:"100%",padding:"13px",marginTop:14}}
+                onClick={()=>setBeastId(null)}>DONE</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* TASK DETAIL SHEET */}
       {detailTask && (
         <div style={C.modal} onClick={()=>setDetailTaskId(null)}>
@@ -5975,8 +6362,27 @@ export default function App() {
                     background:`radial-gradient(circle, ${myForm.aura}5e 0%, ${myForm.aura}22 42%, transparent 70%)`,
                     animation:"forgeGlow 2.4s ease-in-out infinite"}}/>
                 )}
-                <PixelCharacter level={wornLvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={pet}/>
+                <PixelCharacter level={wornLvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={null}/>
               </div>
+              {/* THE BEASTS — drawn here, in the scene, rather than inside the
+                  character sprite. That is what keeps him dead centre on the
+                  background while they stand beside him. Five places down each
+                  side, clear of the badge rack on the left and the rival's
+                  score on the right. */}
+              {placedBeasts.map(({slot,item})=>{
+                const i = parseInt(slot.slice(1)) - 1;
+                const left = slot[0] === "L";
+                return (
+                  <div key={slot} onClick={()=>setBeastId(item.id)}
+                    style={{position:"absolute", top: 22 + i*31,
+                      ...(left ? {left:52} : {right:52}),
+                      width:26, height:26, cursor:"pointer",
+                      filter:`drop-shadow(0 0 7px ${item.color}66)`,
+                      transform: left ? "none" : "scaleX(-1)"}}>
+                    <BeastChip art={item.art} color={item.color} size={26}/>
+                  </div>
+                );
+              })}
               <div onClick={()=>setView("boss")}
                 style={{position:"absolute",right:10,bottom:14,textAlign:"right",cursor:"pointer"}}>
                 <div style={{fontSize:8,fontWeight:900,letterSpacing:1.2,color:FAINT,
@@ -6613,6 +7019,59 @@ export default function App() {
                       <input type="range" min="1" max="30" step="1" value={g.days}
                         onChange={ev=>setGoal({days:parseInt(ev.target.value)})}
                         style={{width:"100%",accentColor:T.accent}}/>
+                      {/* UPKEEP — one line when it is off, so six goals stacked
+                          up do not turn into a wall of sliders. */}
+                      {(()=>{
+                        const lossOn = goalLossOn(g), lossD = goalLossDays(g);
+                        const missed = t.id ? missedStreak(t, today) : 0;
+                        return (
+                          <div style={{marginTop:12,borderRadius:BLOCK?0:12,padding:"10px 11px",
+                            background: lossOn ? "rgba(232,51,58,0.14)" : "rgba(0,0,0,0.26)",
+                            border:`1px solid ${lossOn ? BAD+"77" : LINE}`}}>
+                            <div onClick={()=>setGoal({lossOn:!lossOn})}
+                              style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                              <span style={{flex:1,minWidth:0}}>
+                                <span style={{display:"block",fontSize:11,fontWeight:900,
+                                  letterSpacing:0.6,color: lossOn ? BAD : "#fff"}}>
+                                  THIS EYE CAN BE LOST
+                                </span>
+                                <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,
+                                  marginTop:2,lineHeight:1.4}}>
+                                  {lossOn
+                                    ? `Miss ${lossD} day${lossD>1?"s":""} in a row and it is taken back.`
+                                    : "Off \u2014 once awakened, it is yours for good."}
+                                </span>
+                              </span>
+                              <span style={{width:42,height:24,borderRadius:12,flexShrink:0,position:"relative",
+                                background: lossOn ? BAD : "rgba(255,255,255,0.16)",transition:"background .2s"}}>
+                                <span style={{position:"absolute",top:3,left: lossOn ? 21 : 3,width:18,height:18,
+                                  borderRadius:"50%",background:"#fff",transition:"left .2s",
+                                  boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}/>
+                              </span>
+                            </div>
+                            {lossOn && (
+                              <>
+                                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginTop:10}}>
+                                  {Array.from({length:GOAL_LOSS_MAX},(_,i)=>i+1).map(n=>(
+                                    <button key={n} onClick={()=>setGoal({lossDays:n})}
+                                      style={{height:26,borderRadius:7,padding:0,fontFamily:FONT,
+                                        fontWeight:900,fontSize:10,cursor:"pointer",
+                                        border: lossD===n ? `2px solid ${BAD}` : `1px solid ${LINE}`,
+                                        background: lossD===n ? BAD+"33" : "rgba(0,0,0,0.3)",
+                                        color: lossD===n ? "#ff8a7a" : "#fff"}}>{n}</button>
+                                  ))}
+                                </div>
+                                <div style={{fontSize:9.5,fontWeight:800,marginTop:8,
+                                  color: missed>=lossD ? BAD : missed>0 ? "#ffc46b" : FAINT}}>
+                                  {missed>0
+                                    ? `\u26a0 ${missed} missed in a row \u00b7 ${Math.max(0, lossD-missed)} to go`
+                                    : "On track \u2014 nothing missed."}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -7745,9 +8204,9 @@ export default function App() {
                       <div style={{fontSize:9,fontWeight:800,color:FAINT,letterSpacing:1,marginBottom:7}}>{label}</div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                         {items.map(it=>{
-                          const equipped = type==="pet" ? data.wallet.pet===it.id : cosmetics[type]===it.id;
+                          const equipped = type==="pet" ? !!petSlotOf(data.wallet, it.id) : cosmetics[type]===it.id;
                           return (
-                            <button key={it.id} onClick={()=>equipCosmetic(it)} style={{
+                            <button key={it.id} onClick={()=>setBeastId(it.id)} style={{
                               display:"flex",flexDirection:"column",alignItems:"center",gap:4,
                               background:equipped?"rgba(255,255,255,0.16)":"rgba(255,255,255,0.06)",
                               border:equipped?`2px solid ${RARITY[it.rarity].color}`:`1px solid ${LINE}`,
@@ -8614,11 +9073,13 @@ export default function App() {
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {SHOP.filter(it=>shopFilter==="all"||it.type===shopFilter).map(item=>{
                 const owned = (data.wallet.owned||[]).includes(item.id);
-                const equipped = item.type==="pet" ? data.wallet.pet===item.id : cosmetics[item.type]===item.id;
+                const equipped = item.type==="pet" ? !!petSlotOf(data.wallet, item.id) : cosmetics[item.type]===item.id;
                 const gated = item.gate?.streak && perfectStreak < item.gate.streak;
                 const r = RARITY[item.rarity];
                 return (
-                  <div key={item.id} onClick={()=> owned ? equipCosmetic(item) : buyItem(item)} style={{
+                  <div key={item.id}
+                    onClick={()=> item.type==="pet" ? setBeastId(item.id)
+                                : owned ? equipCosmetic(item) : buyItem(item)} style={{
                     background:`linear-gradient(160deg,${r.color}22,${GLASS})`,
                     backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",
                     border:equipped?`2px solid ${r.color}`:`1px solid ${r.color}44`,
