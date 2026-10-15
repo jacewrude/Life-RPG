@@ -857,6 +857,21 @@ function migrate(d) {
         if (!PET_SLOTS.some(k=>out[k]) && (d.wallet||{}).pet) out.R1 = d.wallet.pet;
         return out;
       })(),
+      // When each beast answered. The reckoning never judges a beast on a
+      // month he was earned in — he earned his place that month by turning up.
+      // A beast already owned before this existed is stamped today, so his
+      // first reckoning is the month after this update rather than some month
+      // he was never being measured on.
+      petEarned: (()=>{
+        const src = ((d.wallet||{}).petEarned) || {};
+        const out = {};
+        const today = dateKey();
+        (((d.wallet||{}).owned)||[]).forEach(id=>{
+          if (!PETS.some(p=>p.id===id)) return;
+          out[id] = /^\d{4}-\d{2}-\d{2}$/.test(src[id]) ? src[id] : today;
+        });
+        return out;
+      })(),
       petKeep: (()=>{
         const src = ((d.wallet||{}).petKeep) || {};
         const out = {};
@@ -1796,12 +1811,13 @@ function drawPet(els, art, color, cx, cy, s, nk) {
 // A beast on its own, for the slots beside the character and for the menu.
 // drawPet works on the character's 24-unit grid, so an 8-unit box around it is
 // enough to hold the longest tails.
-function BeastChip({ art, color, size = 28 }) {
+function BeastChip({ art, color, size = 28, fill = false }) {
   const els = [];
   let k = 0;
   drawPet(els, art, color, 4, 4.3, size / 8, () => k++);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+    <svg width={fill ? "100%" : size} height={fill ? "100%" : size}
+      viewBox={`0 0 ${size} ${size}`}
       style={{display:"block", overflow:"visible"}}>{els}</svg>
   );
 }
@@ -3236,6 +3252,7 @@ function runBeastUpkeep(d) {
   if (stamp === nowKey) return d;
 
   const keep = (d.wallet||{}).petKeep || {};
+  const earned = (d.wallet||{}).petEarned || {};
   let owned = [...(((d.wallet||{}).owned)||[])];
   const slots = { ...((d.wallet||{}).petSlots||{}) };
   let pet = (d.wallet||{}).pet || null;
@@ -3250,8 +3267,13 @@ function runBeastUpkeep(d) {
       const k = keep[p.id];
       if (!k || !k.on) return;
       if (!owned.includes(p.id)) return;
+      // He answered during this month (or later) — that month is his, won.
+      // Only the months he started already standing are ones he has to hold.
+      const since = earned[p.id];
+      if (since && since.slice(0,7) >= monthKey(cur)) return;
       if (got >= Math.max(1, Math.min(PET_KEEP_MAX, k.need || 1))) return;
       owned = owned.filter(x => x !== p.id);
+      delete earned[p.id];
       PET_SLOTS.forEach(sk=>{ if (slots[sk] === p.id) slots[sk] = null; });
       if (pet === p.id) pet = null;
       lost.push({ id:p.id, name:p.name, need:k.need, got, month: monthKey(cur) });
@@ -3259,7 +3281,7 @@ function runBeastUpkeep(d) {
     cur.setMonth(cur.getMonth() + 1);
   }
   return { ...d,
-    wallet: { ...(d.wallet||{}), owned, petSlots: slots, pet },
+    wallet: { ...(d.wallet||{}), owned, petSlots: slots, pet, petEarned: earned },
     flags: { ...(d.flags||{}), beastMonth: nowKey,
              beastLost: lost.length ? lost : null } };
 }
@@ -4590,7 +4612,11 @@ export default function App() {
       }
       const bal = Math.max(0,(w.gemsEarned||0)-(w.gemsSpent||0));
       if (bal < item.gems) { toast$("NOT ENOUGH GEMS","#ffc46b"); return cur; }
-      const n = {...cur, wallet:{...w, gemsSpent:(w.gemsSpent||0)+item.gems, owned:[...(w.owned||[]), item.id]}};
+      const n = {...cur, wallet:{...w, gemsSpent:(w.gemsSpent||0)+item.gems,
+        owned:[...(w.owned||[]), item.id],
+        // Stamped so the reckoning knows which month he answered in.
+        petEarned: item.type === "pet"
+          ? {...(w.petEarned||{}), [item.id]: dateKey()} : (w.petEarned||{})}};
       persistRaw(n);
       fireConfettiBig(RARITY[item.rarity].color);
       toast$(`UNLOCKED ${item.name.toUpperCase()}!`, RARITY[item.rarity].color);
@@ -5064,9 +5090,20 @@ export default function App() {
   const placedBeasts = PET_SLOTS
     .map(k=>({ slot:k, item: SHOP.find(it=>it.id===petSlots[k]) }))
     .filter(x=>x.item && x.item.art);
+  // Two different numbers, and the useful one is the first. The month in
+  // progress is what the NEXT 1st will judge, so that is the one that says
+  // whether a beast is in danger. Last month's is only history now.
+  const thisMonthSharingan = (()=>{
+    const d = new Date();
+    return sharinganInMonth(data, d.getFullYear(), d.getMonth());
+  })();
   const lastMonthSharingan = (()=>{
     const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
     return sharinganInMonth(data, d.getFullYear(), d.getMonth());
+  })();
+  const monthDaysLeft = (()=>{
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate() - d.getDate();
   })();
   const placeBeast = (id, slot) => {
     setData(cur=>{
@@ -5928,7 +5965,9 @@ export default function App() {
         const slot = petSlotOf(data.wallet, item.id);
         const keep = petKeepOf(data.wallet, item.id) || { on:false, need:1 };
         const need = Math.max(1, Math.min(PET_KEEP_MAX, keep.need || 1));
-        const safe = lastMonthSharingan >= need;
+        const safe = thisMonthSharingan >= need;
+        const earnedThisMonth = ((data.wallet.petEarned||{})[item.id]||"").slice(0,7)
+          === monthKey(new Date());
         return (
           <div style={C.modal} onClick={()=>setBeastId(null)}>
             <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
@@ -6026,11 +6065,17 @@ export default function App() {
                                 color: need===n ? "#ff8a7a" : "#fff"}}>{n}</button>
                           ))}
                         </div>
-                        <div style={{fontSize:10,fontWeight:800,marginTop:9,
-                          color: safe ? GOOD : BAD}}>
-                          Last month: {lastMonthSharingan} Sharingan \u00b7 {safe
-                            ? "he would have stayed"
-                            : `${need - lastMonthSharingan} short`}
+                        <div style={{marginTop:9,fontSize:10,fontWeight:800,lineHeight:1.5}}>
+                          <div style={{color: safe ? GOOD : BAD}}>
+                            This month so far: {thisMonthSharingan} Sharingan · {safe
+                              ? "he is safe"
+                              : `${need - thisMonthSharingan} more needed`}
+                          </div>
+                          <div style={{color:FAINT,fontWeight:700,marginTop:2}}>
+                            {earnedThisMonth
+                              ? "He answered this month, so his first reckoning is the 1st after next."
+                              : `Judged in ${monthDaysLeft} day${monthDaysLeft===1?"":"s"}, on the 1st. Last month: ${lastMonthSharingan}.`}
+                          </div>
                         </div>
                       </>
                     )}
@@ -6045,6 +6090,10 @@ export default function App() {
                     Clear every scheduled mission {item.gate.streak} day{item.gate.streak>1?"s":""} running
                     and he answers. Best run so far: {perfectStreak}.
                   </div>
+                  {perfectStreak >= item.gate.streak && (
+                    <button style={{...C.btn,width:"100%",padding:"13px",marginTop:12}}
+                      onClick={()=>buyItem(item)}>CALL HIM</button>
+                  )}
                 </div>
               )}
               <button style={{...C.btn,width:"100%",padding:"13px",marginTop:14}}
@@ -6336,7 +6385,7 @@ export default function App() {
               </div>
               {/* DAILY BADGE RACK — floats beside the character, tap for the full record */}
               <div onClick={()=>setView("record")}
-                style={{position:"absolute",left:10,bottom:14,display:"flex",flexDirection:"column-reverse",
+                style={{position:"absolute",left:10,bottom:46,display:"flex",flexDirection:"column-reverse",
                   gap:5,alignItems:"center",cursor:"pointer"}}>
                 <div style={{fontSize:8.5,fontWeight:900,letterSpacing:0.8,marginTop:1,
                   color: todayPct==null ? FAINT : todayTier>0 ? BADGE_TIERS[todayTier-1].light : "rgba(255,255,255,0.6)",
@@ -6370,21 +6419,31 @@ export default function App() {
                   side, clear of the badge rack on the left and the rival's
                   score on the right. */}
               {placedBeasts.map(({slot,item})=>{
-                const i = parseInt(slot.slice(1)) - 1;
+                const i = parseInt(slot.slice(1)) - 1;      // 0 is nearest him
                 const left = slot[0] === "L";
+                // Measured out from the middle, not from the screen edge, so
+                // the line stays centred on him at any phone width. 48 clears
+                // his shoulders; five 26s then reach 178 out, which still fits
+                // inside the narrowest phone this runs on.
+                // 26px each where there is room, and smaller rather than off
+                // the edge where there is not — a 320px phone has only 160 a
+                // side to give, and five of them plus his shoulders must fit.
+                const BW = "min(26px, (50vw - 54px) / 5)";
+                const out = left
+                  ? `translateX(calc(-1 * (46px + ${BW} * ${i+1})))`
+                  : `translateX(calc(46px + ${BW} * ${i})) scaleX(-1)`;
                 return (
                   <div key={slot} onClick={()=>setBeastId(item.id)}
-                    style={{position:"absolute", top: 22 + i*31,
-                      ...(left ? {left:52} : {right:52}),
-                      width:26, height:26, cursor:"pointer",
+                    style={{position:"absolute", bottom:8, left:"50%",
+                      width:BW, height:BW, cursor:"pointer",
                       filter:`drop-shadow(0 0 7px ${item.color}66)`,
-                      transform: left ? "none" : "scaleX(-1)"}}>
-                    <BeastChip art={item.art} color={item.color} size={26}/>
+                      transform: out}}>
+                    <BeastChip art={item.art} color={item.color} size={26} fill/>
                   </div>
                 );
               })}
               <div onClick={()=>setView("boss")}
-                style={{position:"absolute",right:10,bottom:14,textAlign:"right",cursor:"pointer"}}>
+                style={{position:"absolute",right:10,bottom:46,textAlign:"right",cursor:"pointer"}}>
                 <div style={{fontSize:8,fontWeight:900,letterSpacing:1.2,color:FAINT,
                   textShadow:"0 1px 6px rgba(0,0,0,0.8)"}}>VS KAEDO</div>
                 <div style={{fontSize:19,fontWeight:900,lineHeight:1.05,
