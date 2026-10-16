@@ -386,7 +386,7 @@ const GEAR = [
   { slot:"headband", lvl:0, name:"Village Headband & Sandals" },
   { slot:"vest",     lvl:1, name:"Green Flak Vest" },
   { slot:"gloves",   lvl:2, name:"Gloves, Sash & Tanto" },
-  { slot:"anbu",     lvl:3, name:"ANBU Mask & Black Ops Gear" },
+  { slot:"anbu",     lvl:3, name:"ANBU Mask" },
   { slot:"cloak",    lvl:4, name:"Akatsuki Cloak" },
   { slot:"sagemode", lvl:5, name:"Sage Haori & Toad Scroll" },
   { slot:"hat",      lvl:6, name:"Kage Haori & Hat" },
@@ -1834,7 +1834,11 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   const robe   = !sage && has("hat",6);                             // Kage
   const sagemd = !sage && !robe && has("sagemode",5);               // Sage Mode
   const cloak  = !sage && !robe && !sagemd && has("cloak",4);       // Akatsuki
-  const anbu   = !sage && !robe && !sagemd && !cloak && has("anbu",3);
+  // The gear is the rank; the mask is the disguise. The wardrobe switch takes
+  // off the mask alone, so he can wear black ops and still show his face —
+  // which also means his dojutsu are visible with it off.
+  const anbu     = !sage && !robe && !sagemd && !cloak && level >= 3;
+  const anbuMask = anbu && eq.anbu !== false;
   const vest   = !sage && !robe && !sagemd && !cloak && has("vest",1);
   const SAGE_ORANGE = "#e2701c";
   const els = [];
@@ -2002,6 +2006,16 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(7.3,19.0,9.4,0.7,"#0b090f",0.3);          // hem
     [[8.5,12.2],[13.3,13.6],[8.9,16.0],[13.0,17.4]].forEach(([x,y])=>{
       // a flat-bottomed cluster reads as a cloud; stacked circles read as a heart
+      //
+      // The cloud is drawn twice: a slightly fatter white silhouette, then the
+      // red on top. That leaves one clean rim around the whole cluster.
+      // Stroking each circle instead would draw the seams where they overlap,
+      // and the cloud would come out looking like three bubbles.
+      const O = 0.13, RIM = "#f2efe6";
+      els.push(<circle key={k++} cx={(x+0.35)*s} cy={y*s} r={(0.46+O)*s} fill={RIM}/>);
+      els.push(<circle key={k++} cx={(x+1.05)*s} cy={(y-0.18)*s} r={(0.56+O)*s} fill={RIM}/>);
+      els.push(<circle key={k++} cx={(x+1.75)*s} cy={y*s} r={(0.44+O)*s} fill={RIM}/>);
+      R(x+0.3-O, y-O, 1.8+O*2, 0.52+O*2, RIM, 0.22);
       els.push(<circle key={k++} cx={(x+0.35)*s} cy={y*s} r={0.46*s} fill="#c7342a"/>);
       els.push(<circle key={k++} cx={(x+1.05)*s} cy={(y-0.18)*s} r={0.56*s} fill="#c7342a"/>);
       els.push(<circle key={k++} cx={(x+1.75)*s} cy={y*s} r={0.44*s} fill="#c7342a"/>);
@@ -2154,8 +2168,8 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   }
   // Each eye is set on its own, so a dojutsu can sit in one and not the other.
   const cosEye = (v) => (v && eyeById(v)) ? v : null;
-  const wornL = anbu ? null : cosEye(cosmetics && cosmetics.eyeL);
-  const wornR = anbu ? null : cosEye(cosmetics && cosmetics.eyeR);
+  const wornL = anbuMask ? null : cosEye(cosmetics && cosmetics.eyeL);
+  const wornR = anbuMask ? null : cosEye(cosmetics && cosmetics.eyeR);
   // The face is centred on x=12, and every piece of the eye is mirrored about
   // it: whites at 10.55 and 13.45, pupils dead centre inside them. The old
   // values drifted right by about a tenth of a unit, and the pupil drifted
@@ -2176,7 +2190,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
   R(11.15,9.4,1.7,0.55,shade(skin,-55),0.3);
 
   // ── ANBU PORCELAIN MASK — animal face, hair left showing above it ─────────
-  if (anbu) {
+  if (anbuMask) {
     R(8.4,4.3,7.2,5.9,"#f3ede1",1.9);                 // face plate
     R(8.4,4.3,7.2,0.7,"#fffdf6",1.1);                 // sheen
     R(8.4,9.3,7.2,0.9,"#ded5c4",1.0);                 // jaw shadow
@@ -8611,9 +8625,15 @@ export default function App() {
 
         {/* THE DUEL */}
         {duel && (
-          <div style={{...C.modal,alignItems:"center",background:"rgba(0,0,0,0.9)"}}
+          <div style={{...C.modal, alignItems:"center", justifyContent:"flex-start",
+              overflowY:"auto", WebkitOverflowScrolling:"touch",
+              paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 34px)",
+              background:"rgba(0,0,0,0.9)"}}
             onClick={()=>{ if (duel.stage==="won") setDuel(null); }}>
-            <div style={{width:"100%",maxWidth:430,padding:"0 18px",textAlign:"center"}}>
+            {/* `margin:auto 0` centres this while it fits and lets it scroll
+                once it does not — flex centring alone would crop the top. */}
+            <div style={{width:"100%",maxWidth:430,padding:"0 18px",textAlign:"center",
+              margin:"auto 0"}}>
               {duel.stage==="fight" ? (
                 <>
                   <KaedoArt stage={stage} style={{width:"100%",height:250,display:"block"}}/>
