@@ -2003,6 +2003,7 @@ function PixelCharacter({ level, character, scale=7, previewAllGear=false, idle=
     R(7.3,10.0,9.4,9.6,"#15131b",0.9);          // the long body of it
     R(7.3,10.0,9.4,1.0,"#33303d",0.4);          // high collar
     R(11.4,10.9,1.2,8.7,"#0b090f",0.2);         // the opening
+    R(11.86,10.1,0.28,9.2,"#a82d22",0.1);       // the red zip down the front
     R(7.3,19.0,9.4,0.7,"#0b090f",0.3);          // hem
     [[8.5,12.2],[13.3,13.6],[8.9,16.0],[13.0,17.4]].forEach(([x,y])=>{
       // a flat-bottomed cluster reads as a cloud; stacked circles read as a heart
