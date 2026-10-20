@@ -631,6 +631,15 @@ function weeklyStreak(task) {
 }
 
 // ── RATING / LEVEL ────────────────────────────────────────────────────────────
+// The exact standing, 0-100. getRating below rounds it, which is right for a
+// number on a card and wrong for deciding a rank: at a boundary the rounded
+// copy and the exact one disagree, and the app ends up believing two different
+// things about what rank you are. Ranks use this one. Displays use getRating.
+function exactRating(cats) {
+  if (!cats || !cats.length) return 0;
+  return Math.max(0, Math.min(100,
+    cats.reduce((sum,c)=>sum + (c.value / (c.maxValue || 1)) * 100, 0) / cats.length));
+}
 function getRating(cats) {
   if (!cats || !cats.length) return 0;
   return Math.max(0, Math.min(100, Math.round(cats.reduce((s,c)=>s+(c.value/c.maxValue)*100,0)/cats.length)));
@@ -725,6 +734,43 @@ function applyDecay(data) {
     }
   } catch {}
   return { data: { ...data, categories: cats, lastDecayDate: today }, lost };
+}
+
+// A perfect day is earned by clearing every scheduled mission. It was only
+// PAID if the button got tapped before midnight — close the app first and the
+// day was earned and the bonus gone for good, with nothing to say so.
+//
+// The day itself is still in the completion history, so it can be settled
+// afterwards. Each day is marked as it is paid, which makes this safe to run on
+// every load: a day already claimed is never paid twice.
+function settlePerfectDays(d) {
+  const cats = (d.categories||[]).map(c=>({...c}));
+  if (!cats.length) return d;
+  const today = dateKey();
+  const claimed = { ...(((d.wallet||{}).perfectClaimedByDay)||{}) };
+  // Start at the oldest day any mission could have been due on.
+  let first = today;
+  (d.tasks||[]).forEach(t=>{
+    const c = t && (t.createdAt || Object.keys(t.completions||{}).sort()[0]);
+    if (c && c < first) first = c;
+  });
+  let owed = 0, days = 0;
+  const cur = new Date(first + "T12:00:00");
+  for (let i = 0; i < 500; i++) {
+    const dk = dateKey(cur);
+    if (dk >= today) break;                    // today still has its button
+    if (!claimed[dk] && dayPctOf(d, dk) === 100) {
+      claimed[dk] = true; owed += PERFECT_DAY_XP; days++;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  if (!days) return d;
+  const before = cats[0].value || 0;
+  cats[0].value = Math.min(cats[0].maxValue || XP_MAX, before + owed);
+  return { ...d, categories: cats,
+    wallet: { ...(d.wallet||{}), perfectClaimedByDay: claimed },
+    flags: { ...(d.flags||{}),
+             perfectSettled: { days, amount: +(cats[0].value - before).toFixed(4) } } };
 }
 
 // Weekly habits were charged decay for every day they were not logged, which
@@ -959,7 +1005,7 @@ function migrate(d) {
                   ids: d.dayOrder.ids.filter(x => typeof x === "string") }
               : null,
   };
-  return refundWeeklyDecay(runBeastUpkeep(stampGlobalFreeze(out)));
+  return settlePerfectDays(refundWeeklyDecay(runBeastUpkeep(stampGlobalFreeze(out))));
 }
 
 // A global freeze is open-ended, so it can't be written into the per-mission
@@ -1494,7 +1540,7 @@ const TROPHIES = [
   { id:"clean_sweep", icon:"📅", name:"Clean Sweep", desc:"Meet every weekly target in one week", gems:15,
     check:(d)=>{ const w=(d.tasks||[]).filter(t=>t.catId&&isWeekly(t)); return w.length>0 && w.every(t=>weeklyMet(t, dateKey())); } },
   { id:"knighted", icon:"🏯", name:"Kage", desc:"Reach the highest rank", gems:25,
-    check:(d)=>getLevel(getRating(d.categories||[]))>=7 },
+    check:(d)=>getLevel(exactRating(d.categories||[])).lvl>=7 },
   { id:"war_chest", icon:"📜", name:"Devoted", desc:"Log 250 mission completions", gems:20,
     check:(d)=>(d.wallet?.coinsEarned||0)>=1000 },
   { id:"gem_hoard", icon:"🌀", name:"Ascendant", desc:"Reach rating 50", gems:25,
@@ -3844,6 +3890,21 @@ export default function App() {
     });
   }, [data]);
 
+  // Perfect days collected after the fact get the same treatment: said out
+  // loud, once, so XP never just appears.
+  useEffect(()=>{
+    if (!data) return;
+    const p = (data.flags||{}).perfectSettled;
+    if (!p || !p.days) return;
+    toast$(`\u{1f3c6} ${p.days} PERFECT DAY${p.days>1?"S":""} SETTLED \u00b7 +${xpInt(p.amount)} XP`, "#f59e0b");
+    fireConfettiBig("#f59e0b");
+    try { navigator.vibrate && navigator.vibrate([40,60,40,60,120]); } catch {}
+    setData(cur=>{
+      const n = {...cur, flags:{...(cur.flags||{}), perfectSettled:null}};
+      persistRaw(n); return n;
+    });
+  }, [data]);
+
   // Crossing into a new form is an event, not a stat change. Once per form, ever.
   useEffect(()=>{
     if (!data) return;
@@ -3941,7 +4002,9 @@ export default function App() {
   // ── LEVEL-UP WATCHER ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!data) return;
-    const lvl = getLevel(getRating(data.categories)).lvl;
+    // Exact, so this agrees with the rank actually on screen. Rounded, it
+    // could sit a rank behind and never record the best you reached.
+    const lvl = getLevel(exactRating(data.categories)).lvl;
     if (prevLevelRef.current === null) { prevLevelRef.current = lvl; return; }
     if (lvl > prevLevelRef.current) {
       const best = data.flags?.maxLevel || 0;
