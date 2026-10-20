@@ -672,6 +672,25 @@ function projectRating(categories, tasks, dateStr, scenario) {
 }
 
 // ── DECAY ENGINE (anchor-based; each missed day decays exactly once) ──────────
+// Is this mission a scheduled daily obligation on this date?
+//
+// The Training Grounds forecast, the daily badge percentage and the nightly
+// decay all have to answer this identically. They used to each keep their own
+// copy of the rules, the copies drifted, and the result was a day the app
+// itself scored 100% that still cost XP at midnight — enough to lose a rank
+// overnight. One function now, so they cannot disagree again.
+//
+// A weekly habit is not a daily obligation: it is judged across its week, and
+// the Training Grounds says in as many words that weekly habits never decay.
+// Nor is a day that fell before the mission existed.
+function isDailyDueOn(task, dk, cats) {
+  if (!task || !task.catId) return false;
+  if (cats && !cats.find(c => c.id === task.catId)) return false;
+  if (isWeekly(task)) return false;
+  if ((task.createdAt || "0000-00-00") > dk) return false;
+  return isScheduledOn(task, dk);
+}
+
 function applyDecay(data) {
   const today = dateKey();
   const anchor = data.lastDecayDate;
@@ -690,8 +709,7 @@ function applyDecay(data) {
       const dk = dateKey(cursor);
       data.tasks.forEach(task=>{
         try {
-          if (!task.catId) return;
-          if (!isScheduledOn(task, dk)) return;
+          if (!isDailyDueOn(task, dk, data.categories)) return;
           if (isCompletedOn(task, dk)) return;
           if ((task.frozen||{})[dk]) return;      // streak shield — no decay
           const ci = cats.findIndex(c=>c.id===task.catId);
@@ -707,6 +725,44 @@ function applyDecay(data) {
     }
   } catch {}
   return { data: { ...data, categories: cats, lastDecayDate: today }, lost };
+}
+
+// Weekly habits were charged decay for every day they were not logged, which
+// no part of the app ever said would happen. The charge is recoverable: it was
+// decided by the completion history, which is still here, so the same walk
+// back over it gives the exact figure to return. Once only, stamped in flags.
+//
+// The walk starts at the habit's creation because applyDecay processes every
+// elapsed day from its anchor each time the app opens — so every day since the
+// habit existed was charged.
+function refundWeeklyDecay(d) {
+  if ((d.flags||{}).weeklyDecayRefund) return d;
+  const cats = (d.categories||[]).map(c=>({...c}));
+  if (!cats.length) return d;
+  const today = dateKey();
+  let owed = 0;
+  (d.tasks||[]).forEach(t=>{
+    if (!t || !t.catId || !isWeekly(t)) return;
+    if (!cats.some(c=>c.id===t.catId)) return;
+    const rate = t.decayRate || 0;
+    if (rate <= 0) return;
+    const cur = new Date((t.createdAt || today) + "T12:00:00");
+    for (let i = 0; i < 800; i++) {
+      const dk = dateKey(cur);
+      if (dk >= today) break;                       // today was never charged
+      if (isScheduledOn(t, dk) && !isCompletedOn(t, dk) && !(t.frozen||{})[dk]) owed += rate;
+      cur.setDate(cur.getDate() + 1);
+    }
+  });
+  owed = +owed.toFixed(4);
+  if (owed <= 0) return { ...d, flags: { ...(d.flags||{}), weeklyDecayRefund: { amount: 0 } } };
+  // The bar is the ceiling, and a value that bottomed out at zero absorbed
+  // some of those charges — so what comes back is capped, never invented.
+  const before = cats[0].value || 0;
+  cats[0].value = Math.min(cats[0].maxValue || XP_MAX, before + owed);
+  const given = +(cats[0].value - before).toFixed(4);
+  return { ...d, categories: cats,
+    flags: { ...(d.flags||{}), weeklyDecayRefund: { amount: given } } };
 }
 
 // ── MIGRATION (protects existing cloud saves; adds new fields) ────────────────
@@ -903,7 +959,7 @@ function migrate(d) {
                   ids: d.dayOrder.ids.filter(x => typeof x === "string") }
               : null,
   };
-  return runBeastUpkeep(stampGlobalFreeze(out));
+  return refundWeeklyDecay(runBeastUpkeep(stampGlobalFreeze(out)));
 }
 
 // A global freeze is open-ended, so it can't be written into the per-mission
@@ -3226,10 +3282,7 @@ const monthKey = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart
 function dayPctOf(d, dk) {
   let total = 0, done = 0;
   (d.tasks||[]).forEach(t=>{
-    if (!t.catId || !(d.categories||[]).find(c=>c.id===t.catId)) return;
-    if (isWeekly(t)) return;
-    if ((t.createdAt || "0000-00-00") > dk) return;
-    if (!isScheduledOn(t, dk)) return;
+    if (!isDailyDueOn(t, dk, d.categories)) return;
     total++;
     if (isCompletedOn(t, dk)) done++;
   });
@@ -3413,10 +3466,7 @@ function dayLedger(d, dk) {
   const rows = [];
   let banked = 0, remaining = 0, atRisk = 0, atRiskCursed = 0, cursedCount = 0;
   (d.tasks||[]).forEach(t=>{
-    if (!t.catId) return;
-    if (!(d.categories||[]).find(c=>c.id===t.catId)) return;
-    if (isWeekly(t)) return;
-    if (!isScheduledOn(t, dk)) return;
+    if (!isDailyDueOn(t, dk, d.categories)) return;
     const target = t.targetReps || 1;
     const reps   = getReps(t, dk);
     const full   = calcEarnedPoints(t.points, target, target);
@@ -3773,6 +3823,23 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([60,40,60,40,140]); } catch {}
     setData(cur=>{
       const n = {...cur, flags:{...(cur.flags||{}), beastLost:null}};
+      persistRaw(n); return n;
+    });
+  }, [data]);
+
+  // XP appearing out of nowhere would be its own kind of wrong, so the refund
+  // says what it was for. The flag keeps the amount; this clears it to a bare
+  // marker once it has been shown, so it is never paid or announced twice.
+  useEffect(()=>{
+    if (!data) return;
+    const r = (data.flags||{}).weeklyDecayRefund;
+    if (!r || typeof r.amount !== "number") return;
+    if (r.amount > 0) {
+      toast$(`+${xpInt(r.amount)} XP RETURNED \u00b7 WEEKLY HABITS WERE DECAYING`, GOOD);
+      try { navigator.vibrate && navigator.vibrate([20,40,20]); } catch {}
+    }
+    setData(cur=>{
+      const n = {...cur, flags:{...(cur.flags||{}), weeklyDecayRefund: true}};
       persistRaw(n); return n;
     });
   }, [data]);
@@ -5041,10 +5108,7 @@ export default function App() {
   const dayPct = (dk) => {
     let total = 0, done = 0;
     data.tasks.forEach(t=>{
-      if (!t.catId || !data.categories.find(c=>c.id===t.catId)) return;
-      if (isWeekly(t)) return;
-      if ((t.createdAt || "0000-00-00") > dk) return;   // mission didn't exist yet
-      if (!isScheduledOn(t, dk)) return;                // rest day for this mission
+      if (!isDailyDueOn(t, dk, data.categories)) return;
       total++;
       if (isCompletedOn(t, dk)) done++;
     });
