@@ -798,6 +798,29 @@ function applyDecay(data) {
     lost, gained };
 }
 
+// ── ONE-OFF REPAIR ─────────────────────────────────────────────────────────
+// Asked for directly: his standing read 315 before a run of overnight charges
+// he disputes, and his save lives in his own database, which nothing outside
+// the app can reach. So the app puts it back itself, on the next load.
+//
+// It only ever adds — if the standing is already at or above the mark it
+// changes nothing — and the flag means it cannot run twice. This is a repair
+// for one incident, not a feature: once it has run it can be deleted.
+const RESTORE_TO = 31.5;                 // 315 on the XP bar
+function restoreStanding(d) {
+  if ((d.flags||{}).standingRestored) return d;
+  const cats = (d.categories||[]).map(c=>({...c}));
+  if (!cats.length) return d;
+  const want = (RESTORE_TO / 100) * (cats[0].maxValue || XP_MAX);
+  const before = cats[0].value || 0;
+  if (before >= want) {
+    return { ...d, flags: { ...(d.flags||{}), standingRestored: { amount: 0 } } };
+  }
+  cats[0].value = want;
+  return { ...d, categories: cats,
+    flags: { ...(d.flags||{}), standingRestored: { amount: +(want - before).toFixed(4) } } };
+}
+
 // A perfect day is earned by clearing every scheduled mission. It was only
 // PAID if the button got tapped before midnight — close the app first and the
 // day was earned and the bonus gone for good, with nothing to say so.
@@ -1067,7 +1090,7 @@ function migrate(d) {
                   ids: d.dayOrder.ids.filter(x => typeof x === "string") }
               : null,
   };
-  return settlePerfectDays(refundWeeklyDecay(runBeastUpkeep(stampGlobalFreeze(out))));
+  return restoreStanding(settlePerfectDays(refundWeeklyDecay(runBeastUpkeep(stampGlobalFreeze(out)))));
 }
 
 // A global freeze is open-ended, so it can't be written into the per-mission
@@ -3982,6 +4005,19 @@ export default function App() {
     try { navigator.vibrate && navigator.vibrate([40,60,40,60,120]); } catch {}
     setData(cur=>{
       const n = {...cur, flags:{...(cur.flags||{}), perfectSettled:null}};
+      persistRaw(n); return n;
+    });
+  }, [data]);
+
+  // The one-off repair announces itself too, and then clears to a bare marker
+  // so it neither repeats nor says so twice.
+  useEffect(()=>{
+    if (!data) return;
+    const r = (data.flags||{}).standingRestored;
+    if (!r || typeof r.amount !== "number") return;
+    if (r.amount > 0) toast$(`STANDING RESTORED \u00b7 +${xpInt(r.amount/36*100)} XP`, GOOD);
+    setData(cur=>{
+      const n = {...cur, flags:{...(cur.flags||{}), standingRestored:true}};
       persistRaw(n); return n;
     });
   }, [data]);
