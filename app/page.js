@@ -3887,18 +3887,23 @@ export default function App() {
       if (!changed) return cur;
       const have = (cur.wallet?.owned)||[];
       const add = won.map(w=>`eye_${w.eye}`).filter(id=>!have.includes(id));
-      // Drop it straight into any eye it covers that is still bare.
+      // Straight into the eyes its goal was set on, occupied or not. Filling
+      // only a BARE slot meant that once both eyes were taken, a newly
+      // awakened dojutsu was owned and completely invisible — the toast fired,
+      // the character did not change, and nothing said why. Swapping back is
+      // one tap in the Dojutsu section.
       const ec = {...(cur.wallet.equippedCosmetics||{})};
       won.forEach(w=>w.slots.forEach(lr=>{
-        const slot = lr === "l" ? "eyeL" : "eyeR";
-        if (!ec[slot]) ec[slot] = w.eye;
+        ec[lr === "l" ? "eyeL" : "eyeR"] = w.eye;
       }));
       const n = {...cur, wallet:{...cur.wallet, eyeSides:sides,
         owned:[...have, ...add], equippedCosmetics:ec}};
       persistRaw(n); return n;
     });
+    const where = won[0].slots.length === 2 ? "BOTH EYES"
+                : won[0].slots[0] === "l" ? "LEFT EYE" : "RIGHT EYE";
     const e = eyeById(won[0].eye);
-    if (e) { toast$(`👁 ${e.name.toUpperCase()} AWAKENED`, "#e8333a");
+    if (e) { toast$(`👁 ${e.name.toUpperCase()} AWAKENED · ${where}`, "#e8333a");
       try { navigator.vibrate && navigator.vibrate([30,60,30,60,120]); } catch {} }
   }, [data]);
 
@@ -8620,6 +8625,12 @@ export default function App() {
                             {drawEye([], e.id, 20, 20, 17, ()=>q++)}
                           </svg>
                           {!have && <span style={{position:"absolute",top:2,right:3,fontSize:10}}>🔒</span>}
+                          {have && !on && !Object.values(cosmetics).includes(e.id) && (
+                            <span style={{position:"absolute",top:-5,right:-4,fontSize:7.5,
+                              fontWeight:900,letterSpacing:0.3,color:"#2a1a00",background:"#ffb020",
+                              borderRadius:BLOCK?0:7,padding:"1px 4px",
+                              boxShadow:"0 0 8px rgba(255,176,32,0.6)"}}>NEW</span>
+                          )}
                         </button>
                       );
                     })}
