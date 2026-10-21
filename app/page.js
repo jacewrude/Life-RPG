@@ -402,7 +402,17 @@ const LEVELS = [
   { lvl:5, name:"Sage Mode",           unlock:"Red toad-sage haori & scroll" },
   { lvl:6, name:"Kage",                unlock:"Kage haori & hat" },
   { lvl:7, name:"Sage of Six Paths",   unlock:"White robe, six magatama & nine orbs" },
+  // The reserve. It keeps the same name and the same robe on purpose: it is
+  // not a new identity, it is the surplus above the last one. `reserve` keeps
+  // it off the Ascent ladder, and no GEAR entry points at level 8, so the Sage
+  // robe (which asks for level >= 7) simply stays on.
+  { lvl:8, name:"Sage of Six Paths",   unlock:"Reserve \u2014 banked headroom", reserve:true },
 ];
+// Where the reserve band starts. Deliberately well clear of the Sage of Six
+// Paths floor at 29.4: the gap between them is the leeway, and it has to be
+// worth more than one bad day or it is decoration.
+const RESERVE_AT = 42;
+const TOP_RANK = LEVELS.filter(L=>!L.reserve).length - 1;   // 7 — the last costume
 
 const QUOTES = [
   ["I can do all things through Christ who strengthens me.","Philippians 4:13"],
@@ -652,8 +662,15 @@ function getTier(r) {
   return               { label:"NOVICE",   color:"#9ca3af" };
 }
 function getLevel(rating) {
-  const lvl = Math.min(LEVELS.length-1, Math.floor(rating / 4.2));
-  return { ...LEVELS[lvl], lvl, ratingForNext:(lvl+1)*4.2, ratingFloor:lvl*4.2 };
+  if (rating >= RESERVE_AT) {
+    return { ...LEVELS[TOP_RANK+1], lvl: TOP_RANK+1,
+             ratingForNext: 100, ratingFloor: RESERVE_AT };
+  }
+  const lvl = Math.min(TOP_RANK, Math.floor((rating + 1e-9) / 4.2));
+  // The last costume rank climbs toward the reserve, not toward a rung that
+  // is not there.
+  return { ...LEVELS[lvl], lvl, ratingFloor: lvl*4.2,
+           ratingForNext: lvl === TOP_RANK ? RESERVE_AT : (lvl+1)*4.2 };
 }
 function getTitle(data, lvl) {
   return (data.customTitles && data.customTitles[lvl]) || (LEVELS[lvl] ? LEVELS[lvl].name : "");
@@ -696,6 +713,10 @@ function isDailyDueOn(task, dk, cats) {
   if (!task || !task.catId) return false;
   if (cats && !cats.find(c => c.id === task.catId)) return false;
   if (isWeekly(task)) return false;
+  // A forbidden mission is something you are trying to stop. Leaving it
+  // untouched is the win, so it can never be a miss: no decay, no share of the
+  // day's percentage, nothing at risk on it overnight.
+  if (task.vice) return false;
   if ((task.createdAt || "0000-00-00") > dk) return false;
   return isScheduledOn(task, dk);
 }
@@ -868,7 +889,7 @@ function migrate(d) {
   }) };
   // Missions store their own points; refresh them so the difficulty curve applies.
   d = { ...d, tasks: (d.tasks||[]).map(t=>({
-    ...t, curse: !!t.curse, points: calcPoints(t.importance ?? 5),
+    ...t, curse: !!t.curse, vice: !!t.vice, points: calcPoints(t.importance ?? 5),
     decayRate: calcDecay(t.importance ?? 5, !!t.curse) })) };
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
@@ -3293,6 +3314,23 @@ const STORY = [
   { t:"From Higher Up", b:"He is training again. Of course he is.\n\nThe difference is that now you know exactly what it cost him to get where he was, because you paid the same price to get there.\n\nHe is further ahead than he was when you started. He is also, for the first time, looking over his shoulder." },
 ];
 
+// Days since you last gave in. The streak that matters for something you are
+// trying to stop is the one you are NOT doing.
+function cleanDays(task, todayStr) {
+  if (!task) return 0;
+  const start = task.createdAt || null;
+  const cur = new Date((todayStr || dateKey()) + "T12:00:00");
+  let n = 0;
+  for (let i = 0; i < 400; i++) {
+    const dk = dateKey(cur);
+    if (start && dk < start) break;
+    if (getReps(task, dk) > 0) break;
+    n++;
+    cur.setDate(cur.getDate() - 1);
+  }
+  return n;
+}
+
 // ── MISSED DAYS IN A ROW ────────────────────────────────────────────────────
 // The mirror of getStreak: scheduled days missed, counting back from
 // YESTERDAY. Today is left out because the day is not over — an unfinished
@@ -4194,6 +4232,23 @@ export default function App() {
       if (nowDone === wt) toast$(`✓ ${task.name} — WEEK COMPLETE!`, cat?.color || "#34d399");
       else if (nowDone > wt) toast$(`${nowDone}/${wt} · over target! 💪`, "#f59e0b");
       else toast$(`${nowDone}/${wt} this week · ${task.name}`, cat?.color || "#34d399");
+      return;
+    }
+
+    // ── FORBIDDEN: tapping means you slipped. It costs what an equally hard
+    //    mission would have paid, so the two sit on the same scale.
+    if (task.vice) {
+      const prev = getReps(task, d);
+      const cats = data.categories.map(c => c.id !== task.catId ? c
+        : {...c, value: Math.max(0, c.value - (task.points || 0))});
+      const tasks = data.tasks.map(t => {
+        if (t.id !== tid) return t;
+        const comps = {...(t.completions||{})}; comps[d] = prev + 1;
+        return {...t, completions: comps};
+      });
+      update({...data, categories:cats, tasks});
+      toast$(`\u2715 ${task.name.toUpperCase()} \u00b7 \u2212${xpInt((task.points||0)/36*100)} XP`, BAD);
+      try { navigator.vibrate && navigator.vibrate([50,40,50]); } catch {}
       return;
     }
 
@@ -5113,7 +5168,12 @@ export default function App() {
   const T = THEMES[S.theme] || THEMES.ember;   // removed themes fall back
   const cz = data.character;
   const today = currentDay;
-  const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && !isWeekly(t) && isScheduledOn(t,today));
+  const todayTasks = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId)
+    && !isWeekly(t) && !t.vice && isScheduledOn(t,today));
+  // Kept out of the day's count on purpose: a forbidden mission is not
+  // something to finish, so counting it would make a clean day read as unfinished.
+  const todayVices = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId)
+    && t.vice && isLiveOn(t, today));
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t) && isLiveOn(t, today));
   const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
   const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
@@ -5203,7 +5263,16 @@ export default function App() {
   // You keep your rank; you can choose to wear the look of any rank you've passed.
   const wornLvl = (cz && cz.appearLevel != null && cz.appearLevel <= level.lvl)
     ? cz.appearLevel : level.lvl;
-  const lvlProgress = Math.max(0, Math.min(100, ((xpNow - level.ratingFloor) / 4.2) * 100));
+  // Measured against this rank's own span rather than a flat 4.2, because the
+  // reserve band is wider than a normal rung — and because a bar pinned at
+  // 100% is what hid the surplus in the first place.
+  const lvlSpan = Math.max(0.01, level.ratingForNext - level.ratingFloor);
+  const lvlProgress = Math.max(0, Math.min(100,
+    ((xpNow - level.ratingFloor) / lvlSpan) * 100));
+  const inReserve = level.lvl > TOP_RANK;
+  // How much could be lost before the rank itself goes. This is the number the
+  // top of the ladder never showed.
+  const rankBuffer = Math.max(0, xpNow - (inReserve ? RESERVE_AT : level.ratingFloor));
   const ghostCategories = data.categories.map(c=>{
     let val = c.value;
     data.tasks.forEach(t=>{
@@ -5662,6 +5731,31 @@ export default function App() {
     );
   };
 
+  const ViceBlock = ({ on, onChange }) => (
+    <div onClick={()=>onChange(!on)}
+      style={{marginTop:12,padding:"13px 14px",borderRadius:BLOCK?0:16,cursor:"pointer",
+        background: on ? "rgba(232,51,58,0.2)" : "rgba(0,0,0,0.25)",
+        border:`1px solid ${on ? BAD+"88" : LINE}`,
+        display:"flex",alignItems:"center",gap:12}}>
+      <div style={{width:34,height:34,flexShrink:0,display:"flex",alignItems:"center",
+        justifyContent:"center",fontSize:21,opacity:on?1:0.45}}>⛔</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12.5,fontWeight:900,color: on ? BAD : "#fff",letterSpacing:0.6}}>
+          FORBIDDEN
+        </div>
+        <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:2,lineHeight:1.45}}>
+          A habit you&rsquo;re quitting. Tap it only when you slip, and it costs XP.
+          Leaving it alone costs nothing.
+        </div>
+      </div>
+      <div style={{width:46,height:26,borderRadius:13,flexShrink:0,position:"relative",
+        background: on ? BAD : "rgba(255,255,255,0.16)",transition:"background .2s"}}>
+        <div style={{position:"absolute",top:3,left: on ? 23 : 3,width:20,height:20,borderRadius:"50%",
+          background:"#fff",transition:"left .2s",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}/>
+      </div>
+    </div>
+  );
+
   const CurseBlock = ({ on, onChange }) => (
     <div onClick={()=>onChange(!on)}
       style={{marginTop:14,padding:"13px 14px",borderRadius:16,cursor:"pointer",
@@ -5822,11 +5916,16 @@ export default function App() {
                 : confirmBox.type==="resetAllQuests" ? "⚠ RESET ALL MISSIONS"
                 : confirmBox.type==="resetWardrobe" ? "⚠ RESET WARDROBE"
                 : confirmBox.type==="resetDojutsu" ? "⚠ RESET DOJUTSU"
-                : confirmBox.type==="resetSummons" ? "⚠ RESET SUMMONS" : "⚠ CONFIRM DELETE"}
+                : confirmBox.type==="resetSummons" ? "⚠ RESET SUMMONS"
+                : confirmBox.type==="vice" ? "⛔ LOG A SLIP" : "⚠ CONFIRM DELETE"}
             </div>
             <div style={{fontSize:14.5,color:"#fff",textAlign:"center",marginBottom:10,lineHeight:1.5,fontWeight:600}}>
               {confirmBox.type==="reset"
                 ? <>Reset your champion's stats back to the start? Your missions, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
+                : confirmBox.type==="vice"
+                ? <>Log that you gave in to <span style={{color:BAD,fontWeight:900}}>{confirmBox.name}</span>?
+                   This takes XP off your bar and resets your clean run. Only you know
+                   whether it happened — the point is that it is honest.</>
                 : confirmBox.type==="questReset"
                 ? <>Wipe the history and streak of <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span> and start counting fresh from today? Your character's stats are <span style={{color:GOOD,fontWeight:900}}>unchanged</span>.</>
                 : confirmBox.type==="resetCoins"
@@ -5866,9 +5965,11 @@ export default function App() {
                   else if (confirmBox.type==="resetWardrobe") resetWardrobe();
                   else if (confirmBox.type==="resetDojutsu") resetDojutsu();
                   else if (confirmBox.type==="resetSummons") resetSummons();
+                  else if (confirmBox.type==="vice") addRep(confirmBox.id, today);
                   setConfirmBox(null);
                 }}>
-                {confirmBox.type==="resetWardrobe" ? "ERASE MY PROGRESS"
+                {confirmBox.type==="vice" ? "I SLIPPED"
+                  : confirmBox.type==="resetWardrobe" ? "ERASE MY PROGRESS"
                   : confirmBox.type==="resetDojutsu" ? "RESET EYES ONLY"
                   : confirmBox.type==="resetSummons" ? "RESET BEASTS ONLY"
                   : confirmBox.type && confirmBox.type.startsWith("reset") ? "RESET" : "DELETE"}
@@ -6601,16 +6702,30 @@ export default function App() {
               {/* LEVEL PROGRESS */}
               <div style={{...C.glass,padding:"10px 14px",marginBottom:10}}>
                 <div style={{height:8,background:"rgba(0,0,0,0.3)",borderRadius:5,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${level.lvl>=LEVELS.length-1?100:lvlProgress}%`,background:"linear-gradient(90deg,rgba(255,255,255,0.75),#ffffff)",borderRadius:6,boxShadow:"0 0 12px rgba(255,255,255,0.6)",transition:"width .6s ease"}}/>
+                  <div style={{height:"100%",width:`${lvlProgress}%`,
+                    background: inReserve
+                      ? `linear-gradient(90deg,${T.accent},#ffd873)`
+                      : "linear-gradient(90deg,rgba(255,255,255,0.75),#ffffff)",
+                    borderRadius:6,boxShadow:`0 0 12px ${inReserve?T.accent:"rgba(255,255,255,0.6)"}`,
+                    transition:"width .6s ease"}}/>
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:DIM,marginTop:6,fontWeight:800}}>
                   <span>{xpInt(xpNow)} XP</span>
-                  {level.lvl < LEVELS.length-1
-                    ? <span style={{color:"#fff"}}>
-                        {Math.max(0, xpInt(level.ratingForNext - xpNow))} XP to {getTitle(data, level.lvl+1)}
-                      </span>
-                    : <span style={{color:T.accent}}>HIGHEST RANK</span>}
-                  <span>{level.lvl>=LEVELS.length-1?"MAX":xpInt(level.ratingForNext)}</span>
+                  {inReserve
+                    ? <span style={{color:T.accent}}>RESERVE &middot; {xpInt(rankBuffer)} BANKED</span>
+                    : <span style={{color:"#fff"}}>
+                        {Math.max(0, xpInt(level.ratingForNext - xpNow))} XP to{" "}
+                        {level.lvl === TOP_RANK ? "RESERVE" : getTitle(data, level.lvl+1)}
+                      </span>}
+                  <span>{xpInt(level.ratingForNext)}</span>
+                </div>
+                {/* The number the top of the ladder never showed: how much can
+                    be lost before the rank goes. */}
+                <div style={{fontSize:9.5,fontWeight:800,marginTop:5,
+                  color: rankBuffer <= 0 ? BAD : rankBuffer < 40 ? "#ffc46b" : FAINT}}>
+                  {rankBuffer > 0
+                    ? `${xpInt(rankBuffer)} XP of room before you drop a rank`
+                    : "On the line \u2014 a missed day costs the rank"}
                 </div>
               </div>
 
@@ -6757,6 +6872,41 @@ export default function App() {
                   sequence, which a numbered badge scattered down a list does not
                   give you. Clearing one drops it off here and everything below
                   moves up. */}
+              {todayVices.length>0 && (
+                <div style={{...C.glass,padding:"11px 13px",marginBottom:11,
+                  border:`1px solid ${BAD}44`}}>
+                  <div style={{...C.label,color:BAD,marginBottom:3}}>⛔ FORBIDDEN</div>
+                  <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:9,lineHeight:1.45}}>
+                    Only tap one if you gave in. Leaving them alone is the win.
+                  </div>
+                  {todayVices.map(t=>{
+                    const vc = data.categories.find(c=>c.id===t.catId);
+                    const clean = cleanDays(t, today);
+                    const slips = getReps(t, today);
+                    return (
+                      <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,
+                        padding:"7px 0",borderTop:`1px solid ${LINE}`}}>
+                        <span style={{fontSize:17,flexShrink:0}}>{iconFor(t,vc)}</span>
+                        <span style={{flex:1,minWidth:0}}>
+                          <span style={{display:"block",fontSize:13,fontWeight:800,color:"#fff",
+                            whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</span>
+                          <span style={{display:"block",fontSize:9.5,fontWeight:800,marginTop:1,
+                            color: slips>0 ? BAD : clean>=1 ? GOOD : FAINT}}>
+                            {slips>0
+                              ? `${slips} slip${slips>1?"s":""} today \u00b7 \u2212${xpInt(t.points*slips/36*100)} XP`
+                              : clean>0 ? `${clean} day${clean>1?"s":""} clean` : "clean so far"}
+                          </span>
+                        </span>
+                        <button onClick={()=>setConfirmBox({type:"vice",id:t.id,name:t.name})}
+                          style={{flexShrink:0,padding:"8px 13px",borderRadius:BLOCK?0:11,
+                            border:`1px solid ${BAD}77`,background:"rgba(232,51,58,0.16)",
+                            color:"#ff8a7a",fontFamily:FONT,fontWeight:900,fontSize:10,
+                            letterSpacing:0.6,cursor:"pointer"}}>I SLIPPED</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {orderedNow.length>0 && (
                 <div style={{...C.glass,padding:"11px 13px",marginBottom:11,border:`1px solid ${PRI}44`}}>
                   <div style={{display:"flex",alignItems:"center",marginBottom:7}}>
@@ -7310,6 +7460,7 @@ export default function App() {
                 <div style={{marginTop:16}}>
                   <ImportanceBlock value={t.importance??5} onChange={v=>set({importance:v})} cursed={!!t.curse}/>
                   <CurseBlock on={!!t.curse} onChange={v=>set({curse:v})}/>
+                  <ViceBlock on={!!t.vice} onChange={v=>set({vice:v})}/>
                 </div>
                 <div style={{...C.label,marginTop:16}}>FREQUENCY</div>
                 <div style={{display:"flex",gap:8,marginBottom:4}}>
@@ -8113,7 +8264,7 @@ export default function App() {
             </div>
             <div style={{...C.sectionTitle,margin:"18px 2px 4px"}}>The Path of Ascension</div>
             <div style={{fontSize:11,color:DIM,margin:"0 2px 12px",fontWeight:700}}>Tap ✎ to rename a rank.</div>
-            {LEVELS.map(L=>{
+            {LEVELS.filter(L=>!L.reserve).map(L=>{
               const achieved = level.lvl >= L.lvl;
               const isNext = level.lvl + 1 === L.lvl;
               const isCurrent = level.lvl === L.lvl;
