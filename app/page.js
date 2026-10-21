@@ -520,6 +520,17 @@ function getReps(task, dateStr) {
 function isCompletedOn(task, dateStr) {
   return getReps(task, dateStr) >= (task.targetReps || 1);
 }
+// Did this mission go your way on this day?
+//
+// For a forbidden mission the answer is inverted: it is a habit being quit, so
+// an untouched day is the win and a tap is the failure. Everything that SCORES
+// a day asks this — the badge, the ledger, the streak, the night — while
+// anything that just wants to know whether reps were logged keeps asking
+// isCompletedOn.
+function isWonOn(task, dateStr) {
+  if (task && task.vice) return getReps(task, dateStr) === 0;
+  return isCompletedOn(task, dateStr);
+}
 function getDayOfWeek(dateStr) {
   const [y,m,d] = dateStr.split("-").map(Number);
   return new Date(y, m-1, d).getDay();
@@ -570,11 +581,11 @@ function getStreak(task) {
   let s = 0;
   const cur = new Date();
   const todayK = dateKey(cur);
-  if (isScheduledOn(task, todayK) && !isCompletedOn(task, todayK)) cur.setDate(cur.getDate()-1);
+  if (isScheduledOn(task, todayK) && !isWonOn(task, todayK)) cur.setDate(cur.getDate()-1);
   for (let i = 0; i < 730; i++) {
     const dk = dateKey(cur);
     if (isScheduledOn(task, dk)) {
-      if (isCompletedOn(task, dk)) s++;
+      if (isWonOn(task, dk)) s++;
       else if ((task.frozen||{})[dk]) { /* shielded day — streak survives */ }
       else break;
     }
@@ -713,10 +724,6 @@ function isDailyDueOn(task, dk, cats) {
   if (!task || !task.catId) return false;
   if (cats && !cats.find(c => c.id === task.catId)) return false;
   if (isWeekly(task)) return false;
-  // A forbidden mission is something you are trying to stop. Leaving it
-  // untouched is the win, so it can never be a miss: no decay, no share of the
-  // day's percentage, nothing at risk on it overnight.
-  if (task.vice) return false;
   if ((task.createdAt || "0000-00-00") > dk) return false;
   return isScheduledOn(task, dk);
 }
@@ -727,7 +734,16 @@ function applyDecay(data) {
   if (!anchor) return { data: { ...data, lastDecayDate: today }, lost: 0 };
   if (anchor >= today) return { data, lost: 0 };
   let cats = data.categories.map(c=>({...c}));
-  let lost = 0;
+  let lost = 0, gained = 0;
+  // A receipt. A rank dropping overnight with nothing to show for it is the
+  // thing that has gone wrong twice, and the app knew the answer both times.
+  const bill = {};
+  const note = (task, dk, amount, kind) => {
+    const k = task.id;
+    if (!bill[k]) bill[k] = { name: task.name, kind, days: [], total: 0 };
+    bill[k].days.push(dk);
+    bill[k].total = +(bill[k].total + amount).toFixed(4);
+  };
   try {
     // Process every elapsed day from the anchor up to and INCLUDING yesterday.
     // (The old version started at anchor+1 and ran while < today, which skipped
@@ -740,13 +756,32 @@ function applyDecay(data) {
       data.tasks.forEach(task=>{
         try {
           if (!isDailyDueOn(task, dk, data.categories)) return;
+          const ci = cats.findIndex(c=>c.id===task.catId);
+          if (ci === -1) return;
+          // A forbidden mission pays for a day you left it alone and charges
+          // for a day you did not. This is where it settles, because holding
+          // out all day is only known once the day is over.
+          if (task.vice) {
+            if ((task.frozen||{})[dk]) return;
+            const before = cats[ci].value;
+            if (getReps(task, dk) > 0) {
+              cats[ci].value = Math.max(0, before - (task.decayRate||0));
+              lost += before - cats[ci].value;
+              note(task, dk, before - cats[ci].value, "slip");
+            } else {
+              cats[ci].value = Math.min(cats[ci].maxValue ?? XP_MAX, before + (task.points||0));
+              gained += cats[ci].value - before;
+              note(task, dk, cats[ci].value - before, "held");
+            }
+            return;
+          }
           if (isCompletedOn(task, dk)) return;
           if ((task.frozen||{})[dk]) return;      // streak shield — no decay
-          const ci = cats.findIndex(c=>c.id===task.catId);
-          if (ci !== -1) {
+          {
             const before = cats[ci].value;
             cats[ci].value = Math.max(0, cats[ci].value - (task.decayRate||0));
             lost += before - cats[ci].value;
+            note(task, dk, before - cats[ci].value, "missed");
           }
         } catch {}
       });
@@ -754,7 +789,13 @@ function applyDecay(data) {
       safety++;
     }
   } catch {}
-  return { data: { ...data, categories: cats, lastDecayDate: today }, lost };
+  const rows = Object.values(bill).filter(r=>r.total > 0.0001)
+    .sort((a,b)=> b.total - a.total);
+  return { data: { ...data, categories: cats, lastDecayDate: today,
+    flags: { ...(data.flags||{}),
+      lastNight: rows.length ? { on: today, lost:+lost.toFixed(4),
+                                 gained:+gained.toFixed(4), rows } : (data.flags||{}).lastNight || null } },
+    lost, gained };
 }
 
 // A perfect day is earned by clearing every scheduled mission. It was only
@@ -1100,7 +1141,7 @@ function bestPerfectStreak(data) {
     const sched = data.tasks.filter(t=>t.catId && isScheduledOn(t,dk));
     if (i===0 && sched.length===0) { cur.setDate(cur.getDate()-1); continue; }
     if (sched.length===0) { cur.setDate(cur.getDate()-1); continue; }
-    const allDone = sched.every(t=>isCompletedOn(t,dk));
+    const allDone = sched.every(t=>isWonOn(t,dk));
     if (allDone) streak++;
     else {
       if (i===0) { cur.setDate(cur.getDate()-1); continue; } // today not finished yet — don't break
@@ -1140,7 +1181,7 @@ function applyCoinDecay(data) {
         if (!t.catId || !isScheduledOn(t, dk)) return;
         const val = coinsForTask(t);
         dayMax += val;
-        if (!isCompletedOn(t, dk)) dayMissed += val;
+        if (!isWonOn(t, dk)) dayMissed += val;
       });
       if (dayMax > 0 && dayMissed > 0) {
         const frac = dayMissed / dayMax;
@@ -3368,7 +3409,7 @@ function dayPctOf(d, dk) {
   (d.tasks||[]).forEach(t=>{
     if (!isDailyDueOn(t, dk, d.categories)) return;
     total++;
-    if (isCompletedOn(t, dk)) done++;
+    if (isWonOn(t, dk)) done++;
   });
   return total ? Math.round((done/total)*100) : null;
 }
@@ -3553,11 +3594,13 @@ function dayLedger(d, dk) {
     if (!isDailyDueOn(t, dk, d.categories)) return;
     const target = t.targetReps || 1;
     const reps   = getReps(t, dk);
-    const full   = calcEarnedPoints(t.points, target, target);
-    const got    = calcEarnedPoints(t.points, target, Math.min(reps, target));
-    const left   = Math.max(0, full - got);
     const frozen = !!((t.frozen||{})[dk]);
-    const done   = reps >= target;
+    const done   = isWonOn(t, dk);
+    // A forbidden mission banks nothing during the day: holding out is only
+    // paid once the day is over, so what is clean reads as still to come.
+    const full   = t.vice ? (t.points || 0) : calcEarnedPoints(t.points, target, target);
+    const got    = t.vice ? 0 : calcEarnedPoints(t.points, target, Math.min(reps, target));
+    const left   = t.vice ? (done ? (t.points || 0) : 0) : Math.max(0, full - got);
     const risk   = (done || frozen) ? 0 : (t.decayRate || 0);
     banked += got; remaining += left; atRisk += risk;
     if (risk > 0 && isCursed(t)) { atRiskCursed += risk; cursedCount++; }
@@ -4235,20 +4278,23 @@ export default function App() {
       return;
     }
 
-    // ── FORBIDDEN: tapping means you slipped. It costs what an equally hard
-    //    mission would have paid, so the two sit on the same scale.
+    // ── FORBIDDEN: a tap records the slip. The XP moves at midnight with
+    //    everything else, so a tap can never double up with the night's pass.
+    //    Tapping again takes it back, because mis-taps happen.
     if (task.vice) {
-      const prev = getReps(task, d);
-      const cats = data.categories.map(c => c.id !== task.catId ? c
-        : {...c, value: Math.max(0, c.value - (task.points || 0))});
+      const slipped = getReps(task, d) > 0;
       const tasks = data.tasks.map(t => {
         if (t.id !== tid) return t;
-        const comps = {...(t.completions||{})}; comps[d] = prev + 1;
+        const comps = {...(t.completions||{})};
+        if (slipped) delete comps[d]; else comps[d] = 1;
         return {...t, completions: comps};
       });
-      update({...data, categories:cats, tasks});
-      toast$(`\u2715 ${task.name.toUpperCase()} \u00b7 \u2212${xpInt((task.points||0)/36*100)} XP`, BAD);
-      try { navigator.vibrate && navigator.vibrate([50,40,50]); } catch {}
+      update({...data, tasks});
+      toast$(slipped
+        ? `${task.name.toUpperCase()} \u00b7 SLIP TAKEN BACK`
+        : `\u2715 ${task.name.toUpperCase()} \u00b7 \u2212${xpInt((task.decayRate||0)/36*100)} XP TONIGHT`,
+        slipped ? GOOD : BAD);
+      try { navigator.vibrate && navigator.vibrate(slipped ? 14 : [50,40,50]); } catch {}
       return;
     }
 
@@ -5173,10 +5219,13 @@ export default function App() {
   // Kept out of the day's count on purpose: a forbidden mission is not
   // something to finish, so counting it would make a clean day read as unfinished.
   const todayVices = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId)
-    && t.vice && isLiveOn(t, today));
+    && t.vice && isScheduledOn(t, today));
+  // They get their own section to look at, but they are scored with everything
+  // else: a slip costs you the perfect day exactly like a missed mission.
+  const todayScored = [...todayTasks, ...todayVices];
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t) && isLiveOn(t, today));
-  const todayDone = todayTasks.filter(t=>isCompletedOn(t,today)).length;
-  const allDone = todayTasks.length>0 && todayDone===todayTasks.length;
+  const todayDone = todayScored.filter(t=>isWonOn(t,today)).length;
+  const allDone = todayScored.length>0 && todayDone===todayScored.length;
 
   // ── TODAY'S ORDER ─────────────────────────────────────────────────────────
   // Keyed off `today`, which is currentDay and ticks over at midnight on its
@@ -5233,11 +5282,11 @@ export default function App() {
     data.tasks.forEach(t=>{
       if (!isDailyDueOn(t, dk, data.categories)) return;
       total++;
-      if (isCompletedOn(t, dk)) done++;
+      if (isWonOn(t, dk)) done++;
     });
     return { total, done, pct: total ? Math.round((done/total)*100) : null };
   };
-  const todayPct  = todayTasks.length ? Math.round((todayDone/todayTasks.length)*100) : null;
+  const todayPct  = todayScored.length ? Math.round((todayDone/todayScored.length)*100) : null;
   const todayTier = badgeTierFor(todayPct);
 
   // ── PRIORITY DIVIDER — one draggable bar, remembered per weekday ────────────
@@ -5924,8 +5973,8 @@ export default function App() {
                 ? <>Reset your champion's stats back to the start? Your missions, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="vice"
                 ? <>Log that you gave in to <span style={{color:BAD,fontWeight:900}}>{confirmBox.name}</span>?
-                   This takes XP off your bar and resets your clean run. Only you know
-                   whether it happened — the point is that it is honest.</>
+                   It costs XP tonight instead of paying, and the day is no longer perfect.
+                   You can undo it any time before midnight.</>
                 : confirmBox.type==="questReset"
                 ? <>Wipe the history and streak of <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span> and start counting fresh from today? Your character's stats are <span style={{color:GOOD,fontWeight:900}}>unchanged</span>.</>
                 : confirmBox.type==="resetCoins"
@@ -6877,7 +6926,8 @@ export default function App() {
                   border:`1px solid ${BAD}44`}}>
                   <div style={{...C.label,color:BAD,marginBottom:3}}>⛔ FORBIDDEN</div>
                   <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:9,lineHeight:1.45}}>
-                    Only tap one if you gave in. Leaving them alone is the win.
+                    Scored like any other mission, the other way round. Leave one alone
+                    and it pays tonight; tap it and it costs, and the day is no longer perfect.
                   </div>
                   {todayVices.map(t=>{
                     const vc = data.categories.find(c=>c.id===t.catId);
@@ -6888,20 +6938,27 @@ export default function App() {
                         padding:"7px 0",borderTop:`1px solid ${LINE}`}}>
                         <span style={{fontSize:17,flexShrink:0}}>{iconFor(t,vc)}</span>
                         <span style={{flex:1,minWidth:0}}>
-                          <span style={{display:"block",fontSize:13,fontWeight:800,color:"#fff",
+                          <span style={{display:"block",fontSize:13,fontWeight:800,
+                            color: slips>0 ? DIM : "#fff",
+                            textDecoration: slips>0 ? "line-through" : "none",
                             whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</span>
                           <span style={{display:"block",fontSize:9.5,fontWeight:800,marginTop:1,
-                            color: slips>0 ? BAD : clean>=1 ? GOOD : FAINT}}>
+                            color: slips>0 ? BAD : GOOD}}>
                             {slips>0
-                              ? `${slips} slip${slips>1?"s":""} today \u00b7 \u2212${xpInt(t.points*slips/36*100)} XP`
-                              : clean>0 ? `${clean} day${clean>1?"s":""} clean` : "clean so far"}
+                              ? `Slipped \u00b7 \u2212${xpInt((t.decayRate||0)/36*100)} XP tonight`
+                              : `Holding \u00b7 +${xpInt((t.points||0)/36*100)} XP tonight`
+                                + (clean>0 ? ` \u00b7 ${clean}d clean` : "")}
                           </span>
                         </span>
-                        <button onClick={()=>setConfirmBox({type:"vice",id:t.id,name:t.name})}
+                        <button onClick={()=> slips>0
+                            ? addRep(t.id, today)
+                            : setConfirmBox({type:"vice",id:t.id,name:t.name})}
                           style={{flexShrink:0,padding:"8px 13px",borderRadius:BLOCK?0:11,
-                            border:`1px solid ${BAD}77`,background:"rgba(232,51,58,0.16)",
-                            color:"#ff8a7a",fontFamily:FONT,fontWeight:900,fontSize:10,
-                            letterSpacing:0.6,cursor:"pointer"}}>I SLIPPED</button>
+                            border:`1px solid ${slips>0?GOOD+"77":BAD+"77"}`,
+                            background: slips>0 ? "rgba(52,211,153,0.14)" : "rgba(232,51,58,0.16)",
+                            color: slips>0 ? GOOD : "#ff8a7a",fontFamily:FONT,fontWeight:900,
+                            fontSize:10,letterSpacing:0.6,cursor:"pointer"}}>
+                          {slips>0 ? "UNDO" : "I SLIPPED"}</button>
                       </div>
                     );
                   })}
@@ -8090,6 +8147,49 @@ export default function App() {
           return (
             <div style={{padding:"14px 16px"}}>
               <div style={{...C.sectionTitle,marginBottom:12}}>Training Grounds</div>
+
+              {/* LAST NIGHT — the receipt. A rank dropping overnight with
+                  nothing to show for it is the thing that has gone wrong
+                  twice; the app knew the answer both times and never said. */}
+              {(()=>{
+                const n = (data.flags||{}).lastNight;
+                if (!n || !n.rows || !n.rows.length) return null;
+                const net = (n.gained||0) - (n.lost||0);
+                return (
+                  <div style={{...C.glass,padding:"12px 14px",
+                    border:`1px solid ${net < 0 ? BAD+"55" : GOOD+"44"}`}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:3}}>
+                      <div style={{...C.label,marginBottom:0,flex:1}}>LAST NIGHT</div>
+                      <div style={{fontSize:15,fontWeight:900,color: net < 0 ? BAD : GOOD}}>
+                        {net >= 0 ? "+" : "\u2212"}{fmt(Math.abs(px(net)))} XP
+                      </div>
+                    </div>
+                    <div style={{fontSize:9,color:FAINT,fontWeight:700,marginBottom:9}}>
+                      Settled {prettyDay(n.on)}
+                      {n.gained > 0 && n.lost > 0
+                        ? ` \u00b7 +${fmt(px(n.gained))} earned, \u2212${fmt(px(n.lost))} charged` : ""}
+                    </div>
+                    {n.rows.slice(0,8).map((r,i)=>(
+                      <div key={r.name+i} style={{display:"flex",alignItems:"center",gap:9,
+                        padding:"5px 0",borderTop:i?`1px solid ${LINE}`:"none"}}>
+                        <span style={{flex:1,minWidth:0,fontSize:11.5,fontWeight:800,color:"#fff",
+                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</span>
+                        <span style={{fontSize:9,color:FAINT,fontWeight:700,flexShrink:0}}>
+                          {r.kind==="held" ? "held" : r.kind==="slip" ? "slipped" : "missed"}
+                          {r.days.length>1 ? ` \u00d7${r.days.length}` : ""}
+                        </span>
+                        <span style={{fontSize:12,fontWeight:900,flexShrink:0,
+                          color: r.kind==="held" ? GOOD : BAD}}>
+                          {r.kind==="held" ? "+" : "\u2212"}{fmt(px(r.total))}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:8,lineHeight:1.45}}>
+                      Every move the night made, and what each one cost or paid.
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* The champion, and where he stands right now */}
               <div style={{...C.glass,display:"flex",alignItems:"center",gap:14}}>
