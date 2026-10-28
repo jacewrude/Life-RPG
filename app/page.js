@@ -8195,58 +8195,69 @@ export default function App() {
             <div style={{padding:"14px 16px"}}>
               <div style={{...C.sectionTitle,marginBottom:12}}>Training Grounds</div>
 
-              {/* LAST NIGHT — the receipt. A rank dropping overnight with
-                  nothing to show for it is the thing that has gone wrong
-                  twice; the app knew the answer both times and never said. */}
+              {/* LAST NIGHT — worked out fresh every render.
+                  It used to be a snapshot written when the night ran, so going
+                  back to log a missed day left it quoting the old charge and
+                  still naming a mission you had since cleared — and it
+                  disagreed with the seven-day panel below, which was computing
+                  live. Only the DAYS come from the stored receipt now; every
+                  figure is read from the same ledger the night bills from. */}
               {(()=>{
                 const n = (data.flags||{}).lastNight;
-                if (!n || !n.rows || !n.rows.length) return null;
-                // Everything banked on the day being settled, not just what
-                // the night itself paid out.
-                // Worked out here rather than read off the receipt. The figure
-                // is only stored from the night this was added onwards, and the
-                // completion history is still here — so recomputing it fixes
-                // receipts that were already written without it.
+                if (!n) return null;
                 const settled = (n.days && n.days.length)
                   ? n.days
                   : [...new Set((n.rows||[]).flatMap(r=>r.days||[]))].sort();
-                const dayEarned = settled.length
-                  ? settled.reduce((sum,dk)=> sum + dayLedger(data, dk).banked, 0) + (n.gained||0)
-                  : (typeof n.earned === "number" ? n.earned : (n.gained||0));
-                const net = dayEarned - (n.lost||0);
-                const settledDays = settled.length ? settled : null;
+                if (!settled.length) return null;
+                // Every mission on those days, gathered across them.
+                const byId = {};
+                let earned = 0, charged = 0;
+                settled.forEach(dk=>{
+                  const D = dayLedger(data, dk);
+                  earned += D.banked; charged += D.atRisk;
+                  D.rows.forEach(r=>{
+                    const e = byId[r.id] || (byId[r.id] =
+                      { id:r.id, name:r.name, got:0, risk:0, days:0, cleared:0, frozen:0 });
+                    e.got += r.got; e.risk += r.risk; e.days++;
+                    if (r.done) e.cleared++;
+                    if (r.frozen) e.frozen++;
+                  });
+                });
+                earned += (n.gained||0);
+                const net = earned - charged;
+                const list = Object.values(byId)
+                  .filter(r=>r.got > 0.0001 || r.risk > 0.0001 || r.frozen)
+                  .sort((x,y)=> (y.risk - x.risk) || (y.got - x.got));
+                const openKey = "lastNightRows";
+                const open = !((S.collapsed||{})[openKey]);
                 return (
                   <div style={{...C.glass,padding:"12px 14px",
                     border:`1px solid ${net < 0 ? BAD+"55" : GOOD+"44"}`}}>
                     <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:3}}>
                       <div style={{...C.label,marginBottom:0,flex:1}}>LAST NIGHT</div>
                       <div style={{fontSize:15,fontWeight:900,color: net < 0 ? BAD : GOOD}}>
-                        {net >= 0 ? "+" : "\u2212"}{fmt(Math.abs(px(net)))} XP
+                        {net >= 0 ? "+" : "−"}{fmt(Math.abs(px(net)))} XP
                       </div>
                     </div>
                     <div style={{fontSize:9,color:FAINT,fontWeight:700,marginBottom:9}}>
-                      {settledDays
-                        ? (settledDays.length === 1
-                            ? prettyDay(settledDays[0])
-                            : `${prettyDay(settledDays[0])} \u2013 ${prettyDay(settledDays[settledDays.length-1])}`)
-                        : `settled ${prettyDay(n.on)}`}
-                      {" \u00b7 earned through the day, charged at midnight"}
+                      {settled.length === 1
+                        ? prettyDay(settled[0])
+                        : `${prettyDay(settled[0])} – ${prettyDay(settled[settled.length-1])}`}
+                      {" · earned through the day, charged at midnight"}
                     </div>
-                    {/* Both sides always, so the headline figure can be read as
-                        what it is: the gains net of the charges. */}
                     <div style={{display:"flex",gap:8,marginBottom:9}}>
                       <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
                         background:`${GOOD}14`,border:`1px solid ${GOOD}33`}}>
                         <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>EARNED</div>
                         <div style={{fontSize:14,fontWeight:900,color:GOOD,marginTop:1}}>
-                          +{fmt(px(dayEarned))}
+                          +{fmt(px(earned))}
                         </div>
                       </div>
                       <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
                         background:`${BAD}14`,border:`1px solid ${BAD}33`}}>
                         <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>CHARGED</div>
                         <div style={{fontSize:14,fontWeight:900,color:BAD,marginTop:1}}>
-                          −{fmt(px(n.lost||0))}
+                          −{fmt(px(charged))}
                         </div>
                       </div>
                       <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
@@ -8254,27 +8265,50 @@ export default function App() {
                         <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>NET</div>
                         <div style={{fontSize:14,fontWeight:900,marginTop:1,
                           color: net < 0 ? BAD : GOOD}}>
-                          {net >= 0 ? "+" : "\u2212"}{fmt(Math.abs(px(net)))}
+                          {net >= 0 ? "+" : "−"}{fmt(Math.abs(px(net)))}
                         </div>
                       </div>
                     </div>
-                    {n.rows.slice(0,8).map((r,i)=>(
-                      <div key={r.name+i} style={{display:"flex",alignItems:"center",gap:9,
-                        padding:"5px 0",borderTop:i?`1px solid ${LINE}`:"none"}}>
-                        <span style={{flex:1,minWidth:0,fontSize:11.5,fontWeight:800,color:"#fff",
-                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</span>
-                        <span style={{fontSize:9,color:FAINT,fontWeight:700,flexShrink:0}}>
-                          {r.kind==="held" ? "held" : r.kind==="slip" ? "slipped" : "missed"}
-                          {r.days.length>1 ? ` \u00d7${r.days.length}` : ""}
-                        </span>
-                        <span style={{fontSize:12,fontWeight:900,flexShrink:0,
-                          color: r.kind==="held" ? GOOD : BAD}}>
-                          {r.kind==="held" ? "+" : "\u2212"}{fmt(px(r.total))}
-                        </span>
-                      </div>
-                    ))}
-                    <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:8,lineHeight:1.45}}>
-                      Every move the night made, and what each one cost or paid.
+                    <div onClick={()=>{
+                        const next = {...(S.collapsed||{})};
+                        if (open) next[openKey] = true; else delete next[openKey];
+                        setSetting("collapsed", next);
+                      }}
+                      style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",
+                        paddingTop:3}}>
+                      <span style={{flex:1,fontSize:9.5,fontWeight:900,color:DIM,letterSpacing:0.6}}>
+                        MISSION BY MISSION · {list.length}
+                      </span>
+                      <span style={{fontSize:13,color:FAINT,fontWeight:900}}>{open ? "▴" : "▾"}</span>
+                    </div>
+                    {open && list.map((r,i)=>{
+                      const t = data.tasks.find(x=>x.id===r.id);
+                      const cat = t && data.categories.find(c=>c.id===t.catId);
+                      const won = r.risk <= 0.0001;
+                      return (
+                        <div key={r.id} onClick={()=>{ if (!t) return;
+                            setDetailTaskId(r.id);
+                            setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                          style={{display:"flex",alignItems:"center",gap:9,padding:"6px 0",
+                            borderTop:`1px solid ${LINE}`,cursor: t ? "pointer" : "default",
+                            marginTop: i===0 ? 7 : 0}}>
+                          <span style={{fontSize:14,flexShrink:0}}>{t ? iconFor(t,cat) : "•"}</span>
+                          <span style={{flex:1,minWidth:0,fontSize:11.5,fontWeight:800,
+                            color: won ? "#fff" : DIM,whiteSpace:"nowrap",overflow:"hidden",
+                            textOverflow:"ellipsis"}}>{r.name}</span>
+                          <span style={{fontSize:8.5,color:FAINT,fontWeight:800,flexShrink:0}}>
+                            {r.frozen ? "frozen" : won ? "cleared" : "missed"}
+                          </span>
+                          <span style={{fontSize:12,fontWeight:900,flexShrink:0,minWidth:46,
+                            textAlign:"right",color: won ? GOOD : BAD}}>
+                            {won ? `+${fmt(px(r.got))}` : `−${fmt(px(r.risk))}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:9,lineHeight:1.5}}>
+                      Log a missed day from its mission calendar and every figure
+                      here moves with it.
                     </div>
                   </div>
                 );
@@ -8426,18 +8460,34 @@ export default function App() {
                             </span>
                           </div>
                         ))}
-                        <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:2,lineHeight:1.5}}>
-                          {nameOf(level)} runs from {fmt(demoteAt)} XP
-                          {promoteAt < 1000 ? ` to ${fmt(promoteAt)}` : " up"}.
-                          {/* Named rather than numbered, and read off the ladder,
-                              so they follow you up it. */}
-                          {level.lvl > 0 && (
-                            <> Below is <span style={{color:DIM}}>{nameOf(getLevel(demoteAt/10 - 0.01))}</span>.</>
-                          )}
-                          {promoteAt < 1000 && (
-                            <> Above is <span style={{color:DIM}}>{nameOf(getLevel(promoteAt/10))}</span>.</>
-                          )}
-                        </div>
+                        {/* The rank either side with its own span, so a
+                            projected figure can be placed: a third of the way
+                            into the next one, or just over this one's floor.
+                            Read off the ladder, so they follow you up it. */}
+                        {(()=>{
+                          const band = (R) => {
+                            const f = R.ratingFloor * 10, c = R.ratingForNext * 10;
+                            return `${fmt(f)}\u2013${c >= 1000 ? "max" : fmt(c)}`;
+                          };
+                          const above = promoteAt < 1000 ? getLevel(promoteAt/10) : null;
+                          const below = level.lvl > 0 ? getLevel(demoteAt/10 - 0.01) : null;
+                          const Row = ({tag, R, tone}) => (
+                            <div style={{display:"flex",gap:8,fontSize:9,fontWeight:700,
+                              color:tone,lineHeight:1.7}}>
+                              <span style={{width:40,flexShrink:0,color:FAINT}}>{tag}</span>
+                              <span style={{flex:1,minWidth:0,whiteSpace:"nowrap",
+                                overflow:"hidden",textOverflow:"ellipsis"}}>{nameOf(R)}</span>
+                              <span style={{flexShrink:0}}>{band(R)} XP</span>
+                            </div>
+                          );
+                          return (
+                            <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${LINE}`}}>
+                              {above && <Row tag="ABOVE" R={above} tone={DIM}/>}
+                              <Row tag="NOW" R={level} tone="#fff"/>
+                              {below && <Row tag="BELOW" R={below} tone={DIM}/>}
+                            </div>
+                          );
+                        })()}
                       </>
                     )}
 
