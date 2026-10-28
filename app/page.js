@@ -577,6 +577,22 @@ function isScheduledOn(task, dateStr) {
   if (!isLiveOn(task, dateStr)) return false;
   return scheduledDaysOn(task, dateStr).includes(getDayOfWeek(dateStr));
 }
+// What the night charged a past day, as that day now stands.
+// A day is billed all-or-nothing: anything short of the full target loses the
+// WHOLE amount, doubled if the mission carries a curse mark. So the charge only
+// ever changes when a day crosses the finish line, in either direction.
+function decayHeldOn(task, dateStr, reps) {
+  if (!task || !isScheduledOn(task, dateStr)) return 0;
+  return reps >= (task.targetReps || 1) ? 0 : (task.decayRate || 0);
+}
+// The correction to apply when a settled day's reps change: positive gives the
+// charge back, negative puts it back on. Both editing directions read this one
+// function. They used to carry their own copy of the rule, and the copies
+// drifted — the refund fired on the FIRST rep, so one tap of ten handed back a
+// cursed mission's entire penalty while the day still read as missed.
+function decayDeltaOn(task, dateStr, prevReps, newReps) {
+  return decayHeldOn(task, dateStr, prevReps) - decayHeldOn(task, dateStr, newReps);
+}
 function getStreak(task) {
   let s = 0;
   const cur = new Date();
@@ -4357,7 +4373,7 @@ export default function App() {
     const newReps = prevReps + 1;
     const delta = calcEarnedPoints(task.points, target, newReps) - calcEarnedPoints(task.points, target, prevReps);
     const processed = d < data.lastDecayDate;
-    const refund = (processed && prevReps === 0 && isScheduledOn(task, d)) ? (task.decayRate||0) : 0;
+    const refund = processed ? decayDeltaOn(task, d, prevReps, newReps) : 0;
     const cats = data.categories.map(c => c.id !== task.catId ? c
       : {...c, value: Math.min(c.maxValue, c.value + delta + refund)});
     const tasks = data.tasks.map(t => {
@@ -4467,7 +4483,7 @@ export default function App() {
     const target = task.targetReps || 1;
     const earned = calcEarnedPoints(task.points, target, reps);
     const processed = d < data.lastDecayDate;
-    const penalty = (processed && isScheduledOn(task, d)) ? (task.decayRate||0) : 0;
+    const penalty = processed ? -decayDeltaOn(task, d, reps, 0) : 0;
     const cats = data.categories.map(c => c.id !== task.catId ? c
       : {...c, value: Math.max(0, c.value - earned - penalty)});
     const tasks = data.tasks.map(t => {
