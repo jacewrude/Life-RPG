@@ -8203,9 +8203,18 @@ export default function App() {
                 if (!n || !n.rows || !n.rows.length) return null;
                 // Everything banked on the day being settled, not just what
                 // the night itself paid out.
-                const dayEarned = (typeof n.earned === "number") ? n.earned : (n.gained||0);
+                // Worked out here rather than read off the receipt. The figure
+                // is only stored from the night this was added onwards, and the
+                // completion history is still here — so recomputing it fixes
+                // receipts that were already written without it.
+                const settled = (n.days && n.days.length)
+                  ? n.days
+                  : [...new Set((n.rows||[]).flatMap(r=>r.days||[]))].sort();
+                const dayEarned = settled.length
+                  ? settled.reduce((sum,dk)=> sum + dayLedger(data, dk).banked, 0) + (n.gained||0)
+                  : (typeof n.earned === "number" ? n.earned : (n.gained||0));
                 const net = dayEarned - (n.lost||0);
-                const settledDays = n.days && n.days.length ? n.days : null;
+                const settledDays = settled.length ? settled : null;
                 return (
                   <div style={{...C.glass,padding:"12px 14px",
                     border:`1px solid ${net < 0 ? BAD+"55" : GOOD+"44"}`}}>
@@ -8420,6 +8429,14 @@ export default function App() {
                         <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:2,lineHeight:1.5}}>
                           {nameOf(level)} runs from {fmt(demoteAt)} XP
                           {promoteAt < 1000 ? ` to ${fmt(promoteAt)}` : " up"}.
+                          {/* Named rather than numbered, and read off the ladder,
+                              so they follow you up it. */}
+                          {level.lvl > 0 && (
+                            <> Below is <span style={{color:DIM}}>{nameOf(getLevel(demoteAt/10 - 0.01))}</span>.</>
+                          )}
+                          {promoteAt < 1000 && (
+                            <> Above is <span style={{color:DIM}}>{nameOf(getLevel(promoteAt/10))}</span>.</>
+                          )}
                         </div>
                       </>
                     )}
@@ -8448,6 +8465,65 @@ export default function App() {
                           {L.cursedCount} curse mark{L.cursedCount>1?"s":""}
                         </div>
                       )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* THE LAST SEVEN DAYS — "how much did I actually lose" deserves
+                  a number, not a feeling. Both columns come from dayLedger,
+                  the same ledger the night bills from, so the history and the
+                  bill can never tell different stories. The charge is worked
+                  out from how the missions stand today, so editing a mission's
+                  difficulty later moves its past figures with it. */}
+              {(()=>{
+                const days = [];
+                for (let i = 7; i >= 1; i--) {
+                  const d2 = new Date(); d2.setDate(d2.getDate() - i);
+                  const dk = dateKey(d2);
+                  const D = dayLedger(data, dk);
+                  if (!D.rows.length) continue;
+                  days.push({ dk, earned: D.banked, charged: D.atRisk,
+                              net: D.banked - D.atRisk });
+                }
+                if (!days.length) return null;
+                const worst = Math.max(...days.map(x=>Math.max(px(x.earned), px(x.charged))), 1);
+                const total = days.reduce((a,x)=>a + x.net, 0);
+                return (
+                  <div style={{...C.glass}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                      <div style={{...C.label,marginBottom:0,flex:1}}>THE LAST SEVEN DAYS</div>
+                      <div style={{fontSize:15,fontWeight:900,color: total < 0 ? BAD : GOOD}}>
+                        {total >= 0 ? "+" : "−"}{fmt(Math.abs(px(total)))}
+                      </div>
+                    </div>
+                    <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:2,marginBottom:9}}>
+                      earned against charged, day by day
+                    </div>
+                    {days.map(x=>(
+                      <div key={x.dk} style={{display:"flex",alignItems:"center",gap:8,
+                        padding:"5px 0",borderTop:`1px solid ${LINE}`}}>
+                        <span style={{width:46,flexShrink:0,fontSize:9,fontWeight:800,
+                          color: x.net < 0 ? "#ff8a7a" : DIM}}>{prettyDay(x.dk)}</span>
+                        <span style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:3}}>
+                          <span style={{flex:1,display:"flex",justifyContent:"flex-end"}}>
+                            <span style={{height:9,borderRadius:3,background:BAD,
+                              width:`${Math.min(100,(px(x.charged)/worst)*100)}%`}}/>
+                          </span>
+                          <span style={{width:1,height:13,background:"rgba(255,255,255,0.3)",flexShrink:0}}/>
+                          <span style={{flex:1}}>
+                            <span style={{display:"block",height:9,borderRadius:3,background:GOOD,
+                              width:`${Math.min(100,(px(x.earned)/worst)*100)}%`}}/>
+                          </span>
+                        </span>
+                        <span style={{width:52,flexShrink:0,textAlign:"right",fontSize:10.5,
+                          fontWeight:900,color: x.net < 0 ? BAD : GOOD}}>
+                          {x.net >= 0 ? "+" : "−"}{fmt(Math.abs(px(x.net)))}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:9,lineHeight:1.5}}>
+                      Red is what the night charged, green is what the day earned.
                     </div>
                   </div>
                 );
