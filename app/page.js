@@ -8178,13 +8178,6 @@ export default function App() {
           const finishXp = Math.min(1000, nowXp + px(L.remaining));
           const swing   = px(L.remaining) + px(L.atRisk);
           const allDone = L.rows.length > 0 && L.rows.every(r=>r.done || r.frozen);
-          const Stat = ({label, value, color, note}) => (
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:9,fontWeight:900,color:FAINT,letterSpacing:0.8}}>{label}</div>
-              <div style={{fontSize:21,fontWeight:900,color,marginTop:2,lineHeight:1.1}}>{value}</div>
-              {note && <div style={{fontSize:9,color:DIM,fontWeight:700,marginTop:2}}>{note}</div>}
-            </div>
-          );
           return (
             <div style={{padding:"14px 16px"}}>
               <div style={{...C.sectionTitle,marginBottom:12}}>Training Grounds</div>
@@ -8207,8 +8200,32 @@ export default function App() {
                     </div>
                     <div style={{fontSize:9,color:FAINT,fontWeight:700,marginBottom:9}}>
                       Settled {prettyDay(n.on)}
-                      {n.gained > 0 && n.lost > 0
-                        ? ` \u00b7 +${fmt(px(n.gained))} earned, \u2212${fmt(px(n.lost))} charged` : ""}
+                    </div>
+                    {/* Both sides always, so the headline figure can be read as
+                        what it is: the gains net of the charges. */}
+                    <div style={{display:"flex",gap:8,marginBottom:9}}>
+                      <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
+                        background:`${GOOD}14`,border:`1px solid ${GOOD}33`}}>
+                        <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>EARNED</div>
+                        <div style={{fontSize:14,fontWeight:900,color:GOOD,marginTop:1}}>
+                          +{fmt(px(n.gained||0))}
+                        </div>
+                      </div>
+                      <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
+                        background:`${BAD}14`,border:`1px solid ${BAD}33`}}>
+                        <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>CHARGED</div>
+                        <div style={{fontSize:14,fontWeight:900,color:BAD,marginTop:1}}>
+                          −{fmt(px(n.lost||0))}
+                        </div>
+                      </div>
+                      <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
+                        background:"rgba(255,255,255,0.05)",border:`1px solid ${LINE}`}}>
+                        <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>NET</div>
+                        <div style={{fontSize:14,fontWeight:900,marginTop:1,
+                          color: net < 0 ? BAD : GOOD}}>
+                          {net >= 0 ? "+" : "\u2212"}{fmt(Math.abs(px(net)))}
+                        </div>
+                      </div>
                     </div>
                     {n.rows.slice(0,8).map((r,i)=>(
                       <div key={r.name+i} style={{display:"flex",alignItems:"center",gap:9,
@@ -8236,8 +8253,10 @@ export default function App() {
               <div style={{...C.glass,display:"flex",alignItems:"center",gap:14}}>
                 <div style={{width:92,height:96,overflow:"hidden",position:"relative",flexShrink:0}}>
                   <div style={{position:"absolute",left:-14,top:-6}}>
+                    {/* No beast here — this page is about the numbers, and a
+                        tailed beast standing in the frame just crowds them. */}
                     <PixelCharacter level={wornLvl} character={cz} scale={5.2} idle
-                      cosmetics={cosmetics} pet={pet}/>
+                      cosmetics={cosmetics} pet={null}/>
                   </div>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
@@ -8257,45 +8276,121 @@ export default function App() {
                 </div>
               </div>
 
-              {/* The two futures, side by side */}
-              <div style={{...C.glass}}>
-                <div style={C.label}>WHERE YOU LAND AT MIDNIGHT</div>
-                <div style={{display:"flex",gap:12,marginTop:2}}>
-                  <Stat label="IF YOU STOP NOW" value={fmt(stopXp)}
-                    color={L.atRisk > 0 ? BAD : "#fff"}
-                    note={L.atRisk > 0 ? `−${fmt(px(L.atRisk))} XP` : "nothing at risk"}/>
-                  <div style={{width:1,background:LINE}}/>
-                  <Stat label="IF YOU FINISH" value={fmt(finishXp)}
-                    color={L.remaining > 0 ? GOOD : "#fff"}
-                    note={L.remaining > 0 ? `+${fmt(px(L.remaining))} XP` : "already all earned"}/>
-                </div>
-                {swing > 0.05 && (
-                  <>
-                    <div style={{height:12,borderRadius:7,overflow:"hidden",marginTop:12,
-                      background:"rgba(0,0,0,0.35)",display:"flex"}}>
-                      <div style={{width:`${(px(L.atRisk)/swing)*100}%`,background:BAD}}/>
-                      <div style={{width:`${(px(L.remaining)/swing)*100}%`,background:GOOD}}/>
+              {/* TODAY'S FORECAST — one panel. "Where you land" and the
+                  three running totals were the same three numbers twice over,
+                  which is most of why this page was hard to read. */}
+              {(()=>{
+                const earnable = L.banked + L.remaining;
+                const pctEarned = earnable > 0.0001
+                  ? Math.round((L.banked / earnable) * 100) : null;
+                // The window the bar covers: wide enough to hold both outcomes
+                // and the rank line below you, with a little air either side.
+                const demoteAt  = level.ratingFloor * 10;
+                const promoteAt = level.ratingForNext * 10;
+                const lo0 = Math.min(stopXp, nowXp, demoteAt);
+                const hi0 = Math.max(finishXp, nowXp, Math.min(promoteAt, finishXp + 60));
+                const pad = Math.max(10, (hi0 - lo0) * 0.10);
+                const lo  = Math.max(0, lo0 - pad);
+                const hi  = Math.min(1000, hi0 + pad);
+                const at  = (v) => hi > lo
+                  ? Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100)) : 50;
+                const rankAt = (xp) => getLevel(xp / 10);
+                const stopR = rankAt(stopXp), finR = rankAt(finishXp);
+                const nameOf = (R) => R.reserve ? "the Reserve" : getTitle(data, R.lvl);
+                const drops = stopR.lvl < level.lvl;
+                const climbs = finR.lvl > level.lvl;
+                const Tick = ({x, label, tone}) => (x <= 1 || x >= 99) ? null : (
+                  <div style={{position:"absolute",left:`${x}%`,top:-3,bottom:-3,width:2,
+                    background:tone,opacity:0.85,transform:"translateX(-1px)"}}
+                    title={label}/>
+                );
+                return (
+                  <div style={{...C.glass}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                      <div style={{...C.label,marginBottom:0,flex:1}}>TODAY SO FAR</div>
+                      {pctEarned != null && (
+                        <div style={{fontSize:17,fontWeight:900,
+                          color: pctEarned >= 100 ? GOOD : pctEarned >= 50 ? "#fff" : "#ffc46b"}}>
+                          {pctEarned}%
+                        </div>
+                      )}
                     </div>
-                    <div style={{display:"flex",justifyContent:"space-between",marginTop:5}}>
-                      <span style={{fontSize:9.5,fontWeight:900,color:BAD}}>−{fmt(px(L.atRisk))} at risk</span>
-                      <span style={{fontSize:9.5,fontWeight:900,color:GOOD}}>+{fmt(px(L.remaining))} still to earn</span>
+                    <div style={{fontSize:10,color:DIM,fontWeight:700,marginTop:2}}>
+                      {pctEarned == null
+                        ? "Nothing scheduled today."
+                        : `${fmt(px(L.banked))} of ${fmt(px(earnable))} XP earned`}
                     </div>
-                  </>
-                )}
-                <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginTop:10,lineHeight:1.5}}>
-                  A swing of <span style={{color:"#fff"}}>{fmt(swing)} XP</span> rests on the rest of today.
-                </div>
-              </div>
+                    {pctEarned != null && (
+                      <div style={{height:7,borderRadius:4,background:"rgba(0,0,0,0.35)",
+                        overflow:"hidden",marginTop:7}}>
+                        <div style={{height:"100%",width:`${pctEarned}%`,background:GOOD,
+                          borderRadius:4,transition:"width .4s ease"}}/>
+                      </div>
+                    )}
 
-              {/* The three running totals */}
-              <div style={{...C.glass,display:"flex",gap:10}}>
-                <Stat label="BANKED TODAY" value={`+${fmt(px(L.banked))}`} color={GOOD}/>
-                <Stat label="STILL TO EARN" value={`+${fmt(px(L.remaining))}`} color="#fff"/>
-                <Stat label="AT RISK TONIGHT" value={`−${fmt(px(L.atRisk))}`} color={BAD}
-                  note={L.atRiskCursed > 0
-                    ? `${fmt(px(L.atRiskCursed))} of it from ${L.cursedCount} curse mark${L.cursedCount>1?"s":""}`
-                    : null}/>
-              </div>
+                    {swing > 0.05 && (
+                      <>
+                        <div style={{...C.label,margin:"16px 0 20px"}}>WHERE MIDNIGHT LEAVES YOU</div>
+                        <div style={{position:"relative",height:14,borderRadius:7,
+                          background:"rgba(255,255,255,0.06)",marginBottom:4}}>
+                          {/* what today can still cost, and what it can still pay */}
+                          <div style={{position:"absolute",top:0,bottom:0,borderRadius:"7px 0 0 7px",
+                            left:`${at(stopXp)}%`,width:`${Math.max(0,at(nowXp)-at(stopXp))}%`,
+                            background:BAD,opacity:0.85}}/>
+                          <div style={{position:"absolute",top:0,bottom:0,borderRadius:"0 7px 7px 0",
+                            left:`${at(nowXp)}%`,width:`${Math.max(0,at(finishXp)-at(nowXp))}%`,
+                            background:GOOD,opacity:0.85}}/>
+                          <Tick x={at(demoteAt)} label="rank floor" tone="#ffffff"/>
+                          <Tick x={at(promoteAt)} label="next rank" tone={T.accent}/>
+                          {/* now */}
+                          <div style={{position:"absolute",left:`${at(nowXp)}%`,top:-4,bottom:-4,
+                            width:3,background:"#fff",transform:"translateX(-1.5px)",
+                            boxShadow:"0 0 6px rgba(0,0,0,0.8)"}}/>
+                          {/* the two arrows he asked for */}
+                          <div style={{position:"absolute",left:`${at(finishXp)}%`,top:-19,
+                            transform:"translateX(-50%)",fontSize:12,lineHeight:1,color:GOOD}}>▼</div>
+                          <div style={{position:"absolute",left:`${at(stopXp)}%`,bottom:-19,
+                            transform:"translateX(-50%)",fontSize:12,lineHeight:1,color:BAD}}>▲</div>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",marginTop:17}}>
+                          <span style={{fontSize:10,fontWeight:900,color:BAD}}>
+                            STOP NOW · {fmt(stopXp)}
+                          </span>
+                          <span style={{fontSize:10,fontWeight:900,color:GOOD}}>
+                            FINISH · {fmt(finishXp)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* The answer to the question actually being asked */}
+                    <div style={{marginTop:14,borderRadius:BLOCK?0:12,padding:"10px 12px",
+                      background: drops ? `${BAD}18` : "rgba(255,255,255,0.04)",
+                      border:`1px solid ${drops ? BAD+"55" : LINE}`}}>
+                      <div style={{fontSize:11.5,fontWeight:900,color: drops ? BAD : GOOD}}>
+                        {drops
+                          ? `Stop now and you drop to ${nameOf(stopR)}`
+                          : L.atRisk > 0
+                            ? `Stop now and you hold ${nameOf(level)}`
+                            : `Nothing is at risk tonight`}
+                      </div>
+                      <div style={{fontSize:10.5,fontWeight:800,color: climbs ? GOOD : DIM,marginTop:4}}>
+                        {climbs
+                          ? `Finish everything and you reach ${nameOf(finR)}`
+                          : L.remaining > 0
+                            ? `Finish everything and you hold ${nameOf(level)}, ${fmt(px(L.remaining))} XP better off`
+                            : `Everything today is already earned`}
+                      </div>
+                      {L.atRiskCursed > 0 && (
+                        <div style={{fontSize:9.5,fontWeight:800,color:CURSE_COLOR,marginTop:5}}>
+                          {fmt(px(L.atRiskCursed))} of what is at risk comes from{" "}
+                          {L.cursedCount} curse mark{L.cursedCount>1?"s":""}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Mission by mission, worst bleed first */}
               <div style={{...C.sectionTitle,margin:"18px 2px 10px"}}>Mission by mission</div>
@@ -8524,7 +8619,7 @@ export default function App() {
             <div style={C.glass}>
               <div style={C.label}>YOUR CHAMPION</div>
               <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-                <PixelCharacter level={wornLvl} character={cz} scale={6.5} idle cosmetics={cosmetics} pet={pet}/>
+                <PixelCharacter level={wornLvl} character={cz} scale={6.5} idle cosmetics={cosmetics} pet={null}/>
               </div>
               <div style={{...C.label,marginBottom:6}}>OUTFIT</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
