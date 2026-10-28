@@ -791,10 +791,23 @@ function applyDecay(data) {
   } catch {}
   const rows = Object.values(bill).filter(r=>r.total > 0.0001)
     .sort((a,b)=> b.total - a.total);
+  // What was BANKED on the days being settled. Normal missions pay out the
+  // moment they are tapped, so none of that XP passes through here — without
+  // it the receipt reported a day full of work as nothing earned.
+  let earned = 0;
+  try {
+    const seen = {};
+    rows.forEach(r=>r.days.forEach(dk=>{ seen[dk] = true; }));
+    Object.keys(seen).forEach(dk=>{ earned += dayLedger(data, dk).banked; });
+  } catch {}
   return { data: { ...data, categories: cats, lastDecayDate: today,
     flags: { ...(data.flags||{}),
       lastNight: rows.length ? { on: today, lost:+lost.toFixed(4),
-                                 gained:+gained.toFixed(4), rows } : (data.flags||{}).lastNight || null } },
+                                 gained:+gained.toFixed(4),
+                                 earned:+(earned + gained).toFixed(4),
+                                 days: Object.keys(rows.reduce((a,r)=>{
+                                   r.days.forEach(d=>{a[d]=1;}); return a; }, {})).sort(),
+                                 rows } : (data.flags||{}).lastNight || null } },
     lost, gained };
 }
 
@@ -8188,7 +8201,11 @@ export default function App() {
               {(()=>{
                 const n = (data.flags||{}).lastNight;
                 if (!n || !n.rows || !n.rows.length) return null;
-                const net = (n.gained||0) - (n.lost||0);
+                // Everything banked on the day being settled, not just what
+                // the night itself paid out.
+                const dayEarned = (typeof n.earned === "number") ? n.earned : (n.gained||0);
+                const net = dayEarned - (n.lost||0);
+                const settledDays = n.days && n.days.length ? n.days : null;
                 return (
                   <div style={{...C.glass,padding:"12px 14px",
                     border:`1px solid ${net < 0 ? BAD+"55" : GOOD+"44"}`}}>
@@ -8199,7 +8216,12 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{fontSize:9,color:FAINT,fontWeight:700,marginBottom:9}}>
-                      Settled {prettyDay(n.on)}
+                      {settledDays
+                        ? (settledDays.length === 1
+                            ? prettyDay(settledDays[0])
+                            : `${prettyDay(settledDays[0])} \u2013 ${prettyDay(settledDays[settledDays.length-1])}`)
+                        : `settled ${prettyDay(n.on)}`}
+                      {" \u00b7 earned through the day, charged at midnight"}
                     </div>
                     {/* Both sides always, so the headline figure can be read as
                         what it is: the gains net of the charges. */}
@@ -8208,7 +8230,7 @@ export default function App() {
                         background:`${GOOD}14`,border:`1px solid ${GOOD}33`}}>
                         <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>EARNED</div>
                         <div style={{fontSize:14,fontWeight:900,color:GOOD,marginTop:1}}>
-                          +{fmt(px(n.gained||0))}
+                          +{fmt(px(dayEarned))}
                         </div>
                       </div>
                       <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
@@ -8271,7 +8293,7 @@ export default function App() {
                       ? "Nothing scheduled today — nothing can be lost."
                       : allDone
                         ? "Everything today is clear. Midnight costs you nothing."
-                        : `${L.rows.filter(r=>!r.done && !r.frozen).length} still open · midnight is in ${Math.max(0, 24 - new Date().getHours())}h`}
+                        : `${L.rows.filter(r=>!r.done && !r.frozen).length} still open · midnight is in ${Math.max(1, Math.round((24*60 - (new Date().getHours()*60 + new Date().getMinutes()))/60))}h`}
                   </div>
                 </div>
               </div>
@@ -8330,35 +8352,74 @@ export default function App() {
 
                     {swing > 0.05 && (
                       <>
-                        <div style={{...C.label,margin:"16px 0 20px"}}>WHERE MIDNIGHT LEAVES YOU</div>
-                        <div style={{position:"relative",height:14,borderRadius:7,
-                          background:"rgba(255,255,255,0.06)",marginBottom:4}}>
-                          {/* what today can still cost, and what it can still pay */}
-                          <div style={{position:"absolute",top:0,bottom:0,borderRadius:"7px 0 0 7px",
-                            left:`${at(stopXp)}%`,width:`${Math.max(0,at(nowXp)-at(stopXp))}%`,
-                            background:BAD,opacity:0.85}}/>
-                          <div style={{position:"absolute",top:0,bottom:0,borderRadius:"0 7px 7px 0",
-                            left:`${at(nowXp)}%`,width:`${Math.max(0,at(finishXp)-at(nowXp))}%`,
-                            background:GOOD,opacity:0.85}}/>
-                          <Tick x={at(demoteAt)} label="rank floor" tone="#ffffff"/>
-                          <Tick x={at(promoteAt)} label="next rank" tone={T.accent}/>
-                          {/* now */}
-                          <div style={{position:"absolute",left:`${at(nowXp)}%`,top:-4,bottom:-4,
-                            width:3,background:"#fff",transform:"translateX(-1.5px)",
-                            boxShadow:"0 0 6px rgba(0,0,0,0.8)"}}/>
-                          {/* the two arrows he asked for */}
-                          <div style={{position:"absolute",left:`${at(finishXp)}%`,top:-19,
-                            transform:"translateX(-50%)",fontSize:12,lineHeight:1,color:GOOD}}>▼</div>
-                          <div style={{position:"absolute",left:`${at(stopXp)}%`,bottom:-19,
-                            transform:"translateX(-50%)",fontSize:12,lineHeight:1,color:BAD}}>▲</div>
+                        {/* The two totals, said outright. Having to read them
+                            off a bar was most of the confusion. */}
+                        <div style={{display:"flex",gap:8,margin:"16px 0 12px"}}>
+                          <div style={{flex:1,borderRadius:BLOCK?0:12,padding:"9px 11px",
+                            background:`${BAD}14`,border:`1px solid ${BAD}44`}}>
+                            <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>
+                              AT RISK TONIGHT
+                            </div>
+                            <div style={{fontSize:19,fontWeight:900,color:BAD,marginTop:1}}>
+                              −{fmt(px(L.atRisk))}
+                            </div>
+                          </div>
+                          <div style={{flex:1,borderRadius:BLOCK?0:12,padding:"9px 11px",
+                            background:`${GOOD}14`,border:`1px solid ${GOOD}44`}}>
+                            <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>
+                              STILL TO EARN
+                            </div>
+                            <div style={{fontSize:19,fontWeight:900,color:GOOD,marginTop:1}}>
+                              +{fmt(px(L.remaining))}
+                            </div>
+                          </div>
                         </div>
-                        <div style={{display:"flex",justifyContent:"space-between",marginTop:17}}>
-                          <span style={{fontSize:10,fontWeight:900,color:BAD}}>
-                            STOP NOW · {fmt(stopXp)}
-                          </span>
-                          <span style={{fontSize:10,fontWeight:900,color:GOOD}}>
-                            FINISH · {fmt(finishXp)}
-                          </span>
+
+                        {/* Each outcome against the ladder. A bare number says
+                            nothing; the rank it lands in says everything. */}
+                        <div style={{...C.label,marginBottom:7}}>WHERE MIDNIGHT LEAVES YOU</div>
+                        {[
+                          { k:"fin",  mark:"\u25bc", tone:GOOD, lab:"IF YOU FINISH",
+                            xp:finishXp, delta:px(L.remaining), R:finR },
+                          { k:"now",  mark:"\u25cf", tone:"#ffffff", lab:"RIGHT NOW",
+                            xp:nowXp, delta:0, R:level },
+                          { k:"stop", mark:"\u25b2", tone:BAD, lab:"IF YOU STOP NOW",
+                            xp:stopXp, delta:-px(L.atRisk), R:stopR },
+                        ].map(row=>(
+                          <div key={row.k} style={{display:"flex",alignItems:"center",gap:10,
+                            padding:"9px 11px",marginBottom:6,borderRadius:BLOCK?0:12,
+                            background: row.k==="now" ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.25)",
+                            border:`1px solid ${row.k==="now" ? "rgba(255,255,255,0.22)" : row.tone+"44"}`}}>
+                            <span style={{fontSize:11,color:row.tone,flexShrink:0,width:12,
+                              textAlign:"center"}}>{row.mark}</span>
+                            <span style={{flex:1,minWidth:0}}>
+                              <span style={{display:"block",fontSize:8.5,fontWeight:900,
+                                color:FAINT,letterSpacing:0.6}}>{row.lab}</span>
+                              <span style={{display:"block",fontSize:12.5,fontWeight:900,
+                                color: row.R.lvl < level.lvl ? BAD
+                                     : row.R.lvl > level.lvl ? GOOD : "#fff",
+                                marginTop:2,whiteSpace:"nowrap",overflow:"hidden",
+                                textOverflow:"ellipsis"}}>
+                                {nameOf(row.R)}
+                                {row.R.reserve ? "" : ` \u00b7 LV ${row.R.lvl}`}
+                              </span>
+                            </span>
+                            <span style={{textAlign:"right",flexShrink:0}}>
+                              <span style={{display:"block",fontSize:15,fontWeight:900,color:"#fff"}}>
+                                {fmt(row.xp)}
+                              </span>
+                              {row.delta !== 0 && (
+                                <span style={{display:"block",fontSize:9.5,fontWeight:900,
+                                  color:row.tone,marginTop:1}}>
+                                  {row.delta > 0 ? "+" : "\u2212"}{fmt(Math.abs(row.delta))}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                        <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:2,lineHeight:1.5}}>
+                          {nameOf(level)} runs from {fmt(demoteAt)} XP
+                          {promoteAt < 1000 ? ` to ${fmt(promoteAt)}` : " up"}.
                         </div>
                       </>
                     )}
