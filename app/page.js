@@ -15,10 +15,50 @@ const MAX_BONUS_MULT  = 2.0;
 const DIFF_CURVE = (imp) => Math.pow(Math.max(1, Math.min(10, imp)), 1.7) / Math.pow(5, 0.7);
 const calcPoints = (imp) => +(DIFF_CURVE(imp) * GAIN_MULT).toFixed(4);
 // CURSE MARK — the hard mode. A cursed mission pays exactly the same chakra for
-// clearing it, but the toll for leaving it undone is doubled. Reward untouched,
+// clearing it, but the toll for leaving it undone is raised. Reward untouched,
 // stakes raised, which is the whole point of marking a mission you must not skip.
-const CURSE_MULT = 2;
+// Was 2x. At that rate a cursed miss cost two and a half times what clearing it
+// paid, so a week with one bad day went backwards however well the rest went.
+// A forbidden mission reads this too: slipping on a cursed one costs the
+// multiplied toll, while holding out still pays the plain reward.
+const CURSE_MULT = 1.5;
 const isCursed = (t) => !!(t && t.curse);
+// THE DAY ROLLOVER. A day does not end at midnight, it ends at 3am, so a late
+// night still logs against the day it belongs to. 1am Saturday is still Friday.
+//
+// The rule that keeps this safe: anything asking "what day is it RIGHT NOW"
+// goes through dayNow(); anything handed a specific date is left exactly as it
+// is, because a stored day key is already a day, not a moment, and shifting it
+// would walk it back to the day before. That is why dateKey() shifts only when
+// it is called with no argument.
+// THE BOARD COLUMNS, defined once. They lay out as a 2x2 grid — To Do and In
+// Progress across the top, Today and Done underneath — and five separate places
+// read this order: the count tiles, the grid itself, the MOVE TO buttons, the
+// long-press advance and the drag targeting. They used to carry their own
+// copies of the list; one array means they cannot drift apart.
+const BOARD_COLS = [
+  { col:"todo",  label:"TO DO",       short:"To Do",       color:"#3b82f6", chip:"#38bdf8", icon:"\u2630" },
+  { col:"doing", label:"IN PROGRESS", short:"In Progress", color:"#f59e0b", chip:"#f59e0b", icon:"\u25d1" },
+  { col:"today", label:"TODAY",       short:"Today",       color:"#a855f7", chip:"#c084fc", icon:"\u2605" },
+  { col:"done",  label:"DONE",        short:"Done",        color:"#22c55e", chip:"#34d399", icon:"\u2713" },
+];
+const BOARD_COL_IDS = BOARD_COLS.map(c => c.col);
+const EMPTY_BOARD = () => BOARD_COL_IDS.reduce((o,c)=>(o[c]=[], o), {});
+
+const DAY_ROLLOVER_HOUR = 3;
+function dayNow() {
+  const d = new Date();
+  d.setHours(d.getHours() - DAY_ROLLOVER_HOUR);
+  return d;                       // day fields only — its clock time is a lie
+}
+// Milliseconds until the next rollover, for the timer that flips the app over.
+function msToRollover() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(DAY_ROLLOVER_HOUR, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return next - now;
+}
 // XP is shown as whole numbers — internally a point is a tenth of one. A real
 // gain never rounds away to zero, or the smallest missions would read "+0".
 const xpInt = (v) => {
@@ -85,9 +125,10 @@ function curseMarkEls(cx, cy, r, op, fill) {
   }
   return els;
 }
-// Round the base first, THEN double it, so a cursed mission's penalty is exactly
-// twice the number shown on the same mission uncursed — not twice-then-rounded,
-// which lands a hair off and makes the "double" claim a lie in the display.
+// Round the base first, THEN multiply, so a cursed mission's penalty is exactly
+// CURSE_MULT times the number shown on the same mission uncursed — not
+// multiply-then-round, which lands a hair off and makes the claim a lie in the
+// display.
 const calcDecay  = (imp, cursed) => {
   const base = +(DIFF_CURVE(imp) * DECAY_MULT).toFixed(4);
   return cursed ? +(base * CURSE_MULT).toFixed(4) : base;
@@ -431,7 +472,7 @@ const QUOTES = [
   ["Each day is a new battle. Win the morning, win the day.","Unknown"],
 ];
 function quoteOfDay() {
-  const now = new Date();
+  const now = dayNow();
   const start = new Date(now.getFullYear(),0,0);
   const doy = Math.floor((now - start) / 86400000);
   return QUOTES[doy % QUOTES.length];
@@ -473,7 +514,7 @@ const INIT = {
   settings: { ...DEFAULT_SETTINGS },
   character: { ...DEFAULT_CHARACTER, equipped:{ ...DEFAULT_EQUIPPED } },
   customTitles: {},
-  kanban: { todo:[], doing:[], done:[] },
+  kanban: EMPTY_BOARD(),
   lists: [],
   schedule: {},
   combo: { count:0, lastAt:0 },
@@ -503,7 +544,9 @@ const fmtRange = (start, dur) => `${fmtTime(start)} – ${fmtTime(Math.min(1439,
 const durLabel = (d) => d>=60 ? `${Math.floor(d/60)}h${d%60?` ${d%60}m`:""}` : `${d}m`;
 
 function dateKey(date) {
-  const d = date || new Date();
+  // No argument means "today" — which is a rollover question. An argument is a
+  // date someone already decided on, and is never second-guessed.
+  const d = date || dayNow();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 // "OCT 19" — short enough to sit in a summary chip
@@ -579,7 +622,7 @@ function isScheduledOn(task, dateStr) {
 }
 // What the night charged a past day, as that day now stands.
 // A day is billed all-or-nothing: anything short of the full target loses the
-// WHOLE amount, doubled if the mission carries a curse mark. So the charge only
+// WHOLE amount, multiplied if the mission carries a curse mark. So the charge only
 // ever changes when a day crosses the finish line, in either direction.
 function decayHeldOn(task, dateStr, reps) {
   if (!task || !isScheduledOn(task, dateStr)) return 0;
@@ -595,7 +638,7 @@ function decayDeltaOn(task, dateStr, prevReps, newReps) {
 }
 function getStreak(task) {
   let s = 0;
-  const cur = new Date();
+  const cur = dayNow();
   const todayK = dateKey(cur);
   if (isScheduledOn(task, todayK) && !isWonOn(task, todayK)) cur.setDate(cur.getDate()-1);
   for (let i = 0; i < 730; i++) {
@@ -617,14 +660,14 @@ function questLevel(task) { return Math.floor(totalCompletions(task) / 7) + 1; }
 function questLevelPct(task) { return ((totalCompletions(task) % 7) / 7) * 100; }
 // Current week (Mon → Sun) date keys
 function weekDateKeys() {
-  const now = new Date();
+  const now = dayNow();
   const dow = (now.getDay() + 6) % 7; // Mon=0
   const mon = new Date(now); mon.setDate(now.getDate() - dow);
   return Array.from({length:7}, (_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return dateKey(d); });
 }
 // Mon→Sun date keys for the week containing a given date
 function weekKeysFor(dateStr) {
-  const d = dateStr ? new Date(dateStr+"T00:00:00") : new Date();
+  const d = dateStr ? new Date(dateStr+"T00:00:00") : dayNow();
   const dow = (d.getDay() + 6) % 7;
   const mon = new Date(d); mon.setDate(d.getDate() - dow);
   return Array.from({length:7}, (_,i)=>{ const x=new Date(mon); x.setDate(mon.getDate()+i); return dateKey(x); });
@@ -656,7 +699,7 @@ function taskActiveOn(task, dateStr) {
 // Weekly streak: consecutive prior weeks (excluding current in-progress) the target was met
 function weeklyStreak(task) {
   let s = 0;
-  const cur = new Date();
+  const cur = dayNow();
   // step back to previous full week
   cur.setDate(cur.getDate() - 7);
   for (let i=0;i<104;i++){
@@ -1015,12 +1058,19 @@ function migrate(d) {
     // app sat closed. A save that has never carried the stamp just gets today's
     // — it never wipes a column it has not seen.
     kanban: (()=>{
-      const k = (d.kanban && Array.isArray(d.kanban.todo))
-        ? d.kanban : { todo:[], doing:[], done:[] };
+      // Every column is forced to an array first, so a save written before a
+      // column existed — Today, on every save made until now — loads without
+      // the board going blank or a drop throwing.
+      const raw = (d.kanban && typeof d.kanban === "object") ? d.kanban : {};
+      const k = { ...raw };
+      BOARD_COL_IDS.forEach(c => { if (!Array.isArray(k[c])) k[c] = []; });
       const td = dateKey();
       if (!k.clearedOn) return { ...k, clearedOn: td };
       if (k.clearedOn === td) return k;
-      return { ...k, done: [], clearedOn: td };
+      // A new day. Done is wiped, and anything still sitting in Today goes back
+      // to To Do rather than being deleted — yesterday's plan is not today's,
+      // but the cards themselves are still work you wanted doing.
+      return { ...k, todo: [...k.today, ...k.todo], today: [], done: [], clearedOn: td };
     })(),
     lists: Array.isArray(d.lists) ? d.lists : [],
     schedule: (d.schedule && typeof d.schedule === "object") ? d.schedule : {},
@@ -1186,7 +1236,7 @@ function spinsUnlocked(data, dk) {
 }
 // Best run of consecutive 100%-complete days ending today (drives shop gates)
 function bestPerfectStreak(data) {
-  const cur = new Date();
+  const cur = dayNow();
   let streak = 0;
   for (let i=0;i<400;i++){
     const dk = dateKey(cur);
@@ -1668,7 +1718,7 @@ const TROPHIES = [
 // Last 7 day keys ending today (HabitKit grid)
 function last7Keys() {
   const out = [];
-  const cur = new Date();
+  const cur = dayNow();
   for (let i=6;i>=0;i--) { const d=new Date(cur); d.setDate(cur.getDate()-i); out.push(dateKey(d)); }
   return out;
 }
@@ -3370,7 +3420,7 @@ function playerPowerOf(d) {
 }
 // What you've earned per day lately — used to keep him just barely ahead.
 function recentDailyGain(d) {
-  const today = new Date();
+  const today = dayNow();
   let reps = 0;
   for (let i=0;i<14;i++) {
     const k = dateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate()-i));
@@ -3490,7 +3540,7 @@ const petSlotOf = (wallet, id) => {
 // weeks — and when several months were missed they are judged in order, oldest
 // first, so a beast lost in March is not re-tested in April.
 function runBeastUpkeep(d) {
-  const now = new Date();
+  const now = dayNow();
   const nowKey = monthKey(now);
   const stamp = ((d.flags||{}).beastMonth) || null;
   if (!stamp) return { ...d, flags: { ...(d.flags||{}), beastMonth: nowKey } };
@@ -3755,7 +3805,7 @@ export default function App() {
   const [forecastDate, setForecastDate] = useState(null);
   const [planDate, setPlanDate] = useState(dateKey());
   const [planMode, setPlanMode] = useState("month"); // "month" | "day"
-  const [planMonth, setPlanMonth] = useState({ y:new Date().getFullYear(), m:new Date().getMonth() });
+  const [planMonth, setPlanMonth] = useState({ y:dayNow().getFullYear(), m:dayNow().getMonth() });
   const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
   const [editTask, setEditTask] = useState(null);
   const [rampOpen, setRampOpen] = useState(false);   // the start-date / ramp disclosure
@@ -3763,7 +3813,7 @@ export default function App() {
   useEffect(()=>{ setRampOpen(false); }, [editTask && editTask.id, view]);
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [beastId, setBeastId] = useState(null);
-  const [calCursor, setCalCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
+  const [calCursor, setCalCursor] = useState({ y: dayNow().getFullYear(), m: dayNow().getMonth() });
   const [wkEditCursor, setWkEditCursor] = useState(dateKey()); // anchor date for weekly per-day editor
   const [duel, setDuel] = useState(null);        // {stage:"fight"|"won", pw, rp}
   const [formUp, setFormUp] = useState(null);    // transformation overlay
@@ -3779,7 +3829,7 @@ export default function App() {
   const [barPreview, setBarPreview] = useState(null); // live position while dragging
   const barPreviewRef = useRef(null);
   const [listEdit, setListEdit] = useState(null);  // {kind:"list"|"item", listId, itemId, parentId, text}
-  const [recCursor, setRecCursor] = useState({y:new Date().getFullYear(), m:new Date().getMonth()});
+  const [recCursor, setRecCursor] = useState({y:dayNow().getFullYear(), m:dayNow().getMonth()});
   const [anyOverlay, setAnyOverlay] = useState(false);
   // While a sheet is up the page behind it must not scroll — otherwise a swipe
   // that misses the sheet drags the home screen instead.
@@ -3824,13 +3874,17 @@ export default function App() {
   const [currentDay, setCurrentDay] = useState(dateKey());
 
   // Migration handles the nights the app was closed; this handles it being
-  // left open across midnight.
+  // left open across the 3am rollover. Same roll as migrate does, so the board
+  // reads the same whether the app was open or shut when the day turned.
   useEffect(()=>{
     if (!data || !data.kanban) return;
     if (data.kanban.clearedOn === currentDay) return;
     setData(cur=>{
       if (!cur.kanban || cur.kanban.clearedOn === currentDay) return cur;
-      const n = { ...cur, kanban: { ...cur.kanban, done: [], clearedOn: currentDay } };
+      const k = cur.kanban;
+      const n = { ...cur, kanban: { ...k,
+        todo: [...(k.today||[]), ...(k.todo||[])],
+        today: [], done: [], clearedOn: currentDay } };
       persistRaw(n); return n;
     });
   }, [currentDay, data && data.kanban && data.kanban.clearedOn]);
@@ -4120,11 +4174,14 @@ export default function App() {
     })();
   }, []);
 
-  // ── MIDNIGHT + APP RESUME ───────────────────────────────────────────────────
+  // ── ROLLOVER + APP RESUME ───────────────────────────────────────────────────
+  // The day flips at DAY_ROLLOVER_HOUR, not at midnight, so this timer waits
+  // for 3am. Left on midnight it would roll the app over to a new day three
+  // hours before anything else in the app agreed that the day had ended.
   useEffect(() => {
     const schedule = () => {
-      const now = new Date(); const mid = new Date(now); mid.setHours(24,0,0,0);
-      midnightRef.current = setTimeout(()=>{ setCurrentDay(dateKey()); schedule(); }, mid - now + 1500);
+      midnightRef.current = setTimeout(()=>{ setCurrentDay(dateKey()); schedule(); },
+        msToRollover() + 1500);
     };
     schedule();
     // A tab left open goes stale. Re-read before it's allowed to matter.
@@ -4652,8 +4709,11 @@ export default function App() {
     update({...data, kanban:{...data.kanban, [col]: data.kanban[col].filter(c=>c.id!==id)}});
   const boardClearDone = () =>
     update({...data, kanban:{...data.kanban, done:[]}});
+  // Long-press walks a card one step along the board, in the order it is laid
+  // out: To Do -> In Progress -> Today -> Done. Done is the end of the line.
   const boardAdvance = (col, id) => {
-    const next = col==="todo" ? "doing" : col==="doing" ? "done" : null;
+    const i = BOARD_COL_IDS.indexOf(col);
+    const next = (i >= 0 && i < BOARD_COL_IDS.length - 1) ? BOARD_COL_IDS[i+1] : null;
     if (next) boardMoveTo(col, id, next);
   };
 
@@ -4871,7 +4931,7 @@ export default function App() {
     if (!task) return 0;
     const f = task.frozen || {};
     let n = 0;
-    const cur = new Date();
+    const cur = dayNow();
     for (let i=0;i<FREEZE_MAX_DAYS;i++) { if (f[dateKey(cur)]) n++; else break; cur.setDate(cur.getDate()+1); }
     return n;
   };
@@ -4883,9 +4943,9 @@ export default function App() {
         if (t.id !== tid) return t;
         const frozen = { ...(t.frozen||{}) };
         // Clear whatever forward window is already set, then lay down the new one.
-        const c = new Date();
+        const c = dayNow();
         for (let i=0;i<FREEZE_MAX_DAYS;i++) { delete frozen[dateKey(c)]; c.setDate(c.getDate()+1); }
-        const c2 = new Date();
+        const c2 = dayNow();
         for (let i=0;i<n;i++) { frozen[dateKey(c2)] = true; c2.setDate(c2.getDate()+1); }
         return { ...t, frozen };
       });
@@ -5146,7 +5206,24 @@ export default function App() {
   };
 
   // Drag-and-drop (pointer-based so it works on iPhone)
-  const COLS = ["todo","doing","done"];
+  const COLS = BOARD_COL_IDS;
+  // Which column is under the pointer. The board is a 2x2 grid whose rows are
+  // NOT equal heights — each column grows with its cards — so splitting the
+  // bounding box in half would drop cards in the wrong row. This measures the
+  // real column boxes and takes the nearest one, which is exact when the
+  // pointer is inside one and sensible when it is in the gutter.
+  const colAtPoint = (x, y) => {
+    const host = boardRef.current; if (!host) return null;
+    let best = null, bestD = Infinity;
+    host.querySelectorAll("[data-col]").forEach(el=>{
+      const r = el.getBoundingClientRect();
+      const dx = Math.max(r.left - x, 0, x - r.right);
+      const dy = Math.max(r.top - y, 0, y - r.bottom);
+      const d = dx*dx + dy*dy;
+      if (d < bestD) { bestD = d; best = el.getAttribute("data-col"); }
+    });
+    return best;
+  };
   const dragStart = (e, col, card) => {
     if (e.button !== undefined && e.button !== 0) return;
     dragMeta.current = { col, card, startX:e.clientX, startY:e.clientY, active:false, consumed:false };
@@ -5163,18 +5240,18 @@ export default function App() {
       const m = dragMeta.current; if (!m) return;
       const dx = ev.clientX - m.startX, dy = ev.clientY - m.startY;
       if (Math.hypot(dx,dy) > 10) clearTimeout(lp);         // moving cancels long-press
-      if (!m.active && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+      // Sideways starts a drag immediately. Downward has to beat the page
+      // scroll, so it needs a longer pull before it counts — without this a
+      // card could never be dragged into the row beneath it.
+      if (!m.active && ((Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy))
+                        || (Math.abs(dy) > 34 && Math.abs(dy) > Math.abs(dx)))) {
         m.active = true;
         try { navigator.vibrate && navigator.vibrate(10); } catch {}
       }
       if (m.active) {
         ev.preventDefault();
         setDrag({ col:m.col, id:m.card.id, text:m.card.text, x:ev.clientX, y:ev.clientY });
-        if (boardRef.current) {
-          const r = boardRef.current.getBoundingClientRect();
-          const rel = (ev.clientX - r.left) / r.width;
-          setDragOverCol(rel < 1/3 ? "todo" : rel < 2/3 ? "doing" : "done");
-        }
+        setDragOverCol(colAtPoint(ev.clientX, ev.clientY));
       }
     };
     const up = (ev) => {
@@ -5185,10 +5262,8 @@ export default function App() {
       const m = dragMeta.current; dragMeta.current = null;
       setDrag(null); setDragOverCol(null);
       if (m && m.active && boardRef.current) {
-        const r = boardRef.current.getBoundingClientRect();
-        const rel = (ev.clientX - r.left) / r.width;
-        const target = rel < 1/3 ? "todo" : rel < 2/3 ? "doing" : "done";
-        boardMoveTo(m.col, m.card.id, target);
+        const target = colAtPoint(ev.clientX, ev.clientY);
+        if (target) boardMoveTo(m.col, m.card.id, target);
       } else if (m && !m.active && !m.consumed) {
         const dist = Math.hypot(ev.clientX - m.startX, ev.clientY - m.startY);
         if (dist < 8) setCardMenu({ col:m.col, cardId:m.card.id, mode:"actions" }); // tap = open card sheet
@@ -5424,15 +5499,15 @@ export default function App() {
   // progress is what the NEXT 1st will judge, so that is the one that says
   // whether a beast is in danger. Last month's is only history now.
   const thisMonthSharingan = (()=>{
-    const d = new Date();
+    const d = dayNow();
     return sharinganInMonth(data, d.getFullYear(), d.getMonth());
   })();
   const lastMonthSharingan = (()=>{
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+    const d = dayNow(); d.setDate(1); d.setMonth(d.getMonth()-1);
     return sharinganInMonth(data, d.getFullYear(), d.getMonth());
   })();
   const monthDaysLeft = (()=>{
-    const d = new Date();
+    const d = dayNow();
     return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate() - d.getDate();
   })();
   const placeBeast = (id, slot) => {
@@ -5466,7 +5541,7 @@ export default function App() {
   const perfectStreak = bestPerfectStreak(data);
   const canClaimPerfect = allDone && !((data.wallet.perfectClaimedByDay||{})[today]);
   const titleItem = SHOP.find(it=>it.id===cosmetics.title);
-  const nowD = new Date();
+  const nowD = dayNow();
   const dateLabel = `${DAYS[nowD.getDay()]}, ${MONTHS[nowD.getMonth()].slice(0,3)} ${nowD.getDate()}`;
 
   // ── STYLES (glass-on-sky system) ────────────────────────────────────────────
@@ -5615,7 +5690,7 @@ export default function App() {
     const wkeys = weekKeysFor(today);
     const tinted = S.cardStyle==="tinted";
     return (
-      <div onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+      <div onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
         style={{
           background: tinted
             ? `linear-gradient(155deg,${color}24 0%,${color}0e 50%,${GLASS} 100%)`
@@ -5692,7 +5767,7 @@ export default function App() {
     const doMove = (dir)=> siblingIds ? moveTaskWithin(task.id, dir, siblingIds) : moveTask(task.id, dir);
     return (
       <div
-        onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+        onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
         style={ tinted ? {
           background:`linear-gradient(155deg,${color}24 0%,${color}0e 50%,${GLASS} 100%)`,
           backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)",
@@ -5889,7 +5964,9 @@ export default function App() {
           CURSE MARK
         </div>
         <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:2,lineHeight:1.45}}>
-          Same XP for clearing it. Double the XP lost if you don&rsquo;t.
+          {/* Read off the constant, so the copy can never drift from the maths
+              the way "double" did when the multiplier moved. */}
+          Same XP for clearing it. {CURSE_MULT}&times; the XP lost if you don&rsquo;t.
         </div>
       </div>
       <div style={{width:46,height:26,borderRadius:13,flexShrink:0,position:"relative",
@@ -6044,7 +6121,7 @@ export default function App() {
                 : confirmBox.type==="vice"
                 ? <>Log that you gave in to <span style={{color:BAD,fontWeight:900}}>{confirmBox.name}</span>?
                    It costs XP tonight instead of paying, and the day is no longer perfect.
-                   You can undo it any time before midnight.</>
+                   You can undo it any time before the day closes at 3am.</>
                 : confirmBox.type==="questReset"
                 ? <>Wipe the history and streak of <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span> and start counting fresh from today? Your character's stats are <span style={{color:GOOD,fontWeight:900}}>unchanged</span>.</>
                 : confirmBox.type==="resetCoins"
@@ -6114,8 +6191,8 @@ export default function App() {
       {cardMenu && (()=>{
         const card = (data.kanban[cardMenu.col]||[]).find(c=>c.id===cardMenu.cardId);
         if (!card) return null;
-        const colNames = { todo:"TO DO", doing:"IN PROGRESS", done:"DONE" };
-        const colColors = { todo:"#38bdf8", doing:"#f59e0b", done:"#34d399" };
+        const colNames  = Object.fromEntries(BOARD_COLS.map(c=>[c.col, c.label]));
+        const colColors = Object.fromEntries(BOARD_COLS.map(c=>[c.col, c.chip]));
         const inLists = cardMenu.mode==="lists" || cardMenu.mode==="sublist";
         return (
         <div style={C.modal} onClick={()=>setCardMenu(null)}>
@@ -6130,11 +6207,14 @@ export default function App() {
               <>
                 {/* MOVE BETWEEN COLUMNS */}
                 <div style={{...C.label,marginBottom:8}}>MOVE TO</div>
-                <div style={{display:"flex",gap:8,marginBottom:14}}>
-                  {["todo","doing","done"].filter(c=>c!==cardMenu.col).map(c=>(
+                {/* Three targets now, so they wrap into a grid rather than being
+                    squeezed into one row. */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:14}}>
+                  {BOARD_COL_IDS.filter(c=>c!==cardMenu.col).map(c=>(
                     <button key={c} onClick={()=>{ boardMoveTo(cardMenu.col, cardMenu.cardId, c); setCardMenu(null); }}
                       style={{flex:1,padding:"13px 0",borderRadius:14,border:`1.5px solid ${colColors[c]}66`,cursor:"pointer",fontFamily:FONT,
-                        background:`linear-gradient(150deg,${colColors[c]}33,rgba(0,0,0,0.25))`,color:"#fff",fontWeight:900,fontSize:11.5}}>
+                        background:`linear-gradient(150deg,${colColors[c]}33,rgba(0,0,0,0.25))`,color:"#fff",fontWeight:900,fontSize:10,
+                        lineHeight:1.2,whiteSpace:"normal"}}>
                       {colNames[c]}
                     </button>
                   ))}
@@ -6329,7 +6409,7 @@ export default function App() {
         const need = Math.max(1, Math.min(PET_KEEP_MAX, keep.need || 1));
         const safe = thisMonthSharingan >= need;
         const earnedThisMonth = ((data.wallet.petEarned||{})[item.id]||"").slice(0,7)
-          === monthKey(new Date());
+          === monthKey(dayNow());
         return (
           <div style={C.modal} onClick={()=>setBeastId(null)}>
             <div style={{...C.sheet, animation:"slideUp .25s ease"}} onClick={e=>e.stopPropagation()}>
@@ -6489,7 +6569,7 @@ export default function App() {
                 </div>
                 {isCursed(detailTask) && (
                   <div style={{fontSize:9.5,color:CURSE_COLOR,fontWeight:800,marginTop:3}}>
-                    CURSE MARK · DOUBLE XP LOST IF MISSED
+                    CURSE MARK &middot; {CURSE_MULT}&times; XP LOST IF MISSED
                   </div>
                 )}
                 <div style={{display:"flex",gap:18,marginTop:10}}>
@@ -7046,7 +7126,7 @@ export default function App() {
                     const oc = data.categories.find(c=>c.id===t.catId);
                     return (
                       <div key={t.id} data-ord={i+1} onClick={()=>{ setDetailTaskId(t.id);
-                          setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                          setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"4px 0",cursor:"pointer"}}>
                         <span style={{width:20,height:20,borderRadius:BLOCK?0:7,flexShrink:0,
                           background: i===0 ? PRI : `${PRI}2e`, color: i===0 ? "#2a1a00" : PRI,
@@ -7100,7 +7180,7 @@ export default function App() {
                               onComplete={(bx,by)=>{ addRep(t.id, today);
                                 fireBurst(bx, by, color, S.showXP?`+${xpInt(t.points/target)}`:"✦ NICE"); }}
                               onShortTap={()=>{ setDetailTaskId(t.id);
-                                setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}/>
+                                setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}/>
                             {/* The must-do flag stays on the ring — it marks
                                 today's order, not a reward. */}
                             {must && (
@@ -7278,7 +7358,7 @@ export default function App() {
               const streak = getStreak(task);
               return (
                 <div key={task.id}
-                  onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                  onClick={()=>{ setDetailTaskId(task.id); setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
                   style={{...C.glass,padding:"11px 13px",marginBottom:9,cursor:"pointer"}}>
                   {/* The name column here is only about 70px wide once the week
                       grid and the reorder arrows take their share, so the badge
@@ -7793,12 +7873,10 @@ export default function App() {
         {view==="board" && S.kanbanEnabled && (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-              {[
-                { label:"To Do", count:data.kanban.todo.length, color:"#3b82f6", icon:"☰" },
-                { label:"In Progress", count:data.kanban.doing.length, color:"#f59e0b", icon:"◑" },
-                { label:"Done", count:data.kanban.done.length, color:"#22c55e", icon:"✓" },
-                { label:"Missions Left", count:todayTasks.length-todayDone, color:T.accent, icon:"⚔" },
-              ].map(tile=>(
+              {/* One tile per column, in the same order as the grid below, so the
+                  counts read top-left to bottom-right exactly as the board does. */}
+              {BOARD_COLS.map(c=>({ label:c.short, count:(data.kanban[c.col]||[]).length,
+                                    color:c.color, icon:c.icon })).map(tile=>(
                 <div key={tile.label} style={{
                   background:`linear-gradient(150deg,${tile.color},${shade(tile.color,-55)})`,
                   borderRadius:20,padding:"13px 15px",boxShadow:`0 8px 22px ${tile.color}44`,
@@ -7819,17 +7897,15 @@ export default function App() {
               <button style={{...C.btn,padding:"0 19px",fontSize:20}} onClick={boardAdd}>+</button>
             </div>
 
-            <div ref={boardRef} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,alignItems:"start"}}>
-              {[
-                { col:"todo",  label:"TO DO",       color:"#3b82f6" },
-                { col:"doing", label:"IN PROGRESS", color:"#f59e0b" },
-                { col:"done",  label:"DONE",        color:"#22c55e" },
-              ].map(({col,label,color})=>(
-                <div key={col} style={{
+            {/* Two across, two down. Four columns across a phone would leave each
+                one too narrow to read a card in. */}
+            <div ref={boardRef} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,alignItems:"start"}}>
+              {BOARD_COLS.map(({col,label,color})=>(
+                <div key={col} data-col={col} style={{
                   background: dragOverCol===col&&drag ? "rgba(255,255,255,0.16)" : GLASS,
                   backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",
                   border: dragOverCol===col&&drag ? `1.5px solid ${color}` : `1px solid ${LINE}`,
-                  borderRadius:18,padding:"9px 6px",minHeight:190,transition:"all .15s",
+                  borderRadius:18,padding:"9px 6px",minHeight:132,transition:"all .15s",
                 }}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:8}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:color}}/>
@@ -7861,7 +7937,7 @@ export default function App() {
               ))}
             </div>
             <div style={{fontSize:9,color:DIM,textAlign:"center",marginTop:10,fontWeight:800}}>
-              TAP A CARD FOR OPTIONS · HOLD TO MOVE IT FORWARD · DRAG SIDEWAYS FOR ANY COLUMN
+              TAP A CARD FOR OPTIONS · HOLD TO MOVE IT FORWARD · DRAG IT TO ANY COLUMN
             </div>
             {data.kanban.done.length>0 && (
               <button style={{...C.btnSm,width:"100%",marginTop:12,padding:"12px"}} onClick={boardClearDone}>
@@ -8078,7 +8154,7 @@ export default function App() {
           }
           const avg = rated ? Math.round(pctSum/rated) : 0;
           const shift = (delta)=>{ const d=new Date(y, m+delta, 1); setRecCursor({y:d.getFullYear(), m:d.getMonth()}); };
-          const atNow = (y===new Date().getFullYear() && m===new Date().getMonth());
+          const atNow = (y===dayNow().getFullYear() && m===dayNow().getMonth());
           return (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -8259,7 +8335,7 @@ export default function App() {
                       {settled.length === 1
                         ? prettyDay(settled[0])
                         : `${prettyDay(settled[0])} – ${prettyDay(settled[settled.length-1])}`}
-                      {" · earned through the day, charged at midnight"}
+                      {" · earned through the day, charged at the 3am rollover"}
                     </div>
                     <div style={{display:"flex",gap:8,marginBottom:9}}>
                       <div style={{flex:1,borderRadius:BLOCK?0:10,padding:"7px 9px",
@@ -8304,7 +8380,7 @@ export default function App() {
                       return (
                         <div key={r.id} onClick={()=>{ if (!t) return;
                             setDetailTaskId(r.id);
-                            setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                            setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
                           style={{display:"flex",alignItems:"center",gap:9,padding:"6px 0",
                             borderTop:`1px solid ${LINE}`,cursor: t ? "pointer" : "default",
                             marginTop: i===0 ? 7 : 0}}>
@@ -8351,8 +8427,8 @@ export default function App() {
                     {L.rows.length === 0
                       ? "Nothing scheduled today — nothing can be lost."
                       : allDone
-                        ? "Everything today is clear. Midnight costs you nothing."
-                        : `${L.rows.filter(r=>!r.done && !r.frozen).length} still open · midnight is in ${Math.max(1, Math.round((24*60 - (new Date().getHours()*60 + new Date().getMinutes()))/60))}h`}
+                        ? "Everything today is clear. The 3am rollover costs you nothing."
+                        : `${L.rows.filter(r=>!r.done && !r.frozen).length} still open · the day closes in ${Math.max(1, Math.round(msToRollover()/3600000))}h`}
                   </div>
                 </div>
               </div>
@@ -8436,7 +8512,7 @@ export default function App() {
 
                         {/* Each outcome against the ladder. A bare number says
                             nothing; the rank it lands in says everything. */}
-                        <div style={{...C.label,marginBottom:7}}>WHERE MIDNIGHT LEAVES YOU</div>
+                        <div style={{...C.label,marginBottom:7}}>WHERE THE ROLLOVER LEAVES YOU</div>
                         {[
                           { k:"fin",  mark:"\u25bc", tone:GOOD, lab:"IF YOU FINISH",
                             xp:finishXp, delta:px(L.remaining), R:finR },
@@ -8545,7 +8621,7 @@ export default function App() {
               {(()=>{
                 const days = [];
                 for (let i = 7; i >= 1; i--) {
-                  const d2 = new Date(); d2.setDate(d2.getDate() - i);
+                  const d2 = dayNow(); d2.setDate(d2.getDate() - i);
                   const dk = dateKey(d2);
                   const D = dayLedger(data, dk);
                   if (!D.rows.length) continue;
@@ -8610,7 +8686,7 @@ export default function App() {
                 return (
                   <div key={r.id}
                     onClick={()=>{ setDetailTaskId(r.id);
-                      setCalCursor({y:new Date().getFullYear(), m:new Date().getMonth()}); }}
+                      setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
                     style={{...C.glass,padding:"11px 13px",marginBottom:9,cursor:"pointer",
                       border:`1px solid ${r.risk > 0 ? BAD+"44" : r.done ? GOOD+"33" : LINE}`}}>
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -8664,13 +8740,14 @@ export default function App() {
                 <div style={{fontSize:11,color:DIM,fontWeight:700,lineHeight:1.6}}>
                   XP you earn is pro-rata — two of three reps pays two thirds. The
                   penalty is not: anything short of the full target loses the whole
-                  amount. A curse mark doubles only that penalty, never the reward.
+                  amount. A curse mark multiplies only that penalty ({CURSE_MULT}&times;),
+                  never the reward.
                   <br/><br/>
                   Nothing is final. Log a missed day later from its mission calendar
                   and the full penalty is handed straight back, curse mark included.
                   {weeklyHabits.length > 0 && (
                     <><br/><br/>Your {weeklyHabits.length} weekly habit{weeklyHabits.length>1?"s":""} can
-                    only ever add XP — they are never charged at midnight.</>
+                    only ever add XP — they are never charged at the rollover.</>
                   )}
                 </div>
               </div>
