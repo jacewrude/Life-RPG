@@ -289,6 +289,17 @@ const DIM = "rgba(255,255,255,0.75)";
 const FAINT = "rgba(255,255,255,0.45)";
 const GOOD = "#4ade80";
 const BAD = "#ff7b7b";
+// The mission you put first gets its own colour. The whole order panel used to
+// be one shade of gold, so the one thing to do RIGHT NOW looked exactly like
+// the five queued behind it. Every place that draws a position reads these two
+// constants, so they can never drift into different greens.
+//
+// Deliberately NOT the usual GOOD green: at #4ade80 it is the same BRIGHTNESS
+// as the gold (0.72 against 0.72), so red-green colour blindness — or just
+// sunlight on a phone — would turn the two into the same grey. This one is
+// darker as well as greener, so the difference survives losing the hue.
+const ORDER_FIRST = "#22c55e";
+const ORDER_FIRST_INK = "#001b0c";       // 5.1:1 against the fill, so the digit reads
 
 const DEFAULT_SETTINGS = {
   kanbanEnabled: true,
@@ -5897,11 +5908,17 @@ export default function App() {
     return (
       <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",
         justifyContent: align==="center" ? "center" : align==="start" ? "flex-start" : "flex-end"}}>
-        {dayRanks[task.id] > 0 && (
-          <span style={{...chip(PRI), background:PRI, color:"#2a1a00", fontSize:9.5,
-            fontWeight:900, letterSpacing:0.2, fontFamily:FONT,
-            boxShadow:`0 0 9px ${PRI}66`}}>#{dayRanks[task.id]}</span>
-        )}
+        {dayRanks[task.id] > 0 && (()=>{
+          // Green for the one you are meant to be on; gold for the queue.
+          const first = dayRanks[task.id] === 1;
+          const c = first ? ORDER_FIRST : PRI;
+          return (
+            <span style={{...chip(c), background:c,
+              color: first ? ORDER_FIRST_INK : "#2a1a00", fontSize:9.5,
+              fontWeight:900, letterSpacing:0.2, fontFamily:FONT,
+              boxShadow:`0 0 9px ${c}66`}}>#{dayRanks[task.id]}</span>
+          );
+        })()}
         <span style={{...chip(rank+"66"), color:rank, fontSize:9, fontWeight:900,
           letterSpacing:0.3, fontFamily:FONT}}>{diffShort(task.importance)}</span>
         {nx && (
@@ -6704,16 +6721,20 @@ export default function App() {
               // anyway, so those buttons are shown dim and inert rather than
               // quietly doing something else.
               const reach = Math.min(ORDER_MAX, orderedNow.length + (oRank > 0 ? 0 : 1));
+              // Green when this IS the one to do next, gold when it is in the
+              // queue behind it — the same two colours as the order list.
+              const oc = oRank === 1 ? ORDER_FIRST : PRI;
               return (
                 <div style={{marginBottom:10,
-                  background: oRank>0 ? `${PRI}1f` : "rgba(0,0,0,0.25)",
-                  border:`1.5px solid ${oRank>0 ? PRI+"88" : LINE}`,borderRadius:15,padding:"12px 14px"}}>
+                  background: oRank>0 ? `${oc}1f` : "rgba(0,0,0,0.25)",
+                  border:`1.5px solid ${oRank>0 ? oc+"88" : LINE}`,borderRadius:15,padding:"12px 14px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <span style={{fontSize:17,color:oRank>0?PRI:"#fff",fontWeight:900,
-                      width:17,textAlign:"center",lineHeight:1}}>{oRank>0?oRank:"\u2460"}</span>
+                    <span style={{fontSize:17,color:oRank>0?oc:"#fff",fontWeight:900,
+                      width:17,textAlign:"center",lineHeight:1}}>{oRank>0?oRank:"①"}</span>
                     <span style={{flex:1,minWidth:0}}>
-                      <span style={{display:"block",fontSize:12.5,fontWeight:900,color:oRank>0?PRI:"#fff"}}>
-                        {oRank>0 ? `#${oRank} IN TODAY'S ORDER`
+                      <span style={{display:"block",fontSize:12.5,fontWeight:900,color:oRank>0?oc:"#fff"}}>
+                        {oRank===1 ? "#1 · DO THIS FIRST"
+                          : oRank>0 ? `#${oRank} IN TODAY'S ORDER`
                           : listed ? "CLEARED \u00b7 SLOT HELD FOR TODAY" : "ORDER THIS MISSION"}
                       </span>
                       <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,marginTop:1,lineHeight:1.4}}>
@@ -6729,9 +6750,9 @@ export default function App() {
                           onClick={()=>setOrderSlot(detailTask.id, n)}
                           style={{height:28,borderRadius:8,padding:0,fontFamily:FONT,
                             fontWeight:900,fontSize:10.5,cursor:live?"pointer":"default",
-                            border: on ? `2px solid ${PRI}` : `1px solid ${LINE}`,
-                            background: on ? `${PRI}33` : "rgba(0,0,0,0.3)",
-                            color: on ? PRI : live ? "#fff" : "rgba(255,255,255,0.16)"}}>{n}</button>
+                            border: on ? `2px solid ${oc}` : `1px solid ${LINE}`,
+                            background: on ? `${oc}33` : "rgba(0,0,0,0.3)",
+                            color: on ? oc : live ? "#fff" : "rgba(255,255,255,0.16)"}}>{n}</button>
                       );
                     })}
                   </div>
@@ -7129,7 +7150,9 @@ export default function App() {
                           setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"4px 0",cursor:"pointer"}}>
                         <span style={{width:20,height:20,borderRadius:BLOCK?0:7,flexShrink:0,
-                          background: i===0 ? PRI : `${PRI}2e`, color: i===0 ? "#2a1a00" : PRI,
+                          background: i===0 ? ORDER_FIRST : `${PRI}2e`,
+                          color: i===0 ? ORDER_FIRST_INK : PRI,
+                          boxShadow: i===0 ? `0 0 10px ${ORDER_FIRST}77` : "none",
                           fontSize:10,fontWeight:900,fontFamily:FONT,
                           display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</span>
                         <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:800,
