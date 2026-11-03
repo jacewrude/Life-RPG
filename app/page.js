@@ -656,13 +656,33 @@ function decayHeldOn(task, dateStr, reps) {
 function decayDeltaOn(task, dateStr, prevReps, newReps) {
   return decayHeldOn(task, dateStr, prevReps) - decayHeldOn(task, dateStr, newReps);
 }
+// A streak cannot start before the mission existed. That guard is why the walk
+// stops: for an ordinary mission the first unlogged day ends it anyway, but a
+// FORBIDDEN mission counts a day it was not tapped, and it was not tapped on
+// any day before it was created either — so without this it walked all the way
+// to the 730-day safety bound and reported a two-year streak on a mission made
+// that morning. That number was not only on screen: getStreak is what pays out
+// a dojutsu goal, so an eye goal on a forbidden mission awarded instantly.
+// missedStreak and cleanDays already stopped at createdAt; this is the one
+// that did not.
 function getStreak(task) {
   let s = 0;
   const cur = dayNow();
   const todayK = dateKey(cur);
-  if (isScheduledOn(task, todayK) && !isWonOn(task, todayK)) cur.setDate(cur.getDate()-1);
+  const born = (task && task.createdAt) || "0000-00-00";
+  // Today gets the benefit of the doubt on an ordinary mission: an unfinished
+  // day is not a failed one, so the run stands until the day actually ends.
+  // A FORBIDDEN mission is the other way round — a tap is not "not yet", it is
+  // the failure itself, and the run has to end the moment it happens. Without
+  // this the streak kept quoting yesterday's figure while the clean counter
+  // beside it had already gone to zero.
+  const graceToday = !(task && task.vice);
+  if (graceToday && isScheduledOn(task, todayK) && !isWonOn(task, todayK)) {
+    cur.setDate(cur.getDate()-1);
+  }
   for (let i = 0; i < 730; i++) {
     const dk = dateKey(cur);
+    if (born > dk) break;                 // before the mission existed
     if (isScheduledOn(task, dk)) {
       if (isWonOn(task, dk)) s++;
       else if ((task.frozen||{})[dk]) { /* shielded day — streak survives */ }
