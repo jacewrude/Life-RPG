@@ -560,6 +560,15 @@ function dateKey(date) {
   const d = date || dayNow();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
+// N days on from a day key, as a day key. Built from the key itself rather
+// than from the clock, so it never picks up the 3am shift twice.
+function addDays(dk, n) {
+  const d = new Date(dk + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return dateKey(d);
+}
+// How far ahead the planner lets you order. Seven days on top of today.
+const ORDER_AHEAD_DAYS = 7;
 // "OCT 19" — short enough to sit in a summary chip
 function prettyDay(dateStr) {
   if (!dateStr) return "";
@@ -1172,13 +1181,30 @@ function migrate(d) {
     lastDecayDate: d.lastDecayDate || dateKey(),
     freezeAll: (d.freezeAll && typeof d.freezeAll === "object"
                 && /^\d{4}-\d{2}-\d{2}$/.test(d.freezeAll.from || "")) ? { from: d.freezeAll.from } : null,
-    // The running order is for one day only. Anything stamped with an earlier
-    // date is dropped here, on load, so it can never bleed into a new day.
-    dayOrder: (d.dayOrder && typeof d.dayOrder === "object"
-               && d.dayOrder.date === dateKey() && Array.isArray(d.dayOrder.ids))
-              ? { date: d.dayOrder.date,
-                  ids: d.dayOrder.ids.filter(x => typeof x === "string") }
-              : null,
+    // The running order is now a map of day -> ids, so a day can be ordered
+    // before it arrives and the order is simply waiting when the day turns
+    // over at 3am. Yesterday's is dropped on load, exactly as before, and
+    // anything further out than the planner reaches is dropped with it so the
+    // map cannot grow without end.
+    //
+    // The old shape was a single { date, ids }. It is converted here rather
+    // than discarded, so an order set tonight survives the update.
+    dayOrder: (()=>{
+      const o = d && d.dayOrder;
+      if (!o || typeof o !== "object") return {};
+      const clean = (v) => Array.isArray(v) ? v.filter(x => typeof x === "string") : null;
+      const src = (typeof o.date === "string" && Array.isArray(o.ids))
+        ? { [o.date]: clean(o.ids) }                   // the old single-day shape
+        : o;
+      const today = dateKey(), out = {};
+      Object.keys(src).forEach(k=>{
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+        if (k < today || k > addDays(today, ORDER_AHEAD_DAYS)) return;
+        const ids = clean(src[k]);
+        if (ids && ids.length) out[k] = ids;
+      });
+      return out;
+    })(),
   };
   return restoreStanding(settlePerfectDays(refundWeeklyDecay(runBeastUpkeep(stampGlobalFreeze(out)))));
 }
@@ -3600,10 +3626,30 @@ function runBeastUpkeep(d) {
 // (`task.order` is something else entirely: the permanent manual sort on the
 // Missions page. These two never touch.)
 const ORDER_MAX = 20;
+// Every day the planner can reach: today first, then the next seven.
+function orderPlannerDays() {
+  const t = dateKey();
+  return Array.from({length: ORDER_AHEAD_DAYS + 1}, (_,i) => addDays(t, i));
+}
 function dayOrderIds(d, dk) {
   const o = d && d.dayOrder;
-  if (!o || o.date !== dk || !Array.isArray(o.ids)) return [];
-  return o.ids.filter(id => (d.tasks||[]).some(t => t.id === id));
+  if (!o || typeof o !== "object") return [];
+  // Tolerates the old single-day shape too, so a render that happens before
+  // migrate has run does not come back empty and wipe the list on screen.
+  const ids = Array.isArray(o[dk]) ? o[dk]
+            : (o.date === dk && Array.isArray(o.ids)) ? o.ids
+            : null;
+  if (!ids) return [];
+  return ids.filter(id => (d.tasks||[]).some(t => t.id === id));
+}
+// Writing one day's list without touching the others, and dropping the key
+// entirely when it empties so the map stays as small as the planner needs.
+function dayOrderWith(d, dk, ids) {
+  const base = (d && d.dayOrder && typeof d.dayOrder === "object"
+                && !Array.isArray(d.dayOrder.ids)) ? d.dayOrder : {};
+  const next = { ...base };
+  if (ids && ids.length) next[dk] = ids; else delete next[dk];
+  return next;
 }
 // Ranks are dense: 1..N with no gaps, counting only what is still open. A
 // cleared mission keeps its place in the list and reports 0, so un-clearing it
@@ -3815,6 +3861,10 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [forecastDate, setForecastDate] = useState(null);
   const [planDate, setPlanDate] = useState(dateKey());
+  // Which day the running-order planner is looking at. Today unless you scroll
+  // it forward; reset whenever the day turns over, so you never come back to
+  // the app still pointed at a day that has since passed.
+  const [orderDay, setOrderDay] = useState(dateKey());
   const [planMode, setPlanMode] = useState("month"); // "month" | "day"
   const [planMonth, setPlanMonth] = useState({ y:dayNow().getFullYear(), m:dayNow().getMonth() });
   const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
@@ -3899,6 +3949,10 @@ export default function App() {
       persistRaw(n); return n;
     });
   }, [currentDay, data && data.kanban && data.kanban.clearedOn]);
+
+  // The planner follows the rollover: a day that is now in the past can never
+  // stay selected.
+  useEffect(()=>{ setOrderDay(d => (d < currentDay ? currentDay : d)); }, [currentDay]);
 
   // He trains every day. This catches him up for every day since you last looked.
   useEffect(()=>{
@@ -5390,20 +5444,46 @@ export default function App() {
   const orderedNow = dayOrderIds(data, today)
     .map(id => data.tasks.find(t => t.id === id))
     .filter(t => t && !isCompletedOn(t, today));
-  const setOrderSlot = (tid, rank) => {
+  // dk defaults to today, so every existing caller keeps working; the planner
+  // passes a future day.
+  const setOrderSlot = (tid, rank, dk) => {
+    const day = dk || dateKey();
     setData(cur => {
-      const dk = dateKey();
-      const ids = dayOrderInsert(cur, dk, tid, rank);
-      const nx = { ...cur, dayOrder: ids.length ? { date: dk, ids } : null };
+      const ids = dayOrderInsert(cur, day, tid, rank);
+      const nx = { ...cur, dayOrder: dayOrderWith(cur, day, ids) };
       persistRaw(nx); return nx;
     });
-    toast$(rank > 0 ? `\u2460 ORDERED \u00b7 #${rank} TODAY` : "TAKEN OUT OF TODAY'S ORDER",
+    const when = day === dateKey() ? "TODAY" : prettyDay(day).toUpperCase();
+    toast$(rank > 0 ? `① ORDERED · #${rank} ${when}` : `TAKEN OUT OF ${when}'S ORDER`,
            rank > 0 ? PRI : "#ffc46b");
     try { navigator.vibrate && navigator.vibrate(12); } catch {}
   };
-  const clearDayOrder = () => {
-    setData(cur => { const nx = { ...cur, dayOrder: null }; persistRaw(nx); return nx; });
+  const clearDayOrder = (dk) => {
+    const day = dk || dateKey();
+    setData(cur => { const nx = { ...cur, dayOrder: dayOrderWith(cur, day, []) };
+      persistRaw(nx); return nx; });
     toast$("ORDER CLEARED", "#ffc46b");
+  };
+  // Append to the end of a day's list — what tapping an unordered mission in
+  // the planner does.
+  const addToOrder = (tid, dk) => {
+    const day = dk || dateKey();
+    const n = dayOrderIds(data, day).length;
+    setOrderSlot(tid, Math.min(ORDER_MAX, n + 1), day);
+  };
+  // Nudge a mission one place up or down within its day.
+  const nudgeOrder = (tid, dir, dk) => {
+    const day = dk || dateKey();
+    setData(cur => {
+      const ids = [...dayOrderIds(cur, day)];
+      const i = ids.indexOf(tid);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= ids.length) return cur;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      const nx = { ...cur, dayOrder: dayOrderWith(cur, day, ids) };
+      persistRaw(nx); return nx;
+    });
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
   };
   // ── THE RIVAL ───────────────────────────────────────────────────────────────
   const R          = data.rival || { power:0, rate:0, tick:"", arc:1, wins:0, born:"" };
@@ -5632,6 +5712,11 @@ export default function App() {
     chip:(on)=>({flex:1,padding:"11px 0",...(on?bevelUp(BLK.btnL,BLK.btnD,2):bevelIn(BLK.slotL,BLK.slotD,2)),
       backgroundColor:on?BLK.btn:BLK.slot,backgroundImage:on?TEX_BTN:TEX_SLOT,...PX,
       color:on?"#fff":DIM,fontSize:11,fontWeight:700,cursor:"pointer",textAlign:"center",fontFamily:FONT,letterSpacing:0.6,textShadow:PXSHADOW}),
+    // The planner's tiny square controls: nudge up, nudge down, remove.
+    ordBtn:{width:22,height:22,flexShrink:0,padding:0,borderRadius:0,
+      border:`1px solid ${LINE}`,background:"rgba(255,255,255,0.06)",color:DIM,
+      fontFamily:FONT,fontSize:9,fontWeight:900,lineHeight:1,display:"flex",
+      alignItems:"center",justifyContent:"center"},
     sectionTitle:{fontSize:14,fontWeight:700,color:TXT,letterSpacing:1.2,textTransform:"uppercase",textShadow:"2px 2px 0 #000"},
   } : {
     app:{minHeight:"100vh",maxWidth:430,margin:"0 auto",fontFamily:FONT,color:TXT,paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 110px)",position:"relative",background:pageBg},
@@ -5648,6 +5733,11 @@ export default function App() {
     modal:{...modalBox,background:"rgba(0,0,0,0.5)"},
     sheet:{background:GLASS_HEAVY,backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"26px 26px 0 0",border:`1px solid ${LINE}`,borderBottom:"none",width:"100%",maxWidth:430,...sheetFit,overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",padding:"26px 20px calc(env(safe-area-inset-bottom, 0px) + 124px)"},   // room above, clears the hotbar below
     chip:(on)=>({flex:1,padding:"12px 0",borderRadius:16,border:"none",background:on?"#ffffff":"rgba(255,255,255,0.12)",color:on?"#1c1430":DIM,fontSize:11.5,fontWeight:900,cursor:"pointer",textAlign:"center",fontFamily:FONT}),
+    // The planner's tiny square controls: nudge up, nudge down, remove.
+    ordBtn:{width:22,height:22,flexShrink:0,padding:0,borderRadius:7,
+      border:`1px solid ${LINE}`,background:"rgba(255,255,255,0.06)",color:DIM,
+      fontFamily:FONT,fontSize:9,fontWeight:900,lineHeight:1,display:"flex",
+      alignItems:"center",justifyContent:"center"},
     sectionTitle:{fontSize:15,fontWeight:900,color:TXT,textShadow:"0 1px 8px rgba(0,0,0,0.4)"},
   };
   // Solid quiet plate behind small artwork in Blockland — keeps the dithered
@@ -7092,78 +7182,151 @@ export default function App() {
                   sequence, which a numbered badge scattered down a list does not
                   give you. Clearing one drops it off here and everything below
                   moves up. */}
-              {todayVices.length>0 && (
+              {(()=>{
+                const planning = orderDay !== today;
+                // Everything scheduled for the day being looked at, filtered
+                // exactly as the home page filters today.
+                const dayMissions = data.tasks.filter(t=>t.catId
+                  && data.categories.find(c=>c.id===t.catId)
+                  && !isWeekly(t) && !t.vice && isScheduledOn(t, orderDay));
+                const ids = dayOrderIds(data, orderDay);
+                // On today the cleared ones drop off, which is what makes
+                // clearing #1 slide #2 up. A future day has nothing cleared.
+                const listed = ids.map(id=>dayMissions.find(t=>t.id===id))
+                  .filter(t=>t && (planning || !isCompletedOn(t, today)));
+                const rest = dayMissions.filter(t=>!ids.includes(t.id)
+                  && (planning || !isCompletedOn(t, today)));
+                const full = listed.length >= ORDER_MAX;
+                return (
                 <div style={{...C.glass,padding:"11px 13px",marginBottom:11,
-                  border:`1px solid ${BAD}44`}}>
-                  <div style={{...C.label,color:BAD,marginBottom:3}}>⛔ FORBIDDEN</div>
-                  <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:9,lineHeight:1.45}}>
-                    Scored like any other mission, the other way round. Leave one alone
-                    and it pays tonight; tap it and it costs, and the day is no longer perfect.
+                  border:`1px solid ${planning ? "#7fd4ff55" : PRI+"44"}`}}>
+                  <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
+                    <div style={{...C.label,flex:1,marginBottom:0,
+                      color: planning ? "#7fd4ff" : PRI}}>
+                      {planning ? "PLANNING AHEAD" : "TODAY\u2019S ORDER"}
+                    </div>
+                    {listed.length>0 && (
+                      <button onClick={()=>clearDayOrder(orderDay)}
+                        style={{background:"none",border:"none",color:FAINT,fontSize:8.5,fontWeight:900,
+                          cursor:"pointer",padding:0,fontFamily:FONT,letterSpacing:0.8}}>CLEAR ALL</button>
+                    )}
                   </div>
-                  {todayVices.map(t=>{
-                    const vc = data.categories.find(c=>c.id===t.catId);
-                    const clean = cleanDays(t, today);
-                    const slips = getReps(t, today);
-                    return (
-                      <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,
-                        padding:"7px 0",borderTop:`1px solid ${LINE}`}}>
-                        <span style={{fontSize:17,flexShrink:0}}>{iconFor(t,vc)}</span>
-                        <span style={{flex:1,minWidth:0}}>
-                          <span style={{display:"block",fontSize:13,fontWeight:800,
-                            color: slips>0 ? DIM : "#fff",
-                            textDecoration: slips>0 ? "line-through" : "none",
-                            whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</span>
-                          <span style={{display:"block",fontSize:9.5,fontWeight:800,marginTop:1,
-                            color: slips>0 ? BAD : GOOD}}>
-                            {slips>0
-                              ? `Slipped \u00b7 \u2212${xpInt((t.decayRate||0)/36*100)} XP tonight`
-                              : `Holding \u00b7 +${xpInt((t.points||0)/36*100)} XP tonight`
-                                + (clean>0 ? ` \u00b7 ${clean}d clean` : "")}
+
+                  {/* THE DAY STRIP — today plus the next seven. Ordering a day
+                      before it arrives is the whole point: the list is stored
+                      against the date, so when that date turns over at 3am the
+                      order is simply already there. */}
+                  <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto",
+                    WebkitOverflowScrolling:"touch",paddingBottom:2}}>
+                    {orderPlannerDays().map(dk=>{
+                      const on = dk === orderDay;
+                      const isToday = dk === today;
+                      // Count what the day will actually SHOW, not what is
+                      // stored: today hides the ones already cleared, so a
+                      // raw count would read 4 above a list of 3.
+                      const n = dayOrderIds(data, dk).filter(id=>{
+                        if (dk !== today) return true;
+                        const t = data.tasks.find(x=>x.id===id);
+                        return t && !isCompletedOn(t, today);
+                      }).length;
+                      const d = new Date(dk+"T00:00:00");
+                      return (
+                        <button key={dk} onClick={()=>setOrderDay(dk)}
+                          style={{flexShrink:0,minWidth:38,padding:"5px 7px",borderRadius:BLOCK?0:9,
+                            fontFamily:FONT,cursor:"pointer",lineHeight:1.15,
+                            border:`1px solid ${on ? (isToday?PRI:"#7fd4ff") : LINE}`,
+                            background: on ? (isToday?`${PRI}26`:"rgba(127,212,255,0.16)") : "rgba(0,0,0,0.25)",
+                            color: on ? (isToday?PRI:"#7fd4ff") : DIM}}>
+                          <span style={{display:"block",fontSize:8,fontWeight:900,letterSpacing:0.4}}>
+                            {isToday ? "TODAY" : DAYS[d.getDay()].slice(0,3).toUpperCase()}
                           </span>
-                        </span>
-                        <button onClick={()=> slips>0
-                            ? addRep(t.id, today)
-                            : setConfirmBox({type:"vice",id:t.id,name:t.name})}
-                          style={{flexShrink:0,padding:"8px 13px",borderRadius:BLOCK?0:11,
-                            border:`1px solid ${slips>0?GOOD+"77":BAD+"77"}`,
-                            background: slips>0 ? "rgba(52,211,153,0.14)" : "rgba(232,51,58,0.16)",
-                            color: slips>0 ? GOOD : "#ff8a7a",fontFamily:FONT,fontWeight:900,
-                            fontSize:10,letterSpacing:0.6,cursor:"pointer"}}>
-                          {slips>0 ? "UNDO" : "I SLIPPED"}</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {orderedNow.length>0 && (
-                <div style={{...C.glass,padding:"11px 13px",marginBottom:11,border:`1px solid ${PRI}44`}}>
-                  <div style={{display:"flex",alignItems:"center",marginBottom:7}}>
-                    <div style={{...C.label,flex:1,color:PRI,marginBottom:0}}>TODAY&rsquo;S ORDER</div>
-                    <button onClick={clearDayOrder}
-                      style={{background:"none",border:"none",color:FAINT,fontSize:8.5,fontWeight:900,
-                        cursor:"pointer",padding:0,fontFamily:FONT,letterSpacing:0.8}}>CLEAR ALL</button>
+                          <span style={{display:"block",fontSize:11,fontWeight:900,marginTop:1}}>
+                            {n > 0 ? n : "\u2013"}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {orderedNow.map((t,i)=>{
+
+                  {/* THE ORDER ITSELF */}
+                  {listed.map((t,i)=>{
                     const oc = data.categories.find(c=>c.id===t.catId);
                     return (
-                      <div key={t.id} data-ord={i+1} onClick={()=>{ setDetailTaskId(t.id);
-                          setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}
-                        style={{display:"flex",alignItems:"center",gap:9,padding:"4px 0",cursor:"pointer"}}>
+                      <div key={t.id} data-ord={i+1}
+                        style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
                         <span style={{width:20,height:20,borderRadius:BLOCK?0:7,flexShrink:0,
                           background: i===0 ? ORDER_FIRST : `${PRI}2e`,
                           color: i===0 ? ORDER_FIRST_INK : PRI,
                           boxShadow: i===0 ? `0 0 10px ${ORDER_FIRST}77` : "none",
                           fontSize:10,fontWeight:900,fontFamily:FONT,
                           display:"flex",alignItems:"center",justifyContent:"center"}}>{i+1}</span>
-                        <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:800,
-                          color: i===0 ? "#fff" : DIM,whiteSpace:"nowrap",overflow:"hidden",
-                          textOverflow:"ellipsis"}}>{t.name}</span>
+                        <span onClick={()=>{ if (!planning) { setDetailTaskId(t.id);
+                            setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); } }}
+                          style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:800,
+                            color: i===0 ? "#fff" : DIM,whiteSpace:"nowrap",overflow:"hidden",
+                            textOverflow:"ellipsis",cursor: planning ? "default" : "pointer"}}>{t.name}</span>
                         <span style={{fontSize:12,flexShrink:0}}>{iconFor(t,oc)}</span>
+                        {/* Nudging beats re-picking a number when you just want
+                            one thing to go first. */}
+                        <button onClick={()=>nudgeOrder(t.id,-1,orderDay)} disabled={i===0}
+                          style={{...C.ordBtn, opacity:i===0?0.25:1,
+                            cursor:i===0?"default":"pointer"}}>▲</button>
+                        <button onClick={()=>nudgeOrder(t.id,1,orderDay)} disabled={i===listed.length-1}
+                          style={{...C.ordBtn, opacity:i===listed.length-1?0.25:1,
+                            cursor:i===listed.length-1?"default":"pointer"}}>▼</button>
+                        <button onClick={()=>setOrderSlot(t.id,0,orderDay)}
+                          style={{...C.ordBtn, color:"#ffc46b"}}>✕</button>
                       </div>
                     );
                   })}
+
+                  {/* WHAT IS LEFT TO PLACE */}
+                  {rest.length>0 && (
+                    <>
+                      <div style={{fontSize:8.5,color:FAINT,fontWeight:900,letterSpacing:0.6,
+                        marginTop:listed.length?9:0,marginBottom:5,
+                        borderTop:listed.length?`1px solid ${LINE}`:"none",
+                        paddingTop:listed.length?8:0}}>
+                        {full ? `ORDER IS FULL \u00b7 ${ORDER_MAX} MAX` : "TAP TO ADD"}
+                      </div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                        {rest.map(t=>{
+                          const oc = data.categories.find(c=>c.id===t.catId);
+                          return (
+                            <button key={t.id} disabled={full}
+                              onClick={()=>addToOrder(t.id, orderDay)}
+                              style={{display:"flex",alignItems:"center",gap:5,maxWidth:"100%",
+                                padding:"6px 9px",borderRadius:BLOCK?0:9,fontFamily:FONT,
+                                border:`1px solid ${LINE}`,background:"rgba(0,0,0,0.25)",
+                                color: full ? FAINT : "#fff",fontSize:11,fontWeight:800,
+                                cursor: full ? "default" : "pointer", opacity: full ? 0.45 : 1}}>
+                              <span style={{fontSize:12}}>{iconFor(t,oc)}</span>
+                              <span style={{minWidth:0,whiteSpace:"nowrap",overflow:"hidden",
+                                textOverflow:"ellipsis"}}>{t.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {dayMissions.length===0 && (
+                    <div style={{fontSize:10,color:FAINT,fontWeight:700,textAlign:"center",
+                      padding:"10px 0",lineHeight:1.5}}>
+                      Nothing is scheduled for this day.
+                    </div>
+                  )}
+
+                  <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:9,lineHeight:1.5}}>
+                    {planning
+                      ? `Set now, waiting for you when ${prettyDay(orderDay)} opens at 3am.`
+                      : listed.length
+                        ? "Today only. Clear one and the rest move up a place."
+                        : "Put the day in the order you mean to do it. Scroll ahead to plan a day before it arrives."}
+                  </div>
                 </div>
-              )}
+                );
+              })()}
               {S.questLayout==="circles" ? (()=>{
                 const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
                 const n = byOrder.length;
@@ -7453,6 +7616,53 @@ export default function App() {
                 </div>
               );
             })}
+            {/* FORBIDDEN — lives down here rather than on the home page.
+                It is a list of things NOT to do, so it does not belong among
+                the day's missions competing for attention; it reads better as
+                the last thing on the missions page, just above the weeklies. */}
+            {todayVices.length>0 && (
+              <div style={{...C.glass,padding:"11px 13px",marginBottom:11,
+                border:`1px solid ${BAD}44`}}>
+                <div style={{...C.label,color:BAD,marginBottom:3}}>⛔ FORBIDDEN</div>
+                <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:9,lineHeight:1.45}}>
+                  Scored like any other mission, the other way round. Leave one alone
+                  and it pays tonight; tap it and it costs, and the day is no longer perfect.
+                </div>
+                {todayVices.map(t=>{
+                  const vc = data.categories.find(c=>c.id===t.catId);
+                  const clean = cleanDays(t, today);
+                  const slips = getReps(t, today);
+                  return (
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,
+                      padding:"7px 0",borderTop:`1px solid ${LINE}`}}>
+                      <span style={{fontSize:17,flexShrink:0}}>{iconFor(t,vc)}</span>
+                      <span style={{flex:1,minWidth:0}}>
+                        <span style={{display:"block",fontSize:13,fontWeight:800,
+                          color: slips>0 ? DIM : "#fff",
+                          textDecoration: slips>0 ? "line-through" : "none",
+                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</span>
+                        <span style={{display:"block",fontSize:9.5,fontWeight:800,marginTop:1,
+                          color: slips>0 ? BAD : GOOD}}>
+                          {slips>0
+                            ? `Slipped \u00b7 \u2212${xpInt((t.decayRate||0)/36*100)} XP tonight`
+                            : `Holding \u00b7 +${xpInt((t.points||0)/36*100)} XP tonight`
+                              + (clean>0 ? ` \u00b7 ${clean}d clean` : "")}
+                        </span>
+                      </span>
+                      <button onClick={()=> slips>0
+                          ? addRep(t.id, today)
+                          : setConfirmBox({type:"vice",id:t.id,name:t.name})}
+                        style={{flexShrink:0,padding:"8px 13px",borderRadius:BLOCK?0:11,
+                          border:`1px solid ${slips>0?GOOD+"77":BAD+"77"}`,
+                          background: slips>0 ? "rgba(52,211,153,0.14)" : "rgba(232,51,58,0.16)",
+                          color: slips>0 ? GOOD : "#ff8a7a",fontFamily:FONT,fontWeight:900,
+                          fontSize:10,letterSpacing:0.6,cursor:"pointer"}}>
+                        {slips>0 ? "UNDO" : "I SLIPPED"}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {weeklyList.length>0 && (
               <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"20px 2px 11px"}}>
