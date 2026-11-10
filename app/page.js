@@ -8693,27 +8693,14 @@ export default function App() {
                 const earnable = L.banked + L.remaining;
                 const pctEarned = earnable > 0.0001
                   ? Math.round((L.banked / earnable) * 100) : null;
-                // The window the bar covers: wide enough to hold both outcomes
-                // and the rank line below you, with a little air either side.
-                const demoteAt  = level.ratingFloor * 10;
-                const promoteAt = level.ratingForNext * 10;
-                const lo0 = Math.min(stopXp, nowXp, demoteAt);
-                const hi0 = Math.max(finishXp, nowXp, Math.min(promoteAt, finishXp + 60));
-                const pad = Math.max(10, (hi0 - lo0) * 0.10);
-                const lo  = Math.max(0, lo0 - pad);
-                const hi  = Math.min(1000, hi0 + pad);
-                const at  = (v) => hi > lo
-                  ? Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100)) : 50;
+                // Each outcome is drawn against its OWN rank's span now, inside
+                // the card, so the shared sliding window the old bar needed is
+                // gone with it.
                 const rankAt = (xp) => getLevel(xp / 10);
                 const stopR = rankAt(stopXp), finR = rankAt(finishXp);
                 const nameOf = (R) => R.reserve ? "the Reserve" : getTitle(data, R.lvl);
                 const drops = stopR.lvl < level.lvl;
                 const climbs = finR.lvl > level.lvl;
-                const Tick = ({x, label, tone}) => (x <= 1 || x >= 99) ? null : (
-                  <div style={{position:"absolute",left:`${x}%`,top:-3,bottom:-3,width:2,
-                    background:tone,opacity:0.85,transform:"translateX(-1px)"}}
-                    title={label}/>
-                );
                 return (
                   <div style={{...C.glass}}>
                     <div style={{display:"flex",alignItems:"baseline",gap:8}}>
@@ -8763,76 +8750,89 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Each outcome against the ladder. A bare number says
-                            nothing; the rank it lands in says everything. */}
+                        {/* The rollover forecast — two of him, side by
+                            side. Three rows of numbers against a band table was
+                            four ways of saying the same thing and none of them
+                            quick to read. A rank is a picture in this app: the
+                            fit changes with it. So each outcome is drawn as the
+                            champion you would be, with the home page's own XP
+                            bar under him. Everything here comes from L, which is
+                            recomputed every render, so both sides move as
+                            missions are cleared.
+
+                            The fit is taken from the PROJECTED rank, not from
+                            wornLvl — a wardrobe pin would otherwise dress both
+                            sides identically and there would be nothing to
+                            compare. */}
                         <div style={{...C.label,marginBottom:7}}>WHERE THE ROLLOVER LEAVES YOU</div>
-                        {[
-                          { k:"fin",  mark:"\u25bc", tone:GOOD, lab:"IF YOU FINISH",
-                            xp:finishXp, delta:px(L.remaining), R:finR },
-                          { k:"now",  mark:"\u25cf", tone:"#ffffff", lab:"RIGHT NOW",
-                            xp:nowXp, delta:0, R:level },
-                          { k:"stop", mark:"\u25b2", tone:BAD, lab:"IF YOU STOP NOW",
-                            xp:stopXp, delta:-px(L.atRisk), R:stopR },
-                        ].map(row=>(
-                          <div key={row.k} style={{display:"flex",alignItems:"center",gap:10,
-                            padding:"9px 11px",marginBottom:6,borderRadius:BLOCK?0:12,
-                            background: row.k==="now" ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.25)",
-                            border:`1px solid ${row.k==="now" ? "rgba(255,255,255,0.22)" : row.tone+"44"}`}}>
-                            <span style={{fontSize:11,color:row.tone,flexShrink:0,width:12,
-                              textAlign:"center"}}>{row.mark}</span>
-                            <span style={{flex:1,minWidth:0}}>
-                              <span style={{display:"block",fontSize:8.5,fontWeight:900,
-                                color:FAINT,letterSpacing:0.6}}>{row.lab}</span>
-                              <span style={{display:"block",fontSize:12.5,fontWeight:900,
-                                color: row.R.lvl < level.lvl ? BAD
-                                     : row.R.lvl > level.lvl ? GOOD : "#fff",
-                                marginTop:2,whiteSpace:"nowrap",overflow:"hidden",
-                                textOverflow:"ellipsis"}}>
-                                {nameOf(row.R)}
-                                {row.R.reserve ? "" : ` \u00b7 LV ${row.R.lvl}`}
-                              </span>
-                            </span>
-                            <span style={{textAlign:"right",flexShrink:0}}>
-                              <span style={{display:"block",fontSize:15,fontWeight:900,color:"#fff"}}>
-                                {fmt(row.xp)}
-                              </span>
-                              {row.delta !== 0 && (
-                                <span style={{display:"block",fontSize:9.5,fontWeight:900,
-                                  color:row.tone,marginTop:1}}>
-                                  {row.delta > 0 ? "+" : "\u2212"}{fmt(Math.abs(row.delta))}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        ))}
-                        {/* The rank either side with its own span, so a
-                            projected figure can be placed: a third of the way
-                            into the next one, or just over this one's floor.
-                            Read off the ladder, so they follow you up it. */}
-                        {(()=>{
-                          const band = (R) => {
-                            const f = R.ratingFloor * 10, c = R.ratingForNext * 10;
-                            return `${fmt(f)}\u2013${c >= 1000 ? "max" : fmt(c)}`;
-                          };
-                          const above = promoteAt < 1000 ? getLevel(promoteAt/10) : null;
-                          const below = level.lvl > 0 ? getLevel(demoteAt/10 - 0.01) : null;
-                          const Row = ({tag, R, tone}) => (
-                            <div style={{display:"flex",gap:8,fontSize:9,fontWeight:700,
-                              color:tone,lineHeight:1.7}}>
-                              <span style={{width:40,flexShrink:0,color:FAINT}}>{tag}</span>
-                              <span style={{flex:1,minWidth:0,whiteSpace:"nowrap",
-                                overflow:"hidden",textOverflow:"ellipsis"}}>{nameOf(R)}</span>
-                              <span style={{flexShrink:0}}>{band(R)} XP</span>
-                            </div>
-                          );
-                          return (
-                            <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${LINE}`}}>
-                              {above && <Row tag="ABOVE" R={above} tone={DIM}/>}
-                              <Row tag="NOW" R={level} tone="#fff"/>
-                              {below && <Row tag="BELOW" R={below} tone={DIM}/>}
-                            </div>
-                          );
-                        })()}
+                        <div style={{display:"flex",gap:8,marginBottom:4}}>
+                          {[
+                            { k:"fin",  lab:"IF YOU FINISH",  xp:finishXp, R:finR,
+                              delta: px(L.remaining),  tone:GOOD },
+                            { k:"stop", lab:"IF YOU STOP NOW", xp:stopXp,  R:stopR,
+                              delta: -px(L.atRisk),    tone:BAD  },
+                          ].map(o=>{
+                            // Progress inside the rank it lands in, measured
+                            // against that rank's own span — the reserve band is
+                            // wider than a normal rung, so a flat divisor would
+                            // read wrong exactly where it matters most.
+                            const floor = o.R.ratingFloor * 10;
+                            const ceil  = o.R.ratingForNext * 10;
+                            const span  = Math.max(1, ceil - floor);
+                            const pct   = Math.max(0, Math.min(100, ((o.xp - floor) / span) * 100));
+                            const moved = o.R.lvl === level.lvl ? 0 : (o.R.lvl > level.lvl ? 1 : -1);
+                            const edge  = moved > 0 ? GOOD : moved < 0 ? BAD : LINE;
+                            return (
+                              <div key={o.k} data-fc={o.k} style={{flex:1,minWidth:0,
+                                borderRadius:BLOCK?0:12,padding:"8px 8px 9px",
+                                background: moved ? `${edge}12` : "rgba(0,0,0,0.25)",
+                                border:`1px solid ${moved ? edge+"66" : LINE}`}}>
+                                <div style={{fontSize:8,fontWeight:900,color:FAINT,
+                                  letterSpacing:0.5,textAlign:"center",lineHeight:1.2,
+                                  height:19,display:"flex",alignItems:"center",
+                                  justifyContent:"center"}}>{o.lab}</div>
+                                {/* A fixed frame, so the two portraits line up
+                                    whatever fit each one is wearing. */}
+                                <div style={{height:92,display:"flex",alignItems:"flex-end",
+                                  justifyContent:"center",overflow:"hidden",marginBottom:5}}>
+                                  <PixelCharacter level={o.R.lvl} character={cz} scale={3.5}
+                                    idle cosmetics={cosmetics} pet={null}/>
+                                </div>
+                                <div style={{height:6,background:"rgba(0,0,0,0.35)",borderRadius:4,
+                                  overflow:"hidden"}}>
+                                  <div style={{height:"100%",width:`${pct}%`,borderRadius:4,
+                                    background: o.R.reserve
+                                      ? `linear-gradient(90deg,${T.accent},#ffd873)`
+                                      : `linear-gradient(90deg,rgba(255,255,255,0.7),#ffffff)`,
+                                    boxShadow:`0 0 8px ${o.R.reserve?T.accent:"rgba(255,255,255,0.5)"}`,
+                                    transition:"width .5s ease"}}/>
+                                </div>
+                                <div style={{display:"flex",alignItems:"baseline",gap:4,marginTop:5}}>
+                                  <span style={{fontSize:15,fontWeight:900,color:"#fff"}}>
+                                    {fmt(o.xp)}
+                                  </span>
+                                  <span style={{fontSize:8,fontWeight:900,color:FAINT}}>XP</span>
+                                  {o.delta !== 0 && (
+                                    <span style={{marginLeft:"auto",fontSize:9,fontWeight:900,
+                                      color:o.tone}}>
+                                      {o.delta > 0 ? "+" : "−"}{fmt(Math.abs(o.delta))}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{fontSize:9.5,fontWeight:900,marginTop:2,
+                                  whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                                  color: moved > 0 ? GOOD : moved < 0 ? BAD : DIM}}>
+                                  {moved > 0 ? "▲ " : moved < 0 ? "▼ " : ""}
+                                  {nameOf(o.R)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{fontSize:9,color:FAINT,fontWeight:700,marginBottom:2,
+                          lineHeight:1.5}}>
+                          You are on {fmt(nowXp)} XP right now, holding {nameOf(level)}.
+                        </div>
                       </>
                     )}
 
