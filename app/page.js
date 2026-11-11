@@ -6,7 +6,17 @@ const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 // ── ECONOMY ───────────────────────────────────────────────────────────────────
-const GAIN_MULT  = 0.012;
+// THE ECONOMY. Gains and decay are deliberately EQUAL: clearing a mission pays
+// what missing it costs. Gains used to be 0.012 against a decay of 0.015, so
+// every mission was a losing bet by 25% before a curse mark was anywhere near
+// it — and with curses in the mix a bad day cost about 1.5x what a perfect one
+// paid. The effect was that a low-motivation week did not just stall you, it
+// dug a hole, and coming back to a hole is exactly when you least want to open
+// the app. Break-even went from needing 61% of days clean to 55%.
+//
+// Raising this does NOT move your rank: category values are stored, and only
+// what missions pay from here on changes.
+const GAIN_MULT  = 0.015;
 const DECAY_MULT = 0.015;
 const BONUS_PER_EXTRA = 0.25;
 const MAX_BONUS_MULT  = 2.0;
@@ -352,6 +362,63 @@ const coinsForTask = (task) => Math.max(1, Math.round((task.importance ?? 5) * C
 // Daily spins unlock as the day's earned XP crosses these fractions of the day's max.
 const SPIN_THRESHOLDS = [0.15, 0.40, 0.70, 1.0]; // up to 4 spins/day on a full day
 const SPIN_COST = 25;                    // coins per pull
+// ── DOWNTIME PASSES ───────────────────────────────────────────────────────────
+// The apps that actually pull at you, rationed instead of replaced. Nothing in
+// here can block or launch anything: this is a browser tab, and it cannot reach
+// another app on the phone. The real friction is that the app is DELETED. What
+// this does is decide whether a session was earned, run the clock, and write
+// down what it cost — which is the part a Screen Time limit never gives you.
+//
+// Passes are deliberately scarce. Coins mint on every mission and there are
+// always too many; a Pass is half a day's work, so spending one is a decision.
+const PASS_THRESHOLDS = [0.5, 1.0];      // half the day earns one, finishing it earns the second
+const SINK_DEFAULT_MINS = 20;
+const TIME_SINKS = [
+  { id:"youtube",   name:"YouTube",      mins:20, color:"#ff3b30", icon:"\u25b6" },
+  { id:"instagram", name:"Instagram",    mins:15, color:"#e1306c", icon:"\u25ce" },
+  { id:"clash",     name:"Clash Royale", mins:20, color:"#4f93ff", icon:"\u2694" },
+  { id:"other",     name:"Other",        mins:15, color:"#9ca3af", icon:"\u22ef" },
+];
+const sinkById = (id) => TIME_SINKS.find(x => x.id === id) || TIME_SINKS[3];
+// An unlicensed session costs XP by the minute, shown draining while it runs.
+// 0.5 display XP a minute puts a 20-minute session at 10 XP — about half a
+// perfect day, which is the right order of hurt: real, not ruinous.
+const DRAIN_XP_PER_MIN = 0.5;
+const drainRawPerMin = () => (DRAIN_XP_PER_MIN / 1000) * XP_MAX;
+// Overrunning a licensed session falls back to the same rate for the overrun.
+const OVERRUN_GRACE_SEC = 60;            // a minute to get back and tap END
+
+// ── THE DUEL, WITH SOMETHING ON IT ────────────────────────────────────────────
+// It used to be unlosable: you could only challenge him once you were already
+// ahead, and STRIKE always won. A fight you cannot lose is not a fight, which
+// is why it stopped being worth opening.
+//
+// Now you can call him out from behind, the odds come off the power gap, and
+// you wager real XP. The safety rail is that YOU CAN ONLY WAGER WHAT SITS ABOVE
+// YOUR RANK FLOOR — so a bad roll costs you progress but can never take a rank
+// off you. That is the line between stakes and tilt.
+// The floor is 0.25 rather than something longer because the payout is capped
+// at 3x, and 3x is EXACTLY the fair price of a 1-in-4 shot. Offering 15% odds
+// at a 3x cap would have been a trap: the worse your position, the worse the
+// deal, dressed up as a bigger number. Every stake in the range is now priced
+// honestly, with a small edge on top so that turning up is worth it.
+const DUEL_MIN_ODDS = 0.25;              // however far behind, a one-in-four shot
+const DUEL_MAX_ODDS = 0.90;              // and a sure thing never quite is
+const DUEL_MAX_PAYOUT = 3;               // the fair price of the longest odds offered
+const DUEL_EDGE = 1.1;                   // a reason to show up, not a farm: once a day,
+                                         // and never more than your room above the floor
+// Your chance of taking him, from the gap between you.
+function duelOdds(playerPow, rivalPow) {
+  if (rivalPow <= 0) return DUEL_MAX_ODDS;
+  const edge = (playerPow - rivalPow) / (2 * rivalPow);
+  return Math.max(DUEL_MIN_ODDS, Math.min(DUEL_MAX_ODDS, 0.5 + edge));
+}
+// What a win pays, per XP staked. Long odds pay more, capped.
+function duelPayout(p) {
+  const fair = (1 - p) / Math.max(0.01, p);
+  return Math.max(0.1, Math.min(DUEL_MAX_PAYOUT, fair * DUEL_EDGE));
+}
+
 const PERFECT_DAY_BONUS_GEMS = 30;
 const PERFECT_DAY_XP = 0.50;
 
@@ -362,6 +429,10 @@ const DEFAULT_WALLET = {
   lastCoinDecay: null,                // date we last applied coin decay
   spinsUsedByDay: {}, perfectClaimedByDay: {},
   owned: [], equippedCosmetics: {}, pet: null,
+  passesUsedByDay: {},                // "YYYY-MM-DD" -> passes spent that day
+  sinkMins: {},                       // sink id -> minutes, when overridden
+  sinkVice: {},                       // sink id -> forbidden mission id, when linked
+  sessions: [],                       // closed sessions, newest last (capped)
 };
 
 // Rarity → gem payout weighting for the spin games
@@ -1124,6 +1195,20 @@ function migrate(d) {
       Object.entries(src).forEach(([wk,v])=>{ if (typeof v==="string") out[wk]=v;
         else { const seed=String(wk).split("").reduce((x,c)=>x+c.charCodeAt(0),0); out[wk]=ids[seed%ids.length]; } });
       return out; })(),
+    // The session in progress, if any. Top-level rather than in the wallet
+    // because there is only ever one, and it has to survive the app being shut
+    // halfway through — that is the whole point of charging on return.
+    session: (()=>{ const x = d.session;
+      if (!x || typeof x !== "object" || typeof x.sinkId !== "string") return null;
+      const started = Number(x.startedAt);
+      if (!started || !isFinite(started)) return null;
+      // A session older than six hours is the app having been left open, not a
+      // session: close it quietly rather than charging for a night's sleep.
+      if (Date.now() - started > 6*3600*1000) return null;
+      return { sinkId:x.sinkId, startedAt:started,
+               mins: Math.max(1, Math.min(240, Number(x.mins)||SINK_DEFAULT_MINS)),
+               licensed: !!x.licensed };
+    })(),
     rev: Math.max(0, Number(d.rev)||0),
     rival: (()=>{ const r=(d.rival && typeof d.rival==="object")?d.rival:{};
       return { power:Math.max(0,Number(r.power)||0), rate:Math.max(0,Number(r.rate)||0),
@@ -1139,6 +1224,25 @@ function migrate(d) {
       coinsByTaskDay: { ...((d.wallet||{}).coinsByTaskDay||{}) },
       shields: (d.wallet||{}).shields || 0,
       spinsUsedByDay: { ...((d.wallet||{}).spinsUsedByDay||{}) },
+      // Downtime. Every field is forced to the right shape, so a save written
+      // before any of this existed loads without the panel throwing.
+      passesUsedByDay: { ...((d.wallet||{}).passesUsedByDay||{}) },
+      duelByDay: { ...((d.wallet||{}).duelByDay||{}) },   // one roll a day
+      sinkMins: (()=>{ const src=((d.wallet||{}).sinkMins)||{}, out={};
+        TIME_SINKS.forEach(k=>{ const v = Math.round(Number(src[k.id]));
+          if (v >= 1 && v <= 240) out[k.id] = v; });
+        return out; })(),
+      sinkVice: (()=>{ const src=((d.wallet||{}).sinkVice)||{}, out={};
+        TIME_SINKS.forEach(k=>{ if (typeof src[k.id] === "string") out[k.id] = src[k.id]; });
+        return out; })(),
+      sessions: (()=>{ const src=((d.wallet||{}).sessions);
+        if (!Array.isArray(src)) return [];
+        // Keep a fortnight at most: this is a log to look back on, not a store.
+        return src.filter(x=>x && typeof x==="object" && typeof x.sinkId==="string")
+          .slice(-60).map(x=>({ sinkId:x.sinkId, at:String(x.at||""),
+            mins:Math.max(0,Number(x.mins)||0), over:Math.max(0,Number(x.over)||0),
+            licensed:!!x.licensed, cost:Math.max(0,Number(x.cost)||0) }));
+      })(),
       perfectClaimedByDay: { ...((d.wallet||{}).perfectClaimedByDay||{}) },
       owned: Array.isArray((d.wallet||{}).owned) ? d.wallet.owned : [],
       eyeSides: (()=>{
@@ -1291,6 +1395,51 @@ function spinsUnlocked(data, dk) {
   const frac = earnedXpToday(data, dk) / max;
   return SPIN_THRESHOLDS.filter(t => frac >= t - 0.0001).length;
 }
+// ── DOWNTIME ACCOUNTING ──────────────────────────────────────────────────────
+// Passes unlock on the same basis as spins — how much of today is actually
+// banked — but at half the frequency, because a Pass has to feel like a
+// decision and a spin does not.
+function passesUnlocked(data, dk) {
+  const max = maxXpToday(data, dk);
+  if (max <= 0) return 0;
+  const frac = earnedXpToday(data, dk) / max;
+  return PASS_THRESHOLDS.filter(t => frac >= t - 0.0001).length;
+}
+function passesLeft(data, dk) {
+  const used = (((data||{}).wallet||{}).passesUsedByDay||{})[dk] || 0;
+  return Math.max(0, passesUnlocked(data, dk) - used);
+}
+// How long a sink runs for, honouring an override.
+function sinkMins(data, id) {
+  const o = (((data||{}).wallet||{}).sinkMins||{})[id];
+  return (o >= 1 && o <= 240) ? o : (sinkById(id).mins || SINK_DEFAULT_MINS);
+}
+// Where a running session stands, worked out from the clock rather than from a
+// ticking counter, so closing the app mid-session changes nothing.
+function sessionState(session, nowMs) {
+  if (!session) return null;
+  const now = nowMs == null ? Date.now() : nowMs;
+  const total = session.mins * 60000;
+  const elapsed = Math.max(0, now - session.startedAt);
+  const leftMs = total - elapsed;
+  const overMs = Math.max(0, elapsed - total - OVERRUN_GRACE_SEC * 1000);
+  return {
+    elapsedMs: elapsed, leftMs, overMs,
+    elapsedMin: elapsed / 60000,
+    overMin: overMs / 60000,
+    over: overMs > 0,
+    // An unlicensed session is charged from the first minute. A licensed one is
+    // paid for already, and is only charged for running past its block.
+    chargedMin: session.licensed ? (overMs / 60000) : (elapsed / 60000),
+  };
+}
+// What the session has cost so far, in raw category units.
+function sessionCostRaw(session, nowMs) {
+  const st = sessionState(session, nowMs);
+  if (!st) return 0;
+  return st.chargedMin * drainRawPerMin();
+}
+
 // Best run of consecutive 100%-complete days ending today (drives shop gates)
 function bestPerfectStreak(data) {
   const cur = dayNow();
@@ -3885,6 +4034,10 @@ export default function App() {
   // it forward; reset whenever the day turns over, so you never come back to
   // the app still pointed at a day that has since passed.
   const [orderDay, setOrderDay] = useState(dateKey());
+  // A second hand for the session overlay. It only exists while a session is
+  // running, and it drives nothing but the display — the charge is read off
+  // the clock when the session ends, never accumulated here.
+  const [sessionTick, setSessionTick] = useState(0);
   const [planMode, setPlanMode] = useState("month"); // "month" | "day"
   const [planMonth, setPlanMonth] = useState({ y:dayNow().getFullYear(), m:dayNow().getMonth() });
   const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
@@ -3969,6 +4122,14 @@ export default function App() {
       persistRaw(n); return n;
     });
   }, [currentDay, data && data.kanban && data.kanban.clearedOn]);
+
+  // Tick once a second, but only while something is actually running, so an
+  // idle app is not re-rendering forever.
+  useEffect(()=>{
+    if (!data || !data.session) return;
+    const t = setInterval(()=>setSessionTick(x=>x+1), 1000);
+    return ()=>clearInterval(t);
+  }, [data && data.session && data.session.startedAt]);
 
   // The planner follows the rollover: a day that is now in the past can never
   // stay selected.
@@ -4931,6 +5092,73 @@ export default function App() {
     const nd={...d, wallet:{...d.wallet, spinsUsedByDay:used}}; persistRaw(nd); return nd;
   });
 
+  // ── DOWNTIME ────────────────────────────────────────────────────────────────
+  // Starting a session writes down the clock and nothing else. The charge is
+  // worked out from elapsed time when it ends, so shutting the app mid-session
+  // neither escapes the cost nor double-charges it, and no ticking write storm
+  // is needed to keep a number on screen moving.
+  const startSession = (sinkId, licensed) => {
+    if (data.session) { toast$("A SESSION IS ALREADY RUNNING", "#ffc46b"); return; }
+    const dk = dateKey();
+    const mins = sinkMins(data, sinkId);
+    const sink = sinkById(sinkId);
+    if (licensed && passesLeft(data, dk) <= 0) {
+      toast$("NO PASS \u00b7 CLEAR HALF THE DAY TO EARN ONE", "#ffc46b"); return;
+    }
+    setData(cur=>{
+      const used = { ...((cur.wallet||{}).passesUsedByDay||{}) };
+      if (licensed) used[dk] = (used[dk] || 0) + 1;
+      const n = { ...cur,
+        session: { sinkId, startedAt: Date.now(), mins, licensed: !!licensed },
+        wallet: { ...cur.wallet, passesUsedByDay: used } };
+      persistRaw(n); return n;
+    });
+    toast$(licensed
+      ? `\u23f1 ${mins} MIN ON ${sink.name.toUpperCase()} \u00b7 PASS SPENT`
+      : `\u23f1 ${sink.name.toUpperCase()} \u00b7 NO PASS \u00b7 THIS IS COSTING YOU`,
+      licensed ? sink.color : BAD);
+    try { navigator.vibrate && navigator.vibrate(14); } catch {}
+  };
+
+  // Ending charges what the clock says and writes the session to the log. The
+  // same path runs whether END was tapped or the app simply came back with a
+  // session still open, so the two can never disagree.
+  const endSession = () => {
+    const sess = data.session;
+    if (!sess) return;
+    const st = sessionState(sess);
+    const raw = sessionCostRaw(sess);
+    const sink = sinkById(sess.sinkId);
+    const viceId = ((data.wallet||{}).sinkVice||{})[sess.sinkId];
+    setData(cur=>{
+      let tasks = cur.tasks;
+      // If this sink is tied to a forbidden mission, an unlicensed session is
+      // a slip on it — logged the same way tapping it would, so the night
+      // settles it with everything else rather than charging twice here.
+      if (!sess.licensed && viceId) {
+        const d = dateKey();
+        tasks = cur.tasks.map(t => (t.id === viceId && t.vice)
+          ? { ...t, completions: { ...(t.completions||{}), [d]: 1 } } : t);
+      }
+      const log = [ ...((cur.wallet||{}).sessions||[]),
+        { sinkId: sess.sinkId, at: new Date(sess.startedAt).toISOString(),
+          mins: +st.elapsedMin.toFixed(1), over: +st.overMin.toFixed(1),
+          licensed: !!sess.licensed, cost: +raw.toFixed(4) } ].slice(-60);
+      const n = { ...cur, session: null, tasks,
+        categories: raw > 0
+          ? cur.categories.map(c=>({ ...c, value: Math.max(0, c.value - raw) }))
+          : cur.categories,
+        wallet: { ...cur.wallet, sessions: log } };
+      persistRaw(n); return n;
+    });
+    const lost = xpInt(raw / XP_MAX * 1000);
+    toast$(lost > 0
+      ? `${sink.name.toUpperCase()} \u00b7 ${Math.round(st.elapsedMin)} MIN \u00b7 \u2212${lost} XP`
+      : `${sink.name.toUpperCase()} \u00b7 ${Math.round(st.elapsedMin)} MIN \u00b7 CLEAN`,
+      lost > 0 ? BAD : GOOD);
+    try { navigator.vibrate && navigator.vibrate(lost > 0 ? 22 : 10); } catch {}
+  };
+
   const openSpin = () => {
     const dk = dateKey();
     const unlocked = spinsUnlocked(data, dk);
@@ -5514,23 +5742,6 @@ export default function App() {
   const upNextForm = nextForm(playerPow);
   const stage      = arcStage(R.arc);
 
-  // Beat him and he comes back from higher up.
-  const winDuel = () => {
-    const pw = playerPowerOf(data);
-    setData(cur=>{
-      const cr = cur.rival || {};
-      const arc = Math.min(99, (cr.arc||1) + 1);
-      const rate = Math.round(Math.max(28, (cr.rate||28)) * 1.09);
-      const cats = cur.categories.map(c=>({...c, value: Math.min(10, c.value + 0.45)}));
-      const n = {...cur, categories:cats,
-        wallet:{...cur.wallet, gems:(cur.wallet?.gems||0) + 40 + arc*10},
-        rival:{ ...cr, power: pw + Math.round(rate*3.2), rate, arc, wins:(cr.wins||0)+1, tick: currentDay }};
-      persistRaw(n); return n;
-    });
-    setDuel({stage:"won"});
-    try { navigator.vibrate && navigator.vibrate([30,60,30,60,90]); } catch {}
-  };
-
   // ── DAILY BADGE MATH — what share of that day's mission load got cleared ──────
   // Returns pct:null when nothing was even scheduled (a genuine rest day).
   const dayPct = (dk) => {
@@ -5568,6 +5779,43 @@ export default function App() {
   // You keep your rank; you can choose to wear the look of any rank you've passed.
   const wornLvl = (cz && cz.appearLevel != null && cz.appearLevel <= level.lvl)
     ? cz.appearLevel : level.lvl;
+
+  // Everything above your rank floor, in display XP. This is the most you are
+  // allowed to put on him — which is what makes a loss survivable: it can cost
+  // you progress, never a rank.
+  const duelBankroll = () => Math.max(0, Math.floor(xpNow*10 - level.ratingFloor*10));
+  const duelFoughtToday = () => !!(((data.wallet||{}).duelByDay)||{})[currentDay];
+
+  // One roll. Win and he comes back from higher up; lose and it costs the
+  // stake. Either way it is the last of him for today, so a bad roll cannot
+  // turn into an evening of chasing it.
+  const resolveDuel = (stakeXp) => {
+    const pw = playerPowerOf(data);
+    const rp = ((data.rival||{}).power)||0;
+    const p = duelOdds(pw, rp);
+    const stake = Math.max(0, Math.min(stakeXp, duelBankroll()));
+    const won = Math.random() < p;
+    const deltaXp = won ? Math.round(stake * duelPayout(p)) : -stake;
+    const raw = (deltaXp / 1000) * XP_MAX;
+    setData(cur=>{
+      const cr = cur.rival || {};
+      const fought = { ...(((cur.wallet||{}).duelByDay)||{}) };
+      fought[currentDay] = won ? "w" : "l";
+      const cats = cur.categories.map(c=>({ ...c,
+        value: Math.max(0, Math.min(c.maxValue, c.value + raw)) }));
+      const rival = won
+        ? { ...cr, power: pw + Math.round(Math.max(28,(cr.rate||28))*3.2),
+            rate: Math.round(Math.max(28,(cr.rate||28))*1.09),
+            arc: Math.min(99,(cr.arc||1)+1), wins:(cr.wins||0)+1, tick: currentDay }
+        : { ...cr, losses:(cr.losses||0)+1, tick: currentDay };
+      const n = { ...cur, categories:cats, rival,
+        wallet:{ ...cur.wallet, duelByDay: fought } };
+      persistRaw(n); return n;
+    });
+    setDuel({ stage: won ? "won" : "lost", stake, delta: deltaXp, odds: p });
+    try { navigator.vibrate && navigator.vibrate(won ? [30,60,30,60,90] : [60,40,120]); } catch {}
+  };
+
   // Measured against this rank's own span rather than a flat 4.2, because the
   // reserve band is wider than a normal rung — and because a bar pinned at
   // 100% is what hid the surplus in the first place.
@@ -6193,6 +6441,123 @@ export default function App() {
             whiteSpace:"nowrap",animation:"floatUp 1s ease-out forwards"}}>{b.label}</div>}
         </div>
       ))}
+
+      {/* THE SESSION — full screen, because a countdown in a corner is a
+          countdown you ignore. An unlicensed session shows the XP draining and
+          the rank it is walking you toward: the stakes are the ones already
+          worth something to you, which is the whole reason this works where a
+          minigame did not. Nothing is written while it runs; the charge is read
+          off the clock when it ends, so closing the app changes nothing. */}
+      {data.session && (()=>{
+        // Both of these live inside the Training Grounds block as locals, which
+        // is nowhere near here — so this panel carries its own copies rather
+        // than reaching for names it cannot see.
+        const fmt = (v) => (Math.round(v*10)/10).toFixed(1);
+        const nameOf = (R) => R.reserve ? "the Reserve" : getTitle(data, R.lvl);
+        const sess = data.session;
+        const st = sessionState(sess);
+        const sink = sinkById(sess.sinkId);
+        const raw = sessionCostRaw(sess);
+        const lost = raw / XP_MAX * 1000;
+        // xpNow is the 0-100 reading the rank itself is taken from, so the
+        // figure on screen and the rank underneath it can never disagree.
+        // Charging every category the same amount keeps the average in step
+        // with it too.
+        const nowXp = xpNow * 10;
+        const after = Math.max(0, nowXp - lost);
+        const R = getLevel(after / 10);
+        const dropping = R.lvl < level.lvl;
+        // A licensed session counts DOWN the block it paid for. An unlicensed
+        // one counts UP, because there is no block — there is only how long
+        // you have been at it, which is the number that is costing you.
+        const ms = sess.licensed ? Math.max(0, st.leftMs) : st.elapsedMs;
+        const mm = Math.floor(ms / 60000), ss = Math.floor((ms % 60000) / 1000);
+        const tone = st.over ? BAD : sess.licensed ? sink.color : BAD;
+        return (
+          <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(4,4,7,0.97)",
+            backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)",
+            display:"flex",flexDirection:"column",alignItems:"center",
+            justifyContent:"center",padding:"24px 20px",
+            paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 24px)"}}>
+            <div style={{fontSize:9,fontWeight:900,letterSpacing:1.2,color:FAINT,
+              marginBottom:4}}>
+              {sess.licensed ? "PASS SPENT" : "NO PASS"}
+            </div>
+            <div style={{fontSize:20,fontWeight:900,color:sink.color,marginBottom:14,
+              display:"flex",alignItems:"center",gap:8}}>
+              <span>{sink.icon}</span><span>{sink.name}</span>
+            </div>
+
+            <div style={{fontSize:58,fontWeight:900,lineHeight:1,color:tone,
+              fontVariantNumeric:"tabular-nums",letterSpacing:-1}}>
+              {st.over && sess.licensed ? "+" : ""}{st.over && sess.licensed
+                ? `${Math.floor(st.overMin)}:${String(Math.floor((st.overMs%60000)/1000)).padStart(2,"0")}`
+                : `${mm}:${String(ss).padStart(2,"0")}`}
+            </div>
+            <div style={{fontSize:9.5,fontWeight:900,color:FAINT,letterSpacing:0.8,
+              marginTop:5,marginBottom:20}}>
+              {st.over && sess.licensed ? "OVER YOUR BLOCK"
+                : sess.licensed ? "LEFT ON THIS PASS" : "SPENT SO FAR"}
+            </div>
+
+            {/* What it is costing, as it costs it. */}
+            {(!sess.licensed || st.over) && (
+              <div style={{width:"100%",maxWidth:320,borderRadius:BLOCK?0:14,
+                border:`1px solid ${BAD}55`,background:`${BAD}12`,padding:"12px 14px",
+                marginBottom:18}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                  <span style={{fontSize:8.5,fontWeight:900,color:FAINT,
+                    letterSpacing:0.6,flex:1}}>THIS IS COSTING YOU</span>
+                  <span style={{fontSize:22,fontWeight:900,color:BAD}}>
+                    −{fmt(lost)}
+                  </span>
+                  <span style={{fontSize:9,fontWeight:900,color:FAINT}}>XP</span>
+                </div>
+                <div style={{height:6,background:"rgba(0,0,0,0.4)",borderRadius:4,
+                  overflow:"hidden",marginTop:8}}>
+                  <div style={{height:"100%",borderRadius:4,background:BAD,
+                    width:`${Math.max(0,Math.min(100,((after - R.ratingFloor*10) /
+                      Math.max(1,(R.ratingForNext - R.ratingFloor)*10))*100))}%`,
+                    transition:"width .9s linear"}}/>
+                </div>
+                <div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:7}}>
+                  <span style={{fontSize:11.5,fontWeight:900,
+                    color: dropping ? BAD : DIM,flex:1,minWidth:0,
+                    whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                    {dropping ? "▼ " : ""}{nameOf(R)}
+                  </span>
+                  <span style={{fontSize:12,fontWeight:900,color:"#fff"}}>{fmt(after)}</span>
+                </div>
+                {!dropping && R.ratingFloor*10 < after && (
+                  <div style={{fontSize:8.5,color:FAINT,fontWeight:700,marginTop:5}}>
+                    {fmt(after - R.ratingFloor*10)} XP above dropping a rank.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sess.licensed && !st.over && (
+              <div style={{fontSize:10.5,color:DIM,fontWeight:700,textAlign:"center",
+                maxWidth:300,lineHeight:1.6,marginBottom:18}}>
+                You earned this one. It costs nothing — unless you run past it.
+              </div>
+            )}
+
+            <button onClick={endSession}
+              style={{width:"100%",maxWidth:320,padding:"15px 0",borderRadius:BLOCK?0:14,
+                fontFamily:FONT,fontSize:13,fontWeight:900,letterSpacing:1,
+                border:`1.5px solid ${st.over||!sess.licensed ? BAD : GOOD}`,
+                background: st.over||!sess.licensed ? `${BAD}1f` : `${GOOD}1f`,
+                color: st.over||!sess.licensed ? BAD : GOOD,cursor:"pointer"}}>
+              {st.over ? "END IT · STOP THE BLEED" : "I\u2019M DONE"}
+            </button>
+            <div style={{fontSize:8.5,color:FAINT,fontWeight:700,marginTop:10,
+              textAlign:"center",lineHeight:1.5,maxWidth:300}}>
+              Closing this app does not stop the clock.
+            </div>
+          </div>
+        );
+      })()}
 
       {/* TOAST */}
       {toast && (
@@ -7347,6 +7712,81 @@ export default function App() {
                 </div>
                 );
               })()}
+              {/* DOWNTIME — placed here, right under the day's missions, because
+                  this is where you are standing when you decide to open one of
+                  these instead. Nothing here can block an app: the friction is
+                  that the app is deleted. What this does is say whether the
+                  session was earned, run the clock, and bill it. */}
+              {(()=>{
+                const left = passesLeft(data, today);
+                const unlocked = passesUnlocked(data, today);
+                const open = !((S.collapsed||{}).downtime);
+                return (
+                  <div style={{...C.glass,padding:"11px 13px",marginBottom:11,
+                    border:`1px solid ${left > 0 ? GOOD+"44" : LINE}`}}>
+                    <div onClick={()=>{ const n={...(S.collapsed||{})};
+                        if (open) n.downtime = true; else delete n.downtime;
+                        setSetting("collapsed", n); }}
+                      style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                      <div style={{...C.label,marginBottom:0,flex:1,
+                        color: left > 0 ? GOOD : DIM}}>DOWNTIME</div>
+                      <span style={{fontSize:11,fontWeight:900,
+                        color: left > 0 ? GOOD : FAINT}}>
+                        {left > 0 ? `${left} PASS${left>1?"ES":""}` : "NO PASS"}
+                      </span>
+                      <span style={{fontSize:13,color:FAINT,fontWeight:900}}>{open?"▴":"▾"}</span>
+                    </div>
+                    {open && (
+                      <>
+                        <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:3,
+                          marginBottom:8,lineHeight:1.5}}>
+                          {left > 0
+                            ? "Spend one for a timed, free session."
+                            : unlocked > 0
+                              ? "Both of today's passes are spent."
+                              : `Clear half the day to earn one. Go in without a pass and it costs ${DRAIN_XP_PER_MIN} XP a minute.`}
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                          {TIME_SINKS.map(k=>{
+                            const mins = sinkMins(data, k.id);
+                            return (
+                              <div key={k.id} style={{borderRadius:BLOCK?0:10,
+                                border:`1px solid ${LINE}`,background:"rgba(0,0,0,0.25)",
+                                padding:"7px 8px"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:5,
+                                  marginBottom:5,minWidth:0}}>
+                                  <span style={{color:k.color,fontSize:11,flexShrink:0}}>{k.icon}</span>
+                                  <span style={{flex:1,minWidth:0,fontSize:10.5,fontWeight:900,
+                                    color:"#fff",whiteSpace:"nowrap",overflow:"hidden",
+                                    textOverflow:"ellipsis"}}>{k.name}</span>
+                                  <span style={{fontSize:8.5,fontWeight:900,color:FAINT,
+                                    flexShrink:0}}>{mins}m</span>
+                                </div>
+                                <div style={{display:"flex",gap:4}}>
+                                  <button onClick={()=>startSession(k.id, true)}
+                                    disabled={left<=0}
+                                    style={{flex:1,padding:"5px 0",borderRadius:BLOCK?0:7,
+                                      fontFamily:FONT,fontSize:9,fontWeight:900,
+                                      border:`1px solid ${left>0?GOOD+"88":LINE}`,
+                                      background: left>0 ? `${GOOD}22` : "rgba(0,0,0,0.2)",
+                                      color: left>0 ? GOOD : FAINT,
+                                      cursor: left>0 ? "pointer" : "default"}}>PASS</button>
+                                  <button onClick={()=>startSession(k.id, false)}
+                                    style={{flex:1,padding:"5px 0",borderRadius:BLOCK?0:7,
+                                      fontFamily:FONT,fontSize:9,fontWeight:900,
+                                      border:`1px solid ${BAD}55`,background:"rgba(0,0,0,0.2)",
+                                      color:BAD,cursor:"pointer"}}>ANYWAY</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
               {S.questLayout==="circles" ? (()=>{
                 const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
                 const n = byOrder.length;
@@ -9357,7 +9797,12 @@ export default function App() {
         {/* ══ SETTINGS ══ */}
         {/* ══ THE RIVAL ══ */}
         {view==="boss" && (()=>{
-          const canFight = playerPow >= rivalPow;
+          // You can call him out from behind now. Being ahead is no longer the
+          // price of entry, it is just better odds.
+          const odds = duelOdds(playerPow, rivalPow);
+          const bankroll = duelBankroll();
+          const foughtToday = duelFoughtToday();
+          const canFight = bankroll >= 1 && !foughtToday;
           const pct = rivalPow > 0 ? Math.max(0, Math.min(100, (playerPow/rivalPow)*100)) : 100;
           const aura = ["#7a3fd6","#9a3fd6","#c23fa8","#e0432f","#ffb020"][stage];
           // He only speaks when the standings change enough to be worth a word.
@@ -9432,16 +9877,47 @@ export default function App() {
             </div>
 
             {canFight ? (
-              <button onClick={()=>setDuel({stage:"fight"})}
-                style={{...C.btn,width:"100%",padding:"17px",fontSize:14.5,letterSpacing:1.4,
-                  background:`linear-gradient(135deg,${T.accent},${aura})`,
-                  boxShadow:`0 0 26px ${aura}88`,animation:"glowPulse 1.5s ease-in-out infinite"}}>
-                ⚔ CHALLENGE HIM
-              </button>
+              <>
+                {/* The odds, said plainly before you commit. Calling him out
+                    from behind is allowed and pays accordingly. */}
+                <div style={{...C.glass,padding:"12px 14px",marginBottom:10,
+                  display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>
+                      YOUR ODDS
+                    </div>
+                    <div style={{fontSize:20,fontWeight:900,marginTop:1,
+                      color: odds >= 0.6 ? GOOD : odds >= 0.35 ? "#ffc46b" : BAD}}>
+                      {Math.round(odds*100)}%
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:8.5,fontWeight:900,color:FAINT,letterSpacing:0.6}}>
+                      A WIN PAYS
+                    </div>
+                    <div style={{fontSize:20,fontWeight:900,color:T.accent,marginTop:1}}>
+                      {duelPayout(odds).toFixed(1)}&times;
+                    </div>
+                  </div>
+                </div>
+                <button onClick={()=>setDuel({stage:"fight"})}
+                  style={{...C.btn,width:"100%",padding:"17px",fontSize:14.5,letterSpacing:1.4,
+                    background:`linear-gradient(135deg,${T.accent},${aura})`,
+                    boxShadow:`0 0 26px ${aura}88`,animation:"glowPulse 1.5s ease-in-out infinite"}}>
+                  ⚔ CHALLENGE HIM
+                </button>
+                <div style={{fontSize:9,color:FAINT,fontWeight:700,textAlign:"center",
+                  marginTop:7,lineHeight:1.5}}>
+                  You can stake up to {bankroll} XP — everything above your rank floor.
+                  Losing costs the stake and never a rank.
+                </div>
+              </>
             ) : (
               <div style={{...C.glass,textAlign:"center",padding:"14px"}}>
                 <div style={{fontSize:11.5,color:DIM,fontWeight:700,lineHeight:1.5}}>
-                  You can't challenge him from behind.<br/>Close the gap by finishing missions.
+                  {foughtToday
+                    ? <>You have already faced him today.<br/>He will be here tomorrow.</>
+                    : <>Nothing to stake yet.<br/>Earn some room above your rank floor first.</>}
                 </div>
               </div>
             )}
@@ -9682,24 +10158,87 @@ export default function App() {
           <div style={{...C.modal, alignItems:"center", justifyContent:"flex-start",
               overflowY:"auto", WebkitOverflowScrolling:"touch",
               paddingBottom:"calc(env(safe-area-inset-bottom, 0px) + 34px)",
-              background:"rgba(0,0,0,0.9)"}}
-            onClick={()=>{ if (duel.stage==="won") setDuel(null); }}>
+              // Opaque, not 0.9. The sheet grew a stake picker and the page
+              // behind it read straight through the gaps, putting "CHALLENGE
+              // HIM" underneath the very buttons that replace it.
+              background:"rgba(3,3,6,0.985)",
+              backdropFilter:"blur(6px)", WebkitBackdropFilter:"blur(6px)"}}
+            onClick={()=>{ if (duel.stage==="won" || duel.stage==="lost") setDuel(null); }}>
             {/* `margin:auto 0` centres this while it fits and lets it scroll
                 once it does not — flex centring alone would crop the top. */}
             <div style={{width:"100%",maxWidth:430,padding:"0 18px",textAlign:"center",
               margin:"auto 0"}}>
-              {duel.stage==="fight" ? (
+              {duel.stage==="fight" ? (()=>{
+                const bank = duelBankroll();
+                const p = duelOdds(playerPowerOf(data), ((data.rival||{}).power)||0);
+                const mult = duelPayout(p);
+                const stake = Math.max(1, Math.min(bank, duel.stake || Math.ceil(bank/4)));
+                return (
                 <>
                   <KaedoArt stage={stage} style={{width:"100%",height:250,display:"block"}}/>
                   <div style={{fontSize:14,fontWeight:700,color:"#fff",fontStyle:"italic",lineHeight:1.5,margin:"12px 0 20px"}}>
                     “I did not train to beat you.<br/>I trained so that beating me would be worth something.”
                   </div>
-                  <button onClick={winDuel}
+                  {/* Pick the stake. A quarter is the default because the
+                      interesting decision is whether to push past it. */}
+                  <div style={{display:"flex",gap:6,marginBottom:10}}>
+                    {[["¼",Math.ceil(bank/4)],["½",Math.ceil(bank/2)],
+                      ["ALL IN",bank]].map(([lab,v])=>{
+                      const on = stake === Math.max(1, Math.min(bank, v));
+                      return (
+                        <button key={lab} onClick={()=>setDuel({...duel, stake:v})}
+                          style={{flex:1,padding:"11px 0",borderRadius:BLOCK?0:11,
+                            fontFamily:FONT,fontSize:12,fontWeight:900,
+                            border:`1.5px solid ${on ? T.accent : LINE}`,
+                            background: on ? `${T.accent}22` : "rgba(0,0,0,0.25)",
+                            color: on ? T.accent : DIM,cursor:"pointer"}}>{lab}</button>
+                      );
+                    })}
+                  </div>
+                  <div style={{...C.glass,padding:"11px 13px",marginBottom:14,
+                    display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{flex:1,textAlign:"left"}}>
+                      <span style={{display:"block",fontSize:8.5,fontWeight:900,
+                        color:FAINT,letterSpacing:0.6}}>YOU STAKE</span>
+                      <span style={{display:"block",fontSize:18,fontWeight:900,
+                        color:BAD,marginTop:1}}>{stake} XP</span>
+                    </span>
+                    <span style={{textAlign:"right"}}>
+                      <span style={{display:"block",fontSize:8.5,fontWeight:900,
+                        color:FAINT,letterSpacing:0.6}}>TO WIN</span>
+                      <span style={{display:"block",fontSize:18,fontWeight:900,
+                        color:GOOD,marginTop:1}}>+{Math.round(stake*mult)} XP</span>
+                    </span>
+                  </div>
+                  <button onClick={()=>resolveDuel(stake)}
                     style={{...C.btn,width:"100%",padding:"18px",fontSize:16,letterSpacing:2,
                       background:`linear-gradient(135deg,${T.accent},${["#7a3fd6","#9a3fd6","#c23fa8","#e0432f","#ffb020"][stage]})`,
-                      boxShadow:"0 0 34px rgba(255,255,255,0.35)"}}>⚔ STRIKE</button>
+                      boxShadow:"0 0 34px rgba(255,255,255,0.35)"}}>
+                    ⚔ STRIKE · {Math.round(p*100)}%
+                  </button>
                   <button onClick={()=>setDuel(null)}
                     style={{...C.btnSm,width:"100%",padding:"13px",marginTop:10}}>NOT YET</button>
+                </>
+                );
+              })() : duel.stage==="lost" ? (
+                <>
+                  <div style={{fontSize:64,marginBottom:6,opacity:0.8}}>☠</div>
+                  <div style={{fontSize:30,fontWeight:900,color:BAD,letterSpacing:3,
+                    textShadow:`0 0 30px ${BAD}`}}>BEATEN</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#fff",fontStyle:"italic",
+                    lineHeight:1.6,margin:"16px 0"}}>
+                    &ldquo;Not today,&rdquo; he said.<br/>&ldquo;Come back when it means more.&rdquo;
+                  </div>
+                  <div style={{fontSize:13,color:BAD,fontWeight:900,marginBottom:6}}>
+                    −{duel.stake} XP
+                  </div>
+                  <div style={{fontSize:10.5,color:DIM,fontWeight:700,marginBottom:20,
+                    lineHeight:1.5}}>
+                    You kept your rank. That was never on the table.
+                  </div>
+                  <button onClick={()=>setDuel(null)} style={{...C.btn,width:"100%",padding:"16px"}}>
+                    CONTINUE
+                  </button>
                 </>
               ) : (
                 <>
@@ -9709,8 +10248,12 @@ export default function App() {
                   <div style={{fontSize:14,fontWeight:700,color:"#fff",fontStyle:"italic",lineHeight:1.6,margin:"16px 0"}}>
                     “Right,” he said. “Again, then.<br/>From higher up.”
                   </div>
-                  <div style={{fontSize:12,color:DIM,fontWeight:800,marginBottom:20}}>
-                    +{40 + ((data.rival||{}).arc||2)*10} gems · every attribute raised
+                  <div style={{fontSize:15,color:GOOD,fontWeight:900,marginBottom:6}}>
+                    +{duel.delta} XP
+                  </div>
+                  <div style={{fontSize:10.5,color:DIM,fontWeight:700,marginBottom:20,
+                    lineHeight:1.5}}>
+                    You took him at {Math.round((duel.odds||0)*100)}%. He comes back stronger.
                   </div>
                   <button onClick={()=>setDuel(null)} style={{...C.btn,width:"100%",padding:"16px"}}>CONTINUE</button>
                 </>
