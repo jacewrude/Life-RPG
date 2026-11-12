@@ -231,12 +231,12 @@ const THEMES = {
 const QUEST_ICONS = ["🏋️","🏃","🚴","🚶","🤸","🧘","💧","💊","🥗","🍳","😴","🛏️","📖","📚","✍️","📝","🙏","⛪","✝️","💼","💻","📞","📊","💰","🧹","🧺","🧼","🍽️","🚿","🪥","💈","🧴","🐕","🌱","🎸","🎨","🎯","🎮","☀️","🌙","⏰","🧠","❤️","👨‍👩‍👧","🎓","🔧","📵","🚭"];
 const iconFor = (task, cat) => (task && task.icon) || (cat && cat.icon) || "⭐";
 
-const NAV_ORDERABLE = ["tasks","boss","training","plan","board","shop","stats"];
+const NAV_ORDERABLE = ["tasks","boss","training","plan","board","downtime","shop","stats"];
 // Every tab that can carry a custom emoji, including the two fixed ends.
 const NAV_ALL = ["dashboard", ...NAV_ORDERABLE, "settings"];
 const NAV_ICON_DEFAULTS = {
   dashboard:"⛰", tasks:"⚔", boss:"🔥", training:"🧘", plan:"🗓",
-  board:"🧮", shop:"🦊", stats:"🪵", settings:"⚙",
+  board:"🧮", downtime:"⏳", shop:"🦊", stats:"🪵", settings:"⚙",
 };
 const THEME_KEYS = Object.keys(THEMES);
 
@@ -371,13 +371,18 @@ const SPIN_COST = 25;                    // coins per pull
 //
 // Passes are deliberately scarce. Coins mint on every mission and there are
 // always too many; a Pass is half a day's work, so spending one is a decision.
-const PASS_THRESHOLDS = [0.5, 1.0];      // half the day earns one, finishing it earns the second
-const SINK_DEFAULT_MINS = 20;
+// A pass every two missions cleared. This replaced thresholds at half and full
+// day, which only ever paid out twice and paid nothing at all until half the
+// day was gone — no reason to clear the third mission, and no reason to start
+// at two in the afternoon. Counting makes every second mission worth something.
+const TASKS_PER_PASS = 2;
+const PASS_DAILY_CAP = 10;               // a ceiling, so a 40-mission day is not a free pass farm
+const SINK_DEFAULT_MINS = 30;
 const TIME_SINKS = [
-  { id:"youtube",   name:"YouTube",      mins:20, color:"#ff3b30", icon:"\u25b6" },
-  { id:"instagram", name:"Instagram",    mins:15, color:"#e1306c", icon:"\u25ce" },
-  { id:"clash",     name:"Clash Royale", mins:20, color:"#4f93ff", icon:"\u2694" },
-  { id:"other",     name:"Other",        mins:15, color:"#9ca3af", icon:"\u22ef" },
+  { id:"youtube",   name:"YouTube",      mins:30, color:"#ff3b30", icon:"\u25b6" },
+  { id:"instagram", name:"Instagram",    mins:30, color:"#e1306c", icon:"\u25ce" },
+  { id:"clash",     name:"Clash Royale", mins:30, color:"#4f93ff", icon:"\u2694" },
+  { id:"other",     name:"Other",        mins:30, color:"#9ca3af", icon:"\u22ef" },
 ];
 const sinkById = (id) => TIME_SINKS.find(x => x.id === id) || TIME_SINKS[3];
 // An unlicensed session costs XP by the minute, shown draining while it runs.
@@ -387,6 +392,7 @@ const DRAIN_XP_PER_MIN = 0.5;
 const drainRawPerMin = () => (DRAIN_XP_PER_MIN / 1000) * XP_MAX;
 // Overrunning a licensed session falls back to the same rate for the overrun.
 const OVERRUN_GRACE_SEC = 60;            // a minute to get back and tap END
+const SESSION_LOG_MAX = 2000;            // a year of sessions, pruned by age not count
 
 // ── THE DUEL, WITH SOMETHING ON IT ────────────────────────────────────────────
 // It used to be unlosable: you could only challenge him once you were already
@@ -1237,11 +1243,17 @@ function migrate(d) {
         return out; })(),
       sessions: (()=>{ const src=((d.wallet||{}).sessions);
         if (!Array.isArray(src)) return [];
-        // Keep a fortnight at most: this is a log to look back on, not a store.
-        return src.filter(x=>x && typeof x==="object" && typeof x.sinkId==="string")
-          .slice(-60).map(x=>({ sinkId:x.sinkId, at:String(x.at||""),
+        // Pruned by AGE rather than by count, so the month-by-month log can
+        // page back through a year without a busy fortnight evicting it.
+        const floor = new Date(); floor.setFullYear(floor.getFullYear() - 1);
+        const cut = floor.toISOString();
+        return src
+          .filter(x=>x && typeof x==="object" && typeof x.sinkId==="string"
+                   && typeof x.at === "string" && x.at >= cut)
+          .map(x=>({ sinkId:x.sinkId, at:String(x.at||""),
             mins:Math.max(0,Number(x.mins)||0), over:Math.max(0,Number(x.over)||0),
-            licensed:!!x.licensed, cost:Math.max(0,Number(x.cost)||0) }));
+            licensed:!!x.licensed, cost:Math.max(0,Number(x.cost)||0) }))
+          .slice(-SESSION_LOG_MAX);
       })(),
       perfectClaimedByDay: { ...((d.wallet||{}).perfectClaimedByDay||{}) },
       owned: Array.isArray((d.wallet||{}).owned) ? d.wallet.owned : [],
@@ -1396,14 +1408,17 @@ function spinsUnlocked(data, dk) {
   return SPIN_THRESHOLDS.filter(t => frac >= t - 0.0001).length;
 }
 // ── DOWNTIME ACCOUNTING ──────────────────────────────────────────────────────
-// Passes unlock on the same basis as spins — how much of today is actually
-// banked — but at half the frequency, because a Pass has to feel like a
-// decision and a spin does not.
+// One pass per TASKS_PER_PASS missions cleared today. Counted from the same
+// won/lost rule the night settles with, so a forbidden mission you left alone
+// counts exactly like an ordinary one you did.
+function tasksClearedOn(data, dk) {
+  if (!data || !Array.isArray(data.tasks)) return 0;
+  return data.tasks.filter(t =>
+    isDailyDueOn(t, dk, data.categories) && isWonOn(t, dk)).length;
+}
 function passesUnlocked(data, dk) {
-  const max = maxXpToday(data, dk);
-  if (max <= 0) return 0;
-  const frac = earnedXpToday(data, dk) / max;
-  return PASS_THRESHOLDS.filter(t => frac >= t - 0.0001).length;
+  return Math.min(PASS_DAILY_CAP,
+    Math.floor(tasksClearedOn(data, dk) / TASKS_PER_PASS));
 }
 function passesLeft(data, dk) {
   const used = (((data||{}).wallet||{}).passesUsedByDay||{})[dk] || 0;
@@ -1439,6 +1454,59 @@ function sessionCostRaw(session, nowMs) {
   if (!st) return 0;
   return st.chargedMin * drainRawPerMin();
 }
+
+// ── READING THE SESSION LOG ──────────────────────────────────────────────────
+// Every closed session carries an ISO timestamp, so the log is grouped by the
+// LOCAL day it belongs to, not the UTC one. A 10pm session in New York is still
+// that day; sliced by the ISO string it would land on tomorrow.
+function sessionDayKey(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return null;
+  // Same 3am rollover the rest of the app runs on: a session at 1am belongs to
+  // the night before, which is exactly when these happen.
+  d.setHours(d.getHours() - DAY_ROLLOVER_HOUR);
+  return dateKey(d);
+}
+function sessionLog(data) {
+  const src = ((data||{}).wallet||{}).sessions;
+  return Array.isArray(src) ? src : [];
+}
+// Minutes per app over a span of day keys, split by whether a pass was spent.
+function downtimeTotals(data, fromKey, toKey) {
+  const out = {};
+  TIME_SINKS.forEach(k => { out[k.id] = { pass:0, noPass:0, total:0, n:0, cost:0 }; });
+  let grand = { pass:0, noPass:0, total:0, n:0, cost:0 };
+  sessionLog(data).forEach(sx => {
+    const dk = sessionDayKey(sx.at);
+    if (!dk || dk < fromKey || dk > toKey) return;
+    const row = out[sx.sinkId] || out.other;
+    const m = Math.max(0, sx.mins || 0);
+    if (sx.licensed) { row.pass += m; grand.pass += m; }
+    else { row.noPass += m; grand.noPass += m; }
+    row.total += m; row.n += 1; row.cost += (sx.cost || 0);
+    grand.total += m; grand.n += 1; grand.cost += (sx.cost || 0);
+  });
+  return { byApp: out, grand };
+}
+// Minutes per day across a month, for the calendar.
+function downtimeByDay(data, year, month) {
+  const out = {};
+  sessionLog(data).forEach(sx => {
+    const dk = sessionDayKey(sx.at);
+    if (!dk) return;
+    const d = new Date(dk + "T00:00:00");
+    if (d.getFullYear() !== year || d.getMonth() !== month) return;
+    const e = out[dk] || (out[dk] = { pass:0, noPass:0, total:0, cost:0 });
+    const m = Math.max(0, sx.mins || 0);
+    if (sx.licensed) e.pass += m; else e.noPass += m;
+    e.total += m; e.cost += (sx.cost || 0);
+  });
+  return out;
+}
+const prettyMins = (m) => {
+  const r = Math.round(m);
+  return r >= 60 ? `${Math.floor(r/60)}h ${r%60}m` : `${r}m`;
+};
 
 // Best run of consecutive 100%-complete days ending today (drives shop gates)
 function bestPerfectStreak(data) {
@@ -2755,6 +2823,7 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
   const buzzed = useRef(false);     // haptic waits out the grace window
   const startXY = useRef(null);
   const boxRef = useRef(null);
+  const startBox = useRef(null);   // the ring's centre at press time
   const done = reps >= target;
   const isBonus = reps > target;
   const stroke = 5;
@@ -2771,6 +2840,14 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
     e.stopPropagation();
     fired.current = false; moved.current = false; buzzed.current = false;
     startXY.current = { x:e.clientX, y:e.clientY };
+    // Where the ring is RIGHT NOW, while the element is certainly mounted.
+    // By the time the hold completes the ref can be null — a re-render during
+    // the 650ms press remounts the row and the closure below is left holding a
+    // dead ref. That was silently handing the burst a null position, which is
+    // why the completion particles have never appeared.
+    try { const r0 = boxRef.current.getBoundingClientRect();
+      startBox.current = { x: r0.left + r0.width/2, y: r0.top + r0.height/2 };
+    } catch { startBox.current = { x: e.clientX, y: e.clientY }; }
     startT.current = performance.now();
     const tick = (t) => {
       if (moved.current) return;
@@ -2784,8 +2861,10 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
         if (!fired.current) {
           fired.current = true;
           try { navigator.vibrate && navigator.vibrate([20,40,30]); } catch {}
+          // Prefer where it is now; fall back to where it was when pressed.
           let cx2=null, cy2=null;
           try { const r2 = boxRef.current.getBoundingClientRect(); cx2 = r2.left + r2.width/2; cy2 = r2.top + r2.height/2; } catch {}
+          if (cx2 == null && startBox.current) { cx2 = startBox.current.x; cy2 = startBox.current.y; }
           onComplete(cx2, cy2);
         }
         setTimeout(()=>setProg(0), 200);
@@ -4038,6 +4117,17 @@ export default function App() {
   // running, and it drives nothing but the display — the charge is read off
   // the clock when the session ends, never accumulated here.
   const [sessionTick, setSessionTick] = useState(0);
+  // Which month the downtime calendar is showing. Null means the current one,
+  // worked out at render so it follows the rollover rather than freezing on
+  // whatever month the app happened to open in.
+  const [dtCursor, setDtCursor] = useState(null);
+  // THE CHECK-OFF. Three things fire together when a mission lands: the XP
+  // flies from where you tapped into the rank bar, the champion reacts, and if
+  // that was the last one of the day the whole screen knows about it.
+  const xpBarRef = useRef(null);
+  const [flyers, setFlyers] = useState([]);
+  const [charReact, setCharReact] = useState(0);
+  const [dayDone, setDayDone] = useState(0);
   const [planMode, setPlanMode] = useState("month"); // "month" | "day"
   const [planMonth, setPlanMonth] = useState({ y:dayNow().getFullYear(), m:dayNow().getMonth() });
   const [scheduleSheet, setScheduleSheet] = useState(null); // {title,color,source,refId, editId?, start, dur}
@@ -4964,6 +5054,32 @@ export default function App() {
   };
 
   // ── COMPLETION BURST (the juice) ────────────────────────────────────────────
+  // The XP leaves your finger and lands in the bar. Seeing the cause reach the
+  // effect is most of why checking something off feels like anything — the
+  // burst alone popped and vanished where you tapped, connected to nothing.
+  const sendXpToBar = (x, y, color, label) => {
+    const bar = xpBarRef.current;
+    if (!bar || x == null) return;
+    const r = bar.getBoundingClientRect();
+    const id = Date.now() + Math.random();
+    setFlyers(f=>[...f, { id, x, y, color, label,
+      dx: (r.left + r.width*0.5) - x, dy: (r.top + r.height*0.5) - y }]);
+    setTimeout(()=>setFlyers(f=>f.filter(z=>z.id!==id)), 900);
+  };
+
+  // Everything that happens when a mission is cleared, in one place so the
+  // three call sites cannot drift into doing different amounts of it.
+  const celebrate = (x, y, color, label, taskId) => {
+    fireBurst(x, y, color, label);
+    sendXpToBar(x, y, color, label);
+    setCharReact(n=>n+1);
+    // Was that the last one of the day? Worked out against how the day will
+    // look once this rep lands, because state has not caught up yet.
+    const due = data.tasks.filter(t => isDailyDueOn(t, today, data.categories));
+    const won = due.filter(t => t.id === taskId || isWonOn(t, today));
+    if (due.length > 0 && won.length >= due.length) setDayDone(n=>n+1);
+  };
+
   const fireBurst = (x, y, color, label) => {
     if (x === null || x === undefined) return;
     const id = Date.now() + Math.random();
@@ -5103,7 +5219,7 @@ export default function App() {
     const mins = sinkMins(data, sinkId);
     const sink = sinkById(sinkId);
     if (licensed && passesLeft(data, dk) <= 0) {
-      toast$("NO PASS \u00b7 CLEAR HALF THE DAY TO EARN ONE", "#ffc46b"); return;
+      toast$(`NO PASS \u00b7 CLEAR ${TASKS_PER_PASS} MISSIONS TO EARN ONE`, "#ffc46b"); return;
     }
     setData(cur=>{
       const used = { ...((cur.wallet||{}).passesUsedByDay||{}) };
@@ -5143,7 +5259,7 @@ export default function App() {
       const log = [ ...((cur.wallet||{}).sessions||[]),
         { sinkId: sess.sinkId, at: new Date(sess.startedAt).toISOString(),
           mins: +st.elapsedMin.toFixed(1), over: +st.overMin.toFixed(1),
-          licensed: !!sess.licensed, cost: +raw.toFixed(4) } ].slice(-60);
+          licensed: !!sess.licensed, cost: +raw.toFixed(4) } ].slice(-SESSION_LOG_MAX);
       const n = { ...cur, session: null, tasks,
         categories: raw > 0
           ? cur.categories.map(c=>({ ...c, value: Math.max(0, c.value - raw) }))
@@ -6025,6 +6141,7 @@ export default function App() {
     training: { icon:navIcon("training"), label:"TRAINING", on: S.trainingEnabled !== false },
     plan:     { icon:navIcon("plan"),     label:"PLAN",     on: S.planEnabled     !== false },
     board:    { icon:navIcon("board"),    label:"BOARD",    on: !!S.kanbanEnabled },
+    downtime: { icon:navIcon("downtime"), label:"DOWNTIME", on: S.downtimeEnabled !== false },
     shop:     { icon:navIcon("shop"),     label:"SUMMONS",  on: !!S.shopEnabled },
     stats:    { icon:navIcon("stats"),    label:"ASCENT",   on: S.statsEnabled    !== false },
   };
@@ -6158,7 +6275,7 @@ export default function App() {
               checkColor={tinted ? "#ffffff" : color}
               trackColor={tinted ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.35)"}
               reps={reps} target={target}
-              onComplete={(x,y)=>{ addRep(task.id, today); fireBurst(x, y, tinted ? color : "#ffffff", burstLabel); }}
+              onComplete={(x,y)=>{ addRep(task.id, today); celebrate(x, y, tinted ? color : "#ffffff", burstLabel, task.id); }}
               onShortTap={()=>toast$("HOLD TO COMPLETE")} />
           ) : (
             <div style={{width:54,textAlign:"center",fontSize:8.5,color:"rgba(255,255,255,0.6)",fontWeight:900,lineHeight:1.5,flexShrink:0}}>REST<br/>DAY</div>
@@ -6371,6 +6488,45 @@ export default function App() {
         @keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
         @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
         @keyframes burstFly { 0%{transform:translate(0,0) scale(1);opacity:1} 100%{transform:translate(var(--dx),var(--dy)) scale(.3);opacity:0} }
+        /* The XP arcs out of your finger and into the rank bar. The mid-point
+           scale-up is what makes it read as thrown rather than slid. */
+        @keyframes xpFly {
+          0%   { transform:translate(0,0) scale(.7); opacity:0 }
+          12%  { transform:translate(calc(var(--dx)*.12), calc(var(--dy)*.12 - 26px)) scale(1.35); opacity:1 }
+          70%  { opacity:1 }
+          100% { transform:translate(var(--dx), var(--dy)) scale(.45); opacity:0 }
+        }
+        /* The bar takes the hit. */
+        @keyframes barHit {
+          0%,100% { transform:scale(1) }
+          35%     { transform:scale(1.035) }
+        }
+        /* The champion reacts: a quick punch up, not a bounce. */
+        @keyframes charHit {
+          0%   { transform:translateY(0) scale(1) }
+          30%  { transform:translateY(-7px) scale(1.07) }
+          100% { transform:translateY(0) scale(1) }
+        }
+        /* The last mission of the day. A wash of light across everything,
+           once, so the sixth of six does not feel like the third of six. */
+        @keyframes dayDoneFlash {
+          0%   { opacity:0 }
+          18%  { opacity:.5 }
+          100% { opacity:0 }
+        }
+        @keyframes dayDoneRing {
+          0%   { transform:translate(-50%,-50%) scale(.3); opacity:.9 }
+          100% { transform:translate(-50%,-50%) scale(2.6); opacity:0 }
+        }
+        /* Its own rise, because floatUp carries a -50% X translate meant for an
+           element pinned at left:50% — on a full-width centred block that
+           shoved the words half off the screen. */
+        @keyframes dayDoneText {
+          0%   { transform:translateY(14px) scale(.85); opacity:0 }
+          20%  { transform:translateY(0) scale(1.06); opacity:1 }
+          70%  { opacity:1 }
+          100% { transform:translateY(-26px) scale(1); opacity:0 }
+        }
         @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 15%{opacity:1;transform:translate(-50%,-12px) scale(1.15)} 100%{transform:translate(-50%,-52px) scale(1);opacity:0} }
         @keyframes ringPop { 0%{transform:scale(.4);opacity:.9} 100%{transform:scale(2.4);opacity:0} }
         @keyframes glowPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.18)} }
@@ -6417,6 +6573,36 @@ export default function App() {
             <div style={{fontSize:64}}>🏆</div>
             <div style={{fontSize:30,fontWeight:900,color:"#fff",textShadow:"0 0 24px #f59e0b",letterSpacing:1}}>PERFECT DAY</div>
             <div style={{fontSize:16,fontWeight:800,color:"#fcd34d",marginTop:4}}>+{xpInt(PERFECT_DAY_XP)} XP</div>
+          </div>
+        </div>
+      )}
+
+      {/* THE XP IN FLIGHT — fixed to the viewport, so it keeps heading for the
+          bar even if the list scrolls under it. */}
+      {flyers.map(f=>(
+        <div key={f.id} style={{position:"fixed",left:f.x,top:f.y,zIndex:8000,
+          pointerEvents:"none",fontFamily:FONT,fontSize:16,fontWeight:900,
+          color:f.color||"#fff",textShadow:`0 0 14px ${f.color||"#fff"}`,
+          "--dx":`${f.dx}px`, "--dy":`${f.dy}px`,
+          animation:"xpFly .85s cubic-bezier(.3,.1,.2,1) forwards"}}>
+          {f.label}
+        </div>
+      ))}
+
+      {/* THE LAST ONE OF THE DAY */}
+      {dayDone > 0 && (
+        <div key={dayDone} style={{position:"fixed",inset:0,zIndex:7900,
+          pointerEvents:"none"}}>
+          <div style={{position:"absolute",inset:0,background:T.accent,
+            animation:"dayDoneFlash 1.1s ease-out forwards"}}/>
+          <div style={{position:"absolute",left:"50%",top:"44%",width:220,height:220,
+            borderRadius:"50%",border:`3px solid ${T.accent}`,
+            animation:"dayDoneRing 1s ease-out forwards"}}/>
+          <div style={{position:"absolute",left:0,right:0,top:"40%",textAlign:"center",
+            fontFamily:FONT,fontSize:22,fontWeight:900,letterSpacing:3,color:"#fff",
+            textShadow:`0 0 30px ${T.accent}`,
+            animation:"dayDoneText 1.6s ease-out forwards"}}>
+            DAY CLEARED
           </div>
         </div>
       )}
@@ -7045,7 +7231,7 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
               <HoldRing color={detailColor} checkColor="#fff" trackColor="rgba(255,255,255,0.25)" size={76}
                 reps={getReps(detailTask,today)} target={detailTask.targetReps||1}
-                onComplete={(x,y)=>{ addRep(detailTask.id, today); fireBurst(x, y, detailColor, S.showXP?`+${xpInt(detailTask.points/(detailTask.targetReps||1))}`:"✦ NICE"); }}
+                onComplete={(x,y)=>{ addRep(detailTask.id, today); celebrate(x, y, detailColor, S.showXP?`+${xpInt(detailTask.points/(detailTask.targetReps||1))}`:"✦ NICE", detailTask.id); }}
                 onShortTap={()=>toast$("HOLD TO COMPLETE")}/>
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:7}}>
@@ -7349,7 +7535,12 @@ export default function App() {
                     background:`radial-gradient(circle, ${myForm.aura}5e 0%, ${myForm.aura}22 42%, transparent 70%)`,
                     animation:"forgeGlow 2.4s ease-in-out infinite"}}/>
                 )}
-                <PixelCharacter level={wornLvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={null}/>
+                {/* key changes on every completion, which restarts the
+                    animation — without it React keeps the element and the
+                    second check of the day does nothing. */}
+                <div key={charReact} style={{animation: charReact ? "charHit .55s cubic-bezier(.2,1.6,.4,1)" : undefined}}>
+                  <PixelCharacter level={wornLvl} character={cz} scale={4.6} idle cosmetics={cosmetics} pet={null}/>
+                </div>
               </div>
               {/* THE BEASTS — drawn here, in the scene, rather than inside the
                   character sprite. That is what keeps him dead centre on the
@@ -7395,7 +7586,8 @@ export default function App() {
 
             <div style={{padding:"0 16px"}}>
               {/* LEVEL PROGRESS */}
-              <div style={{...C.glass,padding:"10px 14px",marginBottom:10}}>
+              <div ref={xpBarRef} style={{...C.glass,padding:"10px 14px",marginBottom:10,
+                animation: charReact ? "barHit .5s ease-out" : undefined}}>
                 <div style={{height:8,background:"rgba(0,0,0,0.3)",borderRadius:5,overflow:"hidden"}}>
                   <div style={{height:"100%",width:`${lvlProgress}%`,
                     background: inReserve
@@ -7601,6 +7793,26 @@ export default function App() {
                       before it arrives is the whole point: the list is stored
                       against the date, so when that date turns over at 3am the
                       order is simply already there. */}
+                  {/* A dropdown as well as the strip. The chips need scrolling
+                      sideways on a narrow phone and the far end of the week was
+                      easy to miss; this reaches any day in one tap. */}
+                  <select value={orderDay} onChange={e=>setOrderDay(e.target.value)}
+                    style={{width:"100%",marginBottom:7,padding:"8px 10px",
+                      borderRadius:BLOCK?0:9,fontFamily:FONT,fontSize:11,fontWeight:900,
+                      border:`1px solid ${planning ? "#7fd4ff55" : LINE}`,
+                      background:"rgba(0,0,0,0.35)",
+                      color: planning ? "#7fd4ff" : "#fff",
+                      WebkitAppearance:"none",appearance:"none"}}>
+                    {orderPlannerDays().map(dk=>{
+                      const n = dayOrderIds(data, dk).length;
+                      return (
+                        <option key={dk} value={dk} style={{background:"#14141c",color:"#fff"}}>
+                          {dk === today ? "Today" : prettyDay(dk)}
+                          {n > 0 ? ` · ${n} ordered` : " · nothing ordered yet"}
+                        </option>
+                      );
+                    })}
+                  </select>
                   <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto",
                     WebkitOverflowScrolling:"touch",paddingBottom:2}}>
                     {orderPlannerDays().map(dk=>{
@@ -7743,8 +7955,8 @@ export default function App() {
                           {left > 0
                             ? "Spend one for a timed, free session."
                             : unlocked > 0
-                              ? "Both of today's passes are spent."
-                              : `Clear half the day to earn one. Go in without a pass and it costs ${DRAIN_XP_PER_MIN} XP a minute.`}
+                              ? "Every pass you have earned is spent."
+                              : `Clear ${TASKS_PER_PASS} missions to earn one. Go in without a pass and it costs ${DRAIN_XP_PER_MIN} XP a minute.`}
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                           {TIME_SINKS.map(k=>{
@@ -7824,7 +8036,7 @@ export default function App() {
                             <HoldRing color={color} checkColor="#fff" trackColor="rgba(255,255,255,0.22)"
                               reps={reps} target={target} size={ring} icon={iconFor(t,cat)}
                               onComplete={(bx,by)=>{ addRep(t.id, today);
-                                fireBurst(bx, by, color, S.showXP?`+${xpInt(t.points/target)}`:"✦ NICE"); }}
+                                celebrate(bx, by, color, S.showXP?`+${xpInt(t.points/target)}`:"✦ NICE", t.id); }}
                               onShortTap={()=>{ setDetailTaskId(t.id);
                                 setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}/>
                             {/* The must-do flag stays on the ring — it marks
@@ -8563,6 +8775,156 @@ export default function App() {
         })()}
 
         {/* ══ BOARD (Reminders hub + draggable kanban) ══ */}
+        {/* ══ DOWNTIME LOG ══ */}
+        {view==="downtime" && (()=>{
+          const back = (n)=>{ const d=dayNow(); d.setDate(d.getDate()-n); return dateKey(d); };
+          const ranges = [
+            { k:"day",   lab:"TODAY",        from: today,     to: today },
+            { k:"week",  lab:"7 DAYS",       from: back(6),   to: today },
+            { k:"month", lab:"30 DAYS",      from: back(29),  to: today },
+          ];
+          const r = ranges.find(x=>x.k === (S.dtRange||"week")) || ranges[1];
+          const { byApp, grand } = downtimeTotals(data, r.from, r.to);
+          const days = Math.max(1, Math.round((new Date(r.to+"T00:00:00") - new Date(r.from+"T00:00:00"))/86400000) + 1);
+          const worst = Math.max(1, ...TIME_SINKS.map(k=>byApp[k.id].total));
+          // the calendar
+          const cur = dtCursor || { y: dayNow().getFullYear(), m: dayNow().getMonth() };
+          const byDay = downtimeByDay(data, cur.y, cur.m);
+          const first = new Date(cur.y, cur.m, 1);
+          const dim = new Date(cur.y, cur.m+1, 0).getDate();
+          const lead = first.getDay();
+          const peak = Math.max(1, ...Object.values(byDay).map(v=>v.total));
+          const monthTotal = Object.values(byDay).reduce((a,v)=>a+v.total, 0);
+          const monthPass  = Object.values(byDay).reduce((a,v)=>a+v.pass, 0);
+          return (
+            <div style={{padding:"14px 16px"}}>
+              {/* WHAT IT ADDS UP TO */}
+              <div style={{...C.glass,marginBottom:12}}>
+                <div style={{display:"flex",gap:6,marginBottom:12}}>
+                  {ranges.map(x=>(
+                    <button key={x.k} onClick={()=>setSetting("dtRange", x.k)}
+                      style={{flex:1,padding:"8px 0",borderRadius:BLOCK?0:9,fontFamily:FONT,
+                        fontSize:9.5,fontWeight:900,letterSpacing:0.5,
+                        border:`1px solid ${r.k===x.k ? T.accent : LINE}`,
+                        background: r.k===x.k ? `${T.accent}22` : "rgba(0,0,0,0.25)",
+                        color: r.k===x.k ? T.accent : DIM,cursor:"pointer"}}>{x.lab}</button>
+                  ))}
+                </div>
+                <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:2}}>
+                  <span style={{fontSize:30,fontWeight:900,color:"#fff"}}>
+                    {prettyMins(grand.total)}
+                  </span>
+                  <span style={{fontSize:10,fontWeight:800,color:FAINT,flex:1}}>
+                    across {grand.n} session{grand.n===1?"":"s"}
+                  </span>
+                  {grand.cost > 0 && (
+                    <span style={{fontSize:13,fontWeight:900,color:BAD}}>
+                      −{Math.round(grand.cost / XP_MAX * 1000)} XP
+                    </span>
+                  )}
+                </div>
+                <div style={{fontSize:9,color:FAINT,fontWeight:700,marginBottom:11}}>
+                  {prettyMins(grand.total/days)} a day on average ·
+                  {" "}{grand.total > 0 ? Math.round(grand.pass/grand.total*100) : 0}% of it earned
+                </div>
+                {TIME_SINKS.map(k=>{
+                  const v = byApp[k.id];
+                  return (
+                    <div key={k.id} style={{marginBottom:9}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                        <span style={{color:k.color,fontSize:11,flexShrink:0}}>{k.icon}</span>
+                        <span style={{flex:1,minWidth:0,fontSize:11,fontWeight:900,color:"#fff",
+                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{k.name}</span>
+                        <span style={{fontSize:11,fontWeight:900,
+                          color: v.total>0 ? "#fff" : FAINT}}>{prettyMins(v.total)}</span>
+                      </div>
+                      {/* earned time in the app's colour, unearned in red, so
+                          the split reads without a legend */}
+                      <div style={{display:"flex",height:8,borderRadius:4,overflow:"hidden",
+                        background:"rgba(0,0,0,0.35)"}}>
+                        <div style={{width:`${(v.pass/worst)*100}%`,background:k.color}}/>
+                        <div style={{width:`${(v.noPass/worst)*100}%`,background:BAD}}/>
+                      </div>
+                      {v.total > 0 && (
+                        <div style={{fontSize:8.5,color:FAINT,fontWeight:700,marginTop:3}}>
+                          {prettyMins(v.pass)} on a pass · {prettyMins(v.noPass)} without
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:4,lineHeight:1.5}}>
+                  Coloured is time you earned. Red is time you took anyway.
+                </div>
+              </div>
+
+              {/* MONTH BY MONTH */}
+              <div style={{...C.glass}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                  <button onClick={()=>setDtCursor(c=>{
+                      const b = c || { y: dayNow().getFullYear(), m: dayNow().getMonth() };
+                      return b.m === 0 ? { y:b.y-1, m:11 } : { y:b.y, m:b.m-1 }; })}
+                    style={{...C.ordBtn,width:26,height:26}}>‹</button>
+                  <div style={{...C.label,marginBottom:0,flex:1,textAlign:"center"}}>
+                    {MONTHS[cur.m]} {cur.y}
+                  </div>
+                  <button onClick={()=>setDtCursor(c=>{
+                      const b = c || { y: dayNow().getFullYear(), m: dayNow().getMonth() };
+                      return b.m === 11 ? { y:b.y+1, m:0 } : { y:b.y, m:b.m+1 }; })}
+                    style={{...C.ordBtn,width:26,height:26}}>›</button>
+                </div>
+                <div style={{fontSize:9,color:FAINT,fontWeight:700,textAlign:"center",
+                  marginBottom:10}}>
+                  {monthTotal > 0
+                    ? `${prettyMins(monthTotal)} this month · ${prettyMins(monthPass)} of it earned`
+                    : "Nothing logged this month."}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,
+                  marginBottom:4}}>
+                  {["S","M","T","W","T","F","S"].map((d,i)=>(
+                    <div key={i} style={{fontSize:8,fontWeight:900,color:FAINT,
+                      textAlign:"center"}}>{d}</div>
+                  ))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+                  {Array.from({length:lead}).map((_,i)=><div key={"e"+i}/>)}
+                  {Array.from({length:dim}).map((_,i)=>{
+                    const dnum = i+1;
+                    const dk = `${cur.y}-${String(cur.m+1).padStart(2,"0")}-${String(dnum).padStart(2,"0")}`;
+                    const v = byDay[dk];
+                    const isToday = dk === today;
+                    // Depth of fill is how long, hue is whether it was earned.
+                    const heat = v ? Math.min(1, v.total / peak) : 0;
+                    const mostlyUnearned = v && v.noPass > v.pass;
+                    return (
+                      <div key={dk} style={{aspectRatio:"1",borderRadius:BLOCK?0:6,
+                        display:"flex",flexDirection:"column",alignItems:"center",
+                        justifyContent:"center",
+                        background: v
+                          ? (mostlyUnearned ? `rgba(255,123,123,${0.18+heat*0.6})`
+                                            : `rgba(110,231,183,${0.14+heat*0.5})`)
+                          : "rgba(255,255,255,0.04)",
+                        border: isToday ? `1px solid ${T.accent}` : "1px solid transparent"}}>
+                        <span style={{fontSize:9,fontWeight:900,
+                          color: v ? "#fff" : FAINT}}>{dnum}</span>
+                        {v && (
+                          <span style={{fontSize:7,fontWeight:800,
+                            color:"rgba(255,255,255,0.8)"}}>{Math.round(v.total)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:9,color:FAINT,fontWeight:700,marginTop:10,lineHeight:1.5}}>
+                  Green days were mostly earned, red days mostly taken. The darker
+                  the square, the longer you were in there.
+                </div>
+              </div>
+              <div style={{height:8}}/>
+            </div>
+          );
+        })()}
+
         {view==="board" && S.kanbanEnabled && (
           <div style={{padding:"14px 16px"}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
