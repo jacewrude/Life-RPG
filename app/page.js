@@ -7774,45 +7774,41 @@ export default function App() {
                 const rest = dayMissions.filter(t=>!ids.includes(t.id)
                   && (planning || !isCompletedOn(t, today)));
                 const full = listed.length >= ORDER_MAX;
+                const open = !((S.collapsed||{}).order);
                 return (
                 <div style={{...C.glass,padding:"11px 13px",marginBottom:11,
                   border:`1px solid ${planning ? "#7fd4ff55" : PRI+"44"}`}}>
-                  <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
+                  {/* The whole panel folds away, the same way DOWNTIME does. It
+                      is the tallest thing on the home page once a week has been
+                      planned, and some days you just want to see the missions. */}
+                  <div onClick={()=>{ const n={...(S.collapsed||{})};
+                      if (open) n.order = true; else delete n.order;
+                      setSetting("collapsed", n); }}
+                    style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",
+                      marginBottom: open ? 8 : 0}}>
                     <div style={{...C.label,flex:1,marginBottom:0,
                       color: planning ? "#7fd4ff" : PRI}}>
                       {planning ? "PLANNING AHEAD" : "TODAY\u2019S ORDER"}
                     </div>
-                    {listed.length>0 && (
-                      <button onClick={()=>clearDayOrder(orderDay)}
+                    {/* Folded up, the header still says what is next. */}
+                    {!open && (listed.length > 0
+                      ? <span style={{fontSize:10.5,fontWeight:900,color:DIM,maxWidth:150,
+                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          #1 {listed[0].name}
+                        </span>
+                      : <span style={{fontSize:9.5,fontWeight:900,color:FAINT}}>NOTHING ORDERED</span>)}
+                    {open && listed.length>0 && (
+                      <button onClick={e=>{ e.stopPropagation(); clearDayOrder(orderDay); }}
                         style={{background:"none",border:"none",color:FAINT,fontSize:8.5,fontWeight:900,
                           cursor:"pointer",padding:0,fontFamily:FONT,letterSpacing:0.8}}>CLEAR ALL</button>
                     )}
+                    <span style={{fontSize:13,color:FAINT,fontWeight:900}}>{open?"\u25b4":"\u25be"}</span>
                   </div>
-
+                  {open && (<>
                   {/* THE DAY STRIP — today plus the next seven. Ordering a day
                       before it arrives is the whole point: the list is stored
                       against the date, so when that date turns over at 3am the
                       order is simply already there. */}
-                  {/* A dropdown as well as the strip. The chips need scrolling
-                      sideways on a narrow phone and the far end of the week was
-                      easy to miss; this reaches any day in one tap. */}
-                  <select value={orderDay} onChange={e=>setOrderDay(e.target.value)}
-                    style={{width:"100%",marginBottom:7,padding:"8px 10px",
-                      borderRadius:BLOCK?0:9,fontFamily:FONT,fontSize:11,fontWeight:900,
-                      border:`1px solid ${planning ? "#7fd4ff55" : LINE}`,
-                      background:"rgba(0,0,0,0.35)",
-                      color: planning ? "#7fd4ff" : "#fff",
-                      WebkitAppearance:"none",appearance:"none"}}>
-                    {orderPlannerDays().map(dk=>{
-                      const n = dayOrderIds(data, dk).length;
-                      return (
-                        <option key={dk} value={dk} style={{background:"#14141c",color:"#fff"}}>
-                          {dk === today ? "Today" : prettyDay(dk)}
-                          {n > 0 ? ` · ${n} ordered` : " · nothing ordered yet"}
-                        </option>
-                      );
-                    })}
-                  </select>
                   <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto",
                     WebkitOverflowScrolling:"touch",paddingBottom:2}}>
                     {orderPlannerDays().map(dk=>{
@@ -7921,6 +7917,7 @@ export default function App() {
                         ? "Today only. Clear one and the rest move up a place."
                         : "Put the day in the order you mean to do it. Scroll ahead to plan a day before it arrives."}
                   </div>
+                  </>)}
                 </div>
                 );
               })()}
