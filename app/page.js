@@ -313,6 +313,7 @@ const ORDER_FIRST_INK = "#001b0c";       // 5.1:1 against the fill, so the digit
 
 const DEFAULT_SETTINGS = {
   kanbanEnabled: true,
+  downtimeEnabled: true,
   pomodoroEnabled: false,
   showXP: false,   // always words now; the toggle is gone
   statStyle: "radar", // "radar" | "bars" | "none"
@@ -4991,6 +4992,7 @@ export default function App() {
   const setSetting = (key, val) => {
     const next = {...data, settings:{...data.settings, [key]:val}};
     if (key==="kanbanEnabled" && !val && view==="board") setView("dashboard");
+    if (key==="downtimeEnabled" && !val && view==="downtime") setView("dashboard");
     if (key==="planEnabled" && !val && view==="plan") setView("dashboard");
     if (key==="bossEnabled" && !val && view==="boss") setView("dashboard");
     if (key==="pomodoroEnabled" && !val && view==="focus") setView("dashboard");
@@ -7926,7 +7928,7 @@ export default function App() {
                   these instead. Nothing here can block an app: the friction is
                   that the app is deleted. What this does is say whether the
                   session was earned, run the clock, and bill it. */}
-              {(()=>{
+              {S.downtimeEnabled!==false && (()=>{
                 const left = passesLeft(data, today);
                 const unlocked = passesUnlocked(data, today);
                 const open = !((S.collapsed||{}).downtime);
@@ -8773,7 +8775,7 @@ export default function App() {
 
         {/* ══ BOARD (Reminders hub + draggable kanban) ══ */}
         {/* ══ DOWNTIME LOG ══ */}
-        {view==="downtime" && (()=>{
+        {view==="downtime" && S.downtimeEnabled!==false && (()=>{
           const back = (n)=>{ const d=dayNow(); d.setDate(d.getDate()-n); return dateKey(d); };
           const ranges = [
             { k:"day",   lab:"TODAY",        from: today,     to: today },
@@ -10994,6 +10996,13 @@ export default function App() {
                   <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Mission board and scroll lists</div>
                 </div>
                 <Switch on={S.kanbanEnabled} onToggle={()=>setSetting("kanbanEnabled",!S.kanbanEnabled)}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{navIcon("downtime")} Downtime</div>
+                  <div style={{fontSize:11,color:DIM,marginTop:2,fontWeight:600}}>Passes, timed sessions and the time log</div>
+                </div>
+                <Switch on={S.downtimeEnabled!==false} onToggle={()=>setSetting("downtimeEnabled",!(S.downtimeEnabled!==false))}/>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
