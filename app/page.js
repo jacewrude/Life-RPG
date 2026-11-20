@@ -32,6 +32,52 @@ const calcPoints = (imp) => +(DIFF_CURVE(imp) * GAIN_MULT).toFixed(4);
 // A forbidden mission reads this too: slipping on a cursed one costs the
 // multiplied toll, while holding out still pays the plain reward.
 const CURSE_MULT = 1.5;
+
+// ── ESSENTIAL ─────────────────────────────────────────────────────────────────
+// The axis that actually decides what the day is about. Rank says how hard a
+// mission is and a curse mark says how badly you must not skip it, but neither
+// of them says whether it MATTERS — so a tidy-the-desk mission sat in the same
+// list as the one thing that had to happen, and got done first because it was
+// easier. Only essential missions move your rank; the rest are a habit log.
+//
+// Nothing here replaces the curse mark: essential decides whether a mission
+// counts at all, the mark still multiplies the penalty on top.
+const ESSENTIAL_MULT = 1.5;      // what an essential mission is worth, up and down
+// Non-essentials pay a third and are NEVER charged. Enough that doing one is
+// not nothing; not enough to be worth doing ahead of the real work.
+const CASUAL_GAIN = 1/3;
+// How far back a day override is kept. Long enough to edit the recent past
+// from a mission calendar, short enough that the map stays small.
+const ESSENTIAL_DAY_MEMORY = 120;
+
+// Is this mission essential on this day? A mission can be essential for good,
+// and any single day can override that either way — promoting something for
+// today, or letting a standing essential off on a day it does not apply.
+// Everything that asks the question reads this one function, because the last
+// time a rule like this lived in four places they drifted and a 100% day still
+// cost XP at midnight.
+function isEssentialOn(task, dk) {
+  if (!task) return false;
+  const o = task.essentialDays;
+  if (o && dk && Object.prototype.hasOwnProperty.call(o, dk)) return !!o[dk];
+  return !!task.essential;
+}
+// What a mission's reward is multiplied by on a given day.
+function essentialGainMult(task, dk) {
+  return isEssentialOn(task, dk) ? ESSENTIAL_MULT : CASUAL_GAIN;
+}
+// THE TWO FUNCTIONS EVERY XP MOVE GOES THROUGH. task.points and task.decayRate
+// are the BASE figures from the difficulty curve; these are what the mission is
+// actually worth on a given day. Nothing should read the raw fields to move XP
+// — the whole point is that one day's override changes both of these at once.
+function taskGainOn(task, dk) {
+  return (task.points || 0) * essentialGainMult(task, dk);
+}
+// Missing a non-essential costs nothing. That is the heart of the change: the
+// small stuff can be tracked without it dragging your rank around.
+function taskDecayOn(task, dk) {
+  return isEssentialOn(task, dk) ? (task.decayRate || 0) * ESSENTIAL_MULT : 0;
+}
 const isCursed = (t) => !!(t && t.curse);
 // THE DAY ROLLOVER. A day does not end at midnight, it ends at 3am, so a late
 // night still logs against the day it belongs to. 1am Saturday is still Friday.
@@ -724,7 +770,7 @@ function isScheduledOn(task, dateStr) {
 // ever changes when a day crosses the finish line, in either direction.
 function decayHeldOn(task, dateStr, reps) {
   if (!task || !isScheduledOn(task, dateStr)) return 0;
-  return reps >= (task.targetReps || 1) ? 0 : (task.decayRate || 0);
+  return reps >= (task.targetReps || 1) ? 0 : taskDecayOn(task, dateStr);
 }
 // The correction to apply when a settled day's reps change: positive gives the
 // charge back, negative puts it back on. Both editing directions read this one
@@ -874,12 +920,12 @@ function projectRating(categories, tasks, dateStr, scenario) {
     const ci = cats.findIndex(c=>c.id===task.catId);
     if (ci===-1) return;
     if (scenario==="full" && !done) {
-      const sofar = calcEarnedPoints(task.points, target, reps);
-      const atTarget = calcEarnedPoints(task.points, target, target);
+      const sofar = calcEarnedPoints(taskGainOn(task, dateStr), target, reps);
+      const atTarget = calcEarnedPoints(taskGainOn(task, dateStr), target, target);
       cats[ci].value = Math.min(cats[ci].maxValue, cats[ci].value + (atTarget - sofar));
     }
     if (scenario==="decay" && !done) {
-      cats[ci].value = Math.max(0, cats[ci].value - task.decayRate);
+      cats[ci].value = Math.max(0, cats[ci].value - taskDecayOn(task, dateStr));
     }
   });
   return Math.max(0, Math.min(100, Math.round(cats.reduce((s,c)=>s+(c.value/c.maxValue)*100,0)/cats.length)));
@@ -897,6 +943,12 @@ function projectRating(categories, tasks, dateStr, scenario) {
 // A weekly habit is not a daily obligation: it is judged across its week, and
 // the Training Grounds says in as many words that weekly habits never decay.
 // Nor is a day that fell before the mission existed.
+// Due today AND one of the few that actually count. The day's percentage, the
+// perfect-day bonus and the badge all read this rather than isDailyDueOn, so a
+// pile of cleared trivia can never read as a finished day.
+function isEssentialDueOn(task, dk, cats) {
+  return isDailyDueOn(task, dk, cats) && isEssentialOn(task, dk);
+}
 function isDailyDueOn(task, dk, cats) {
   if (!task || !task.catId) return false;
   if (cats && !cats.find(c => c.id === task.catId)) return false;
@@ -942,11 +994,11 @@ function applyDecay(data) {
             if ((task.frozen||{})[dk]) return;
             const before = cats[ci].value;
             if (getReps(task, dk) > 0) {
-              cats[ci].value = Math.max(0, before - (task.decayRate||0));
+              cats[ci].value = Math.max(0, before - taskDecayOn(task, dk));
               lost += before - cats[ci].value;
               note(task, dk, before - cats[ci].value, "slip");
             } else {
-              cats[ci].value = Math.min(cats[ci].maxValue ?? XP_MAX, before + (task.points||0));
+              cats[ci].value = Math.min(cats[ci].maxValue ?? XP_MAX, before + taskGainOn(task, dk));
               gained += cats[ci].value - before;
               note(task, dk, cats[ci].value - before, "held");
             }
@@ -956,7 +1008,7 @@ function applyDecay(data) {
           if ((task.frozen||{})[dk]) return;      // streak shield — no decay
           {
             const before = cats[ci].value;
-            cats[ci].value = Math.max(0, cats[ci].value - (task.decayRate||0));
+            cats[ci].value = Math.max(0, cats[ci].value - taskDecayOn(task, dk));
             lost += before - cats[ci].value;
             note(task, dk, before - cats[ci].value, "missed");
           }
@@ -1065,12 +1117,13 @@ function refundWeeklyDecay(d) {
   (d.tasks||[]).forEach(t=>{
     if (!t || !t.catId || !isWeekly(t)) return;
     if (!cats.some(c=>c.id===t.catId)) return;
-    const rate = t.decayRate || 0;
-    if (rate <= 0) return;
+    // Read per day, since a weekly can be essential on some days and not others.
+    if ((t.decayRate || 0) <= 0) return;
     const cur = new Date((t.createdAt || today) + "T12:00:00");
     for (let i = 0; i < 800; i++) {
       const dk = dateKey(cur);
       if (dk >= today) break;                       // today was never charged
+      const rate = taskDecayOn(t, dk);   // zero for a non-essential week
       if (isScheduledOn(t, dk) && !isCompletedOn(t, dk) && !(t.frozen||{})[dk]) owed += rate;
       cur.setDate(cur.getDate() + 1);
     }
@@ -1143,7 +1196,21 @@ function migrate(d) {
   }) };
   // Missions store their own points; refresh them so the difficulty curve applies.
   d = { ...d, tasks: (d.tasks||[]).map(t=>({
-    ...t, curse: !!t.curse, vice: !!t.vice, points: calcPoints(t.importance ?? 5),
+    ...t, curse: !!t.curse, vice: !!t.vice, essential: !!t.essential,
+    // Day overrides are kept only as real date -> boolean pairs, and only for
+    // days still worth remembering, so the map cannot grow forever.
+    essentialDays: (()=>{
+      const src = t.essentialDays;
+      if (!src || typeof src !== "object") return {};
+      const floor = addDays(dateKey(), -ESSENTIAL_DAY_MEMORY);
+      const out = {};
+      Object.keys(src).forEach(k=>{
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || k < floor) return;
+        out[k] = !!src[k];
+      });
+      return out;
+    })(),
+    points: calcPoints(t.importance ?? 5),
     decayRate: calcDecay(t.importance ?? 5, !!t.curse) })) };
   const chr = { ...DEFAULT_CHARACTER, ...(d.character||{}),
     equipped: { ...DEFAULT_EQUIPPED, ...((d.character||{}).equipped||{}) } };
@@ -1386,7 +1453,7 @@ function earnedXpToday(data, dk) {
     if (!isScheduledOn(t, dk)) return;
     const target = t.targetReps||1;
     const reps = getReps(t, dk);
-    xp += calcEarnedPoints(t.points, target, reps);
+    xp += calcEarnedPoints(taskGainOn(t, dk), target, reps);
   });
   return xp;
 }
@@ -1397,7 +1464,7 @@ function maxXpToday(data, dk) {
     if (!t.catId) return;
     if (!isScheduledOn(t, dk)) return;
     const target = t.targetReps||1;
-    xp += calcEarnedPoints(t.points, target, target);
+    xp += calcEarnedPoints(taskGainOn(t, dk), target, target);
   });
   return xp;
 }
@@ -3795,10 +3862,12 @@ const monthKey = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart
 function dayPctOf(d, dk) {
   let total = 0, done = 0;
   (d.tasks||[]).forEach(t=>{
-    if (!isDailyDueOn(t, dk, d.categories)) return;
+    if (!isEssentialDueOn(t, dk, d.categories)) return;
     total++;
     if (isWonOn(t, dk)) done++;
   });
+  // null when nothing essential was scheduled: a day of only small stuff has
+  // no score rather than a free 100%.
   return total ? Math.round((done/total)*100) : null;
 }
 function sharinganInMonth(d, year, month0) {
@@ -4006,10 +4075,11 @@ function dayLedger(d, dk) {
     const done   = isWonOn(t, dk);
     // A forbidden mission banks nothing during the day: holding out is only
     // paid once the day is over, so what is clean reads as still to come.
-    const full   = t.vice ? (t.points || 0) : calcEarnedPoints(t.points, target, target);
-    const got    = t.vice ? 0 : calcEarnedPoints(t.points, target, Math.min(reps, target));
-    const left   = t.vice ? (done ? (t.points || 0) : 0) : Math.max(0, full - got);
-    const risk   = (done || frozen) ? 0 : (t.decayRate || 0);
+    const gain   = taskGainOn(t, dk);
+    const full   = t.vice ? gain : calcEarnedPoints(gain, target, target);
+    const got    = t.vice ? 0 : calcEarnedPoints(gain, target, Math.min(reps, target));
+    const left   = t.vice ? (done ? gain : 0) : Math.max(0, full - got);
+    const risk   = (done || frozen) ? 0 : taskDecayOn(t, dk);
     banked += got; remaining += left; atRisk += risk;
     if (risk > 0 && isCursed(t)) { atRiskCursed += risk; cursedCount++; }
     rows.push({ id:t.id, name:t.name, reps, target, done, frozen,
@@ -4719,7 +4789,7 @@ export default function App() {
     if (isWeekly(task)) {
       const wt = weeklyTargetOf(task);
       const doneBefore = weeklyDone(task, d);         // total reps this week before
-      const slice = task.points / wt;                 // points per weekly rep
+      const slice = taskGainOn(task, d) / wt;         // points per weekly rep
       const willCount = doneBefore < wt;              // only first wt reps add value
       const cats = data.categories.map(c => c.id !== task.catId ? c
         : {...c, value: Math.min(c.maxValue, c.value + (willCount ? slice : 0))});
@@ -4756,7 +4826,7 @@ export default function App() {
       update({...data, tasks});
       toast$(slipped
         ? `${task.name.toUpperCase()} \u00b7 SLIP TAKEN BACK`
-        : `\u2715 ${task.name.toUpperCase()} \u00b7 \u2212${xpInt((task.decayRate||0)/36*100)} XP TONIGHT`,
+        : `\u2715 ${task.name.toUpperCase()} \u00b7 \u2212${xpInt(taskDecayOn(task, d)/36*100)} XP TONIGHT`,
         slipped ? GOOD : BAD);
       try { navigator.vibrate && navigator.vibrate(slipped ? 14 : [50,40,50]); } catch {}
       return;
@@ -4765,7 +4835,8 @@ export default function App() {
     const target = task.targetReps || 1;
     const prevReps = getReps(task, d);
     const newReps = prevReps + 1;
-    const delta = calcEarnedPoints(task.points, target, newReps) - calcEarnedPoints(task.points, target, prevReps);
+    const g = taskGainOn(task, d);
+    const delta = calcEarnedPoints(g, target, newReps) - calcEarnedPoints(g, target, prevReps);
     const processed = d < data.lastDecayDate;
     const refund = processed ? decayDeltaOn(task, d, prevReps, newReps) : 0;
     const cats = data.categories.map(c => c.id !== task.catId ? c
@@ -4856,7 +4927,7 @@ export default function App() {
     if (isWeekly(task)) {
       const wt = weeklyTargetOf(task);
       const doneBefore = weeklyDone(task, d);          // total reps this week incl. today
-      const slice = task.points / wt;
+      const slice = taskGainOn(task, d) / wt;
       // the rep we're removing was "counted" toward value only if its index ≤ wt
       const wasCounted = doneBefore <= wt;
       const cats = data.categories.map(c => c.id !== task.catId ? c
@@ -4875,7 +4946,7 @@ export default function App() {
     }
 
     const target = task.targetReps || 1;
-    const earned = calcEarnedPoints(task.points, target, reps);
+    const earned = calcEarnedPoints(taskGainOn(task, d), target, reps);
     const processed = d < data.lastDecayDate;
     const penalty = processed ? -decayDeltaOn(task, d, reps, 0) : 0;
     const cats = data.categories.map(c => c.id !== task.catId ? c
@@ -4898,7 +4969,7 @@ export default function App() {
     if (dir<0 && dayReps===0) return;
     const wt = weeklyTargetOf(task);
     const weekTotal = weeklyDone(task, dk);
-    const slice = task.points / wt;
+    const slice = taskGainOn(task, d) / wt;
     // adding: counts toward value only if we're still under target this week
     // removing: reclaims value only if we were at/under target
     let valDelta = 0;
@@ -5340,7 +5411,7 @@ export default function App() {
     if ((data.wallet.shields||0) < 1) { toast$("NO SHIELDS — BUY ONE IN THE SHOP","#ffc46b"); return; }
     if (!isScheduledOn(task, dk) || isCompletedOn(task, dk) || (task.frozen||{})[dk]) return;
     const processed = dk < data.lastDecayDate;         // decay already charged? refund it
-    const refund = processed ? (task.decayRate||0) : 0;
+    const refund = processed ? taskDecayOn(task, dk) : 0;
     setData(cur=>{
       const t2 = cur.tasks.map(t=> t.id!==tid ? t : {...t, frozen:{...(t.frozen||{}), [dk]:true}});
       const cats = cur.categories.map(c=> c.id!==task.catId ? c
@@ -5796,9 +5867,13 @@ export default function App() {
   // something to finish, so counting it would make a clean day read as unfinished.
   const todayVices = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId)
     && t.vice && isScheduledOn(t, today));
-  // They get their own section to look at, but they are scored with everything
-  // else: a slip costs you the perfect day exactly like a missed mission.
-  const todayScored = [...todayTasks, ...todayVices];
+  // THE SPLIT. Essentials are what the day is judged on; everything else is a
+  // habit log that happens to live on the same screen. Forbidden missions are
+  // scored with the essentials when they are essential, because a slip costs
+  // the perfect day exactly like a missed mission.
+  const todayEssential = todayTasks.filter(t=>isEssentialOn(t, today));
+  const todayCasual    = todayTasks.filter(t=>!isEssentialOn(t, today));
+  const todayScored = [...todayEssential, ...todayVices.filter(t=>isEssentialOn(t, today))];
   const weeklyHabits = data.tasks.filter(t=>t.catId && data.categories.find(c=>c.id===t.catId) && isWeekly(t) && isLiveOn(t, today));
   const todayDone = todayScored.filter(t=>isWonOn(t,today)).length;
   const allDone = todayScored.length>0 && todayDone===todayScored.length;
@@ -5812,6 +5887,26 @@ export default function App() {
     .filter(t => t && !isCompletedOn(t, today));
   // dk defaults to today, so every existing caller keeps working; the planner
   // passes a future day.
+  // Promote or demote a mission for ONE day, without touching what it is the
+  // rest of the time. Setting the override back to its standing value deletes
+  // the entry rather than storing a redundant one, so the map stays clean.
+  const setEssentialForDay = (tid, dk, want) => {
+    const task = data.tasks.find(t=>t.id===tid); if (!task) return;
+    setData(cur=>{
+      const tasks = cur.tasks.map(t=>{
+        if (t.id !== tid) return t;
+        const o = { ...(t.essentialDays||{}) };
+        if (!!want === !!t.essential) delete o[dk]; else o[dk] = !!want;
+        return { ...t, essentialDays: o };
+      });
+      const n = { ...cur, tasks }; persistRaw(n); return n;
+    });
+    const when = dk === dateKey() ? "TODAY" : prettyDay(dk).toUpperCase();
+    toast$(want ? `\u25c6 ESSENTIAL ${when}` : `NOT ESSENTIAL ${when}`,
+           want ? GOOD : "#ffc46b");
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
+
   const setOrderSlot = (tid, rank, dk) => {
     const day = dk || dateKey();
     setData(cur => {
@@ -5865,7 +5960,7 @@ export default function App() {
   const dayPct = (dk) => {
     let total = 0, done = 0;
     data.tasks.forEach(t=>{
-      if (!isDailyDueOn(t, dk, data.categories)) return;
+      if (!isEssentialDueOn(t, dk, data.categories)) return;
       total++;
       if (isWonOn(t, dk)) done++;
     });
@@ -5950,7 +6045,7 @@ export default function App() {
       if (t.catId!==c.id || !isScheduledOn(t,today)) return;
       const target = t.targetReps||1; const reps = getReps(t,today);
       if (reps>=target) return;
-      val = Math.min(c.maxValue, val + (calcEarnedPoints(t.points,target,target)-calcEarnedPoints(t.points,target,reps)));
+      val = Math.min(c.maxValue, val + (calcEarnedPoints(taskGainOn(t,today),target,target)-calcEarnedPoints(taskGainOn(t,today),target,reps)));
     });
     return {...c, value:val};
   });
@@ -6248,7 +6343,7 @@ export default function App() {
     const qlvl = questLevel(task);
     const qpct = questLevelPct(task);
     const schedToday = isScheduledOn(task, today);
-    const burstLabel = S.showXP ? `+${xpInt(task.points/target)}` : "✦ NICE";
+    const burstLabel = S.showXP ? `+${xpInt(taskGainOn(task, today)/target)}` : "✦ NICE";
     const sibs = siblingIds || [];
     const sIdx = sibs.indexOf(task.id);
     const isFirst = sIdx === 0, isLast = sIdx === sibs.length-1;
@@ -6286,6 +6381,18 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:7}}>
               <div style={{fontSize:15.5,fontWeight:800,color:"#fff",textDecoration:done?"line-through":"none",
                 whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textShadow:tinted?"none":"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
+              {/* A diamond marks what counts. Filled when it is essential for
+                  good, hollow when it is only essential today — so a promotion
+                  you made this morning is never mistaken for a standing one. */}
+              {isEssentialOn(task, today) && (
+                <div style={{flexShrink:0,fontSize:9,fontWeight:900,
+                  color: task.essential ? "#06311b" : GOOD,
+                  background: task.essential ? GOOD : "transparent",
+                  border:`1px solid ${GOOD}`,
+                  padding:"2px 7px",borderRadius:10,letterSpacing:0.5,whiteSpace:"nowrap"}}>
+                  {task.essential ? "◆" : "◇"} ESSENTIAL
+                </div>
+              )}
               {priority && (
                 <div style={{flexShrink:0,fontSize:9,fontWeight:900,color:"#2a1a00",background:PRI,
                   padding:"2px 7px",borderRadius:10,letterSpacing:0.5,whiteSpace:"nowrap",
@@ -6438,6 +6545,32 @@ export default function App() {
       </div>
       <div style={{width:46,height:26,borderRadius:13,flexShrink:0,position:"relative",
         background: on ? BAD : "rgba(255,255,255,0.16)",transition:"background .2s"}}>
+        <div style={{position:"absolute",top:3,left: on ? 23 : 3,width:20,height:20,borderRadius:"50%",
+          background:"#fff",transition:"left .2s",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}/>
+      </div>
+    </div>
+  );
+
+  const EssentialBlock = ({ on, onChange }) => (
+    <div onClick={()=>onChange(!on)}
+      style={{marginTop:14,padding:"13px 14px",borderRadius:16,cursor:"pointer",
+        background: on ? `${GOOD}1f` : "rgba(0,0,0,0.25)",
+        border:`1px solid ${on ? GOOD+"88" : LINE}`,
+        display:"flex",alignItems:"center",gap:12}}>
+      <div style={{width:34,height:34,flexShrink:0,display:"flex",alignItems:"center",
+        justifyContent:"center",fontSize:20,opacity: on ? 1 : 0.4}}>◆</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12.5,fontWeight:900,color: on ? GOOD : "#fff",letterSpacing:0.6}}>
+          ESSENTIAL
+        </div>
+        <div style={{fontSize:9.5,color:DIM,fontWeight:700,marginTop:2,lineHeight:1.45}}>
+          {on
+            ? <>Counts toward your rank at {ESSENTIAL_MULT}&times;, and costs you if missed.</>
+            : <>Tracked only. Pays a third, never costs you, and stays out of the day&rsquo;s count.</>}
+        </div>
+      </div>
+      <div style={{width:46,height:26,borderRadius:13,flexShrink:0,position:"relative",
+        background: on ? GOOD : "rgba(255,255,255,0.16)",transition:"background .2s"}}>
         <div style={{position:"absolute",top:3,left: on ? 23 : 3,width:20,height:20,borderRadius:"50%",
           background:"#fff",transition:"left .2s",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}/>
       </div>
@@ -7387,7 +7520,39 @@ export default function App() {
               // Green when this IS the one to do next, gold when it is in the
               // queue behind it — the same two colours as the order list.
               const oc = oRank === 1 ? ORDER_FIRST : PRI;
+              const essToday = isEssentialOn(detailTask, today);
+              const overridden = Object.prototype.hasOwnProperty.call(
+                detailTask.essentialDays || {}, today);
               return (
+                <>
+                {/* ESSENTIAL FOR TODAY — the one-day switch. The standing setting
+                    lives in the editor; this promotes or demotes a mission just
+                    for the day in front of you, and says which of the two you
+                    are currently looking at. */}
+                <div onClick={()=>setEssentialForDay(detailTask.id, today, !essToday)}
+                  style={{marginBottom:10,cursor:"pointer",borderRadius:15,padding:"12px 14px",
+                    background: essToday ? `${GOOD}1a` : "rgba(0,0,0,0.25)",
+                    border:`1.5px solid ${essToday ? GOOD+"77" : LINE}`,
+                    display:"flex",alignItems:"center",gap:11}}>
+                  <span style={{fontSize:18,flexShrink:0,
+                    color: essToday ? GOOD : FAINT}}>{essToday ? "◆" : "◇"}</span>
+                  <span style={{flex:1,minWidth:0}}>
+                    <span style={{display:"block",fontSize:12.5,fontWeight:900,
+                      color: essToday ? GOOD : "#fff"}}>
+                      {essToday ? "ESSENTIAL TODAY" : "NOT ESSENTIAL TODAY"}
+                    </span>
+                    <span style={{display:"block",fontSize:9.5,color:DIM,fontWeight:700,
+                      marginTop:1,lineHeight:1.4}}>
+                      {overridden
+                        ? <>Just for today — normally {detailTask.essential ? "essential" : "not"}. Tap to put it back.</>
+                        : essToday
+                          ? <>Counts at {ESSENTIAL_MULT}&times; and costs you if missed. Tap to drop it for today only.</>
+                          : <>Pays a third, never costs you. Tap to make it count today.</>}
+                    </span>
+                  </span>
+                  <span style={{fontSize:8.5,fontWeight:900,letterSpacing:0.8,flexShrink:0,
+                    color: essToday ? GOOD : FAINT}}>{essToday ? "DROP" : "PROMOTE"}</span>
+                </div>
                 <div style={{marginBottom:10,
                   background: oRank>0 ? `${oc}1f` : "rgba(0,0,0,0.25)",
                   border:`1.5px solid ${oRank>0 ? oc+"88" : LINE}`,borderRadius:15,padding:"12px 14px"}}>
@@ -7426,6 +7591,7 @@ export default function App() {
                     </button>
                   )}
                 </div>
+                </>
               );
             })()}
             {(()=>{
@@ -7483,13 +7649,15 @@ export default function App() {
               <div style={{fontSize:10,color:DIM,fontWeight:800}}>{dateLabel}</div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:10,background:GLASS,backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",borderRadius:20,padding:"6px 12px",border:`1px solid ${LINE}`}}>
-              <div style={{fontSize:13,fontWeight:900,color:allDone?GOOD:"#fff"}}>{todayDone}<span style={{color:FAINT}}>/{todayTasks.length}</span></div>
+              {/* Essentials only. Counting the small stuff here is exactly
+                  what made a half-finished day read as nearly done. */}
+              <div style={{fontSize:13,fontWeight:900,color:allDone?GOOD:"#fff"}}>{todayDone}<span style={{color:FAINT}}>/{todayScored.length}</span></div>
               <div style={{position:"relative",width:26,height:26}}>
                 <svg width="26" height="26">
                   <circle cx="13" cy="13" r="10" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="3.5"/>
                   <circle cx="13" cy="13" r="10" fill="none" stroke={allDone?GOOD:"#fff"} strokeWidth="3.5" strokeLinecap="round"
                     strokeDasharray={2*Math.PI*10}
-                    strokeDashoffset={2*Math.PI*10*(1-(todayTasks.length?todayDone/todayTasks.length:0))}
+                    strokeDashoffset={2*Math.PI*10*(1-(todayScored.length?todayDone/todayScored.length:0))}
                     transform="rotate(-90 13 13)" style={{transition:"stroke-dashoffset .4s ease"}}/>
                 </svg>
               </div>
@@ -7660,7 +7828,7 @@ export default function App() {
               {/* TODAY'S MISSIONS */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",margin:"6px 2px 11px"}}>
                 <div style={C.sectionTitle}>Today's Missions</div>
-                <div style={{fontSize:11,color:DIM,fontWeight:800}}>{todayDone} of {todayTasks.length}</div>
+                <div style={{fontSize:11,color:DIM,fontWeight:800}}>{todayDone} of {todayScored.length}</div>
               </div>
               {(()=>{
                 const trials = dailyTrialsFor(data, today);
@@ -7999,7 +8167,8 @@ export default function App() {
               })()}
 
               {S.questLayout==="circles" ? (()=>{
-                const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
+                // Essentials only: the ordering bar is for the work that counts.
+                const byOrder = [...todayEssential].sort((x,y)=>(x.order??0)-(y.order??0));
                 const n = byOrder.length;
                 if (!n) return null;
                 const prioN = Math.max(0, Math.min(n, priBarPos));
@@ -8035,7 +8204,7 @@ export default function App() {
                             <HoldRing color={color} checkColor="#fff" trackColor="rgba(255,255,255,0.22)"
                               reps={reps} target={target} size={ring} icon={iconFor(t,cat)}
                               onComplete={(bx,by)=>{ addRep(t.id, today);
-                                celebrate(bx, by, color, S.showXP?`+${xpInt(t.points/target)}`:"✦ NICE", t.id); }}
+                                celebrate(bx, by, color, S.showXP?`+${xpInt(taskGainOn(t, today)/target)}`:"✦ NICE", t.id); }}
                               onShortTap={()=>{ setDetailTaskId(t.id);
                                 setCalCursor({y:dayNow().getFullYear(), m:dayNow().getMonth()}); }}/>
                             {/* The must-do flag stays on the ring — it marks
@@ -8059,7 +8228,8 @@ export default function App() {
                 );
               })() : (()=>{
                 // True running order — independent of what's checked off, so the bar can't drift.
-                const byOrder = [...todayTasks].sort((x,y)=>(x.order??0)-(y.order??0));
+                // Essentials only: the ordering bar is for the work that counts.
+                const byOrder = [...todayEssential].sort((x,y)=>(x.order??0)-(y.order??0));
                 const ids = byOrder.map(t=>t.id);
                 const n = Math.max(0, Math.min(byOrder.length, barPreview!=null ? barPreview : priBarPos));
                 const prio = new Set(byOrder.slice(0,n).map(t=>t.id));
@@ -8141,6 +8311,46 @@ export default function App() {
                   )}
                   {below.map(row)}
                 </>);
+              })()}
+
+              {/* ALSO TRACKING — the small stuff, kept deliberately quiet. It is
+                  still logged, still streaked, and still pays a third; it just
+                  cannot cost you anything and does not count toward the day.
+                  Folded away by default, because the whole point is that it is
+                  not what the page is about. */}
+              {todayCasual.length>0 && (()=>{
+                const open = !!((S.collapsed||{}).casualOpen);
+                const done = todayCasual.filter(t=>isWonOn(t, today)).length;
+                return (
+                  <div style={{marginTop:16,opacity:0.82}}>
+                    <div onClick={()=>{ const n2={...(S.collapsed||{})};
+                        if (open) delete n2.casualOpen; else n2.casualOpen = true;
+                        setSetting("collapsed", n2); }}
+                      style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",
+                        padding:"9px 11px",borderRadius:BLOCK?0:11,
+                        background:"rgba(255,255,255,0.03)",border:`1px solid ${LINE}`}}>
+                      <span style={{fontSize:9,fontWeight:900,letterSpacing:1,color:FAINT,flex:1}}>
+                        ALSO TRACKING
+                      </span>
+                      <span style={{fontSize:10,fontWeight:900,color:DIM}}>
+                        {done}/{todayCasual.length}
+                      </span>
+                      <span style={{fontSize:12,color:FAINT,fontWeight:900}}>{open?"▴":"▾"}</span>
+                    </div>
+                    {open && (
+                      <div style={{marginTop:9}}>
+                        {todayCasual.map(t=>(
+                          <div key={t.id}><QuestCard task={t} siblingIds={todayCasual.map(x=>x.id)}/></div>
+                        ))}
+                        <div style={{fontSize:9,color:FAINT,fontWeight:700,lineHeight:1.5,
+                          margin:"2px 2px 0"}}>
+                          These pay a third and never cost you. Hold one and tap
+                          MAKE ESSENTIAL to promote it, for today or for good.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
               })()}
 
               {/* THIS WEEK — frequency-based habits (do X times, any days) */}
@@ -8315,8 +8525,8 @@ export default function App() {
                         <span style={{display:"block",fontSize:9.5,fontWeight:800,marginTop:1,
                           color: slips>0 ? BAD : GOOD}}>
                           {slips>0
-                            ? `Slipped \u00b7 \u2212${xpInt((t.decayRate||0)/36*100)} XP tonight`
-                            : `Holding \u00b7 +${xpInt((t.points||0)/36*100)} XP tonight`
+                            ? `Slipped \u00b7 \u2212${xpInt(taskDecayOn(t, today)/36*100)} XP tonight`
+                            : `Holding \u00b7 +${xpInt(taskGainOn(t, today)/36*100)} XP tonight`
                               + (clean>0 ? ` \u00b7 ${clean}d clean` : "")}
                         </span>
                       </span>
@@ -8570,6 +8780,7 @@ export default function App() {
                 <div style={{fontSize:9.5,color:FAINT,marginTop:6,fontWeight:700}}>AUTO uses the category's color</div>
                 <div style={{marginTop:16}}>
                   <ImportanceBlock value={t.importance??5} onChange={v=>set({importance:v})} cursed={!!t.curse}/>
+                  <EssentialBlock on={!!t.essential} onChange={v=>set({essential:v})}/>
                   <CurseBlock on={!!t.curse} onChange={v=>set({curse:v})}/>
                   <ViceBlock on={!!t.vice} onChange={v=>set({vice:v})}/>
                 </div>
