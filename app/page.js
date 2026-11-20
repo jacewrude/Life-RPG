@@ -3047,7 +3047,11 @@ function HoldRing({ color="#ffffff", checkColor="#222", trackColor="rgba(255,255
           ? <span style={{ color:checkColor, fontSize:size*0.44, fontWeight:900 }}>✓</span>
           : icon
             ? <span style={{ display:"flex", flexDirection:"column", alignItems:"center", lineHeight:1 }}>
-                <span style={{ fontSize:size*0.36, filter:prog>0?`drop-shadow(0 0 6px ${color})`:"none" }}>{icon}</span>
+                {/* With a counter under it the emoji has to make room; on its
+                    own it carries the circle, so it matches the weight of the
+                    tick that replaces it once the mission is done. */}
+                <span style={{ fontSize:size*(target > 1 ? 0.36 : 0.44),
+                  filter:prog>0?`drop-shadow(0 0 6px ${color})`:"none" }}>{icon}</span>
                 {target > 1 && <span style={{ color:"rgba(255,255,255,0.9)", fontSize:size*0.17, fontWeight:800, marginTop:size*0.04 }}>{reps}/{target}</span>}
               </span>
             : target > 1
@@ -6487,7 +6491,7 @@ export default function App() {
               color={tinted ? color : "#ffffff"}
               checkColor={tinted ? "#ffffff" : color}
               trackColor={tinted ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.35)"}
-              reps={reps} target={target}
+              reps={reps} target={target} icon={iconFor(task, cat)}
               onComplete={(x,y)=>{ addRep(task.id, today); celebrate(x, y, tinted ? color : "#ffffff", burstLabel, task.id); }}
               onShortTap={()=>toast$("HOLD TO COMPLETE")} />
           ) : (
@@ -7484,6 +7488,7 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
               <HoldRing color={detailColor} checkColor="#fff" trackColor="rgba(255,255,255,0.25)" size={76}
                 reps={getReps(detailTask,today)} target={detailTask.targetReps||1}
+                icon={iconFor(detailTask, detailCat)}
                 onComplete={(x,y)=>{ addRep(detailTask.id, today); celebrate(x, y, detailColor, S.showXP?`+${xpInt(taskGainOn(detailTask, today)/(detailTask.targetReps||1))}`:"✦ NICE", detailTask.id); }}
                 onShortTap={()=>toast$("HOLD TO COMPLETE")}/>
               <div style={{flex:1}}>
@@ -8745,7 +8750,7 @@ export default function App() {
                 <div style={C.label}>MISSION NAME</div>
                 <input style={C.input} value={t.name} placeholder="e.g. Morning run"
                   onChange={e=>set({name:e.target.value})}/>
-                <div style={{...C.label,marginTop:16}}>ICON <span style={{color:FAINT}}>· shown on the circle view</span></div>
+                <div style={{...C.label,marginTop:16}}>ICON <span style={{color:FAINT}}>· shown inside the hold circle</span></div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:132,overflowY:"auto",
                   background:"rgba(0,0,0,0.2)",padding:8,borderRadius:BLOCK?0:14}}>
                   <input value={t.icon||""} onChange={e=>set({icon:e.target.value.slice(0,4)})}
@@ -11231,7 +11236,7 @@ export default function App() {
                     display:"flex",alignItems:"center",gap:12}}>
                     {canLog ? (
                       <HoldRing color={S.cardStyle==="tinted"?color:"#ffffff"} checkColor={S.cardStyle==="tinted"?"#fff":color}
-                        trackColor="rgba(255,255,255,0.3)" reps={reps} target={target}
+                        trackColor="rgba(255,255,255,0.3)" reps={reps} target={target} icon={iconFor(task, cat)}
                         onComplete={()=>addRep(task.id, sel)} onShortTap={()=>toast$("HOLD TO COMPLETE")} size={46}/>
                     ) : (
                       <div style={{width:46,height:46,borderRadius:"50%",flexShrink:0,border:"2px dashed rgba(255,255,255,0.4)",
