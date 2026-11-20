@@ -33,6 +33,43 @@ const calcPoints = (imp) => +(DIFF_CURVE(imp) * GAIN_MULT).toFixed(4);
 // multiplied toll, while holding out still pays the plain reward.
 const CURSE_MULT = 1.5;
 
+// ── SLIPPING ─────────────────────────────────────────────────────────────────
+// Giving in to a forbidden mission no longer costs XP at midnight; it takes a
+// whole rank, immediately, and drops you to the BOTTOM of the one below. The
+// point is that it is visible: the fit changes, so you are looking at the cost
+// rather than reading about it.
+//
+// The rating a demotion lands on: the floor of the rank below the current one.
+// Rank comes off a 0-100 reading, and each rung is RANK_SPAN wide.
+const RANK_SPAN = 4.2;
+function demotedRating(xpNow) {
+  const lvl = getLevel(xpNow).lvl;
+  return Math.max(0, (lvl - 1) * RANK_SPAN);
+}
+
+// The rank is read off the FIRST category, so that is the one that has to land
+// exactly on the floor. The charge is then taken off every category, the same
+// way a downtime session is charged, so nothing drifts out of step behind it.
+function demoteCats(cats) {
+  if (!cats || !cats.length) return { cats, drop: 0, toLvl: 0 };
+  const lead = cats[0];
+  const maxV = lead.maxValue || XP_MAX;
+  const xpNow = Math.max(0, Math.min(100, (lead.value / maxV) * 100));
+  const target = demotedRating(xpNow);
+  const toLvl = getLevel(xpNow).lvl > 0 ? getLevel(xpNow).lvl - 1 : 0;
+  const drop = Math.max(0, lead.value - (target / 100) * maxV);
+  if (drop <= 1e-9) return { cats, drop: 0, toLvl };
+  return { cats: cats.map(c=>({ ...c, value: Math.max(0, c.value - drop) })),
+           drop, toLvl };
+}
+function rankNameAt(data, cats) {
+  const c0 = (cats||[])[0];
+  if (!c0) return "";
+  const x = Math.max(0, Math.min(100, (c0.value / (c0.maxValue || XP_MAX)) * 100));
+  const lvl = getLevel(x).lvl;
+  return getTitle(data, lvl) || (LEVELS[lvl] || {}).name || "";
+}
+
 // ── ESSENTIAL ─────────────────────────────────────────────────────────────────
 // The axis that actually decides what the day is about. Rank says how hard a
 // mission is and a curse mark says how badly you must not skip it, but neither
@@ -992,6 +1029,9 @@ function applyDecay(data) {
           // out all day is only known once the day is over.
           if (task.vice) {
             if ((task.frozen||{})[dk]) return;
+            // A slip that took a rank the moment it was tapped is already
+            // paid for. Charging it again tonight would take one slip twice.
+            if ((task.slipDemoted||{})[dk]) return;
             const before = cats[ci].value;
             if (getReps(task, dk) > 0) {
               cats[ci].value = Math.max(0, before - taskDecayOn(task, dk));
@@ -1207,6 +1247,24 @@ function migrate(d) {
       Object.keys(src).forEach(k=>{
         if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || k < floor) return;
         out[k] = !!src[k];
+      });
+      return out;
+    })(),
+    // The standing a slip took, so UNDO can put it back exactly. Only real
+    // date -> list-of-numbers pairs survive a load: a junk entry here would
+    // otherwise be read as "already settled" and quietly cancel a night's
+    // charge, or be restored over a real standing.
+    slipDemoted: (()=>{
+      const src = t.slipDemoted;
+      if (!src || typeof src !== "object" || Array.isArray(src)) return {};
+      const floor = addDays(dateKey(), -ESSENTIAL_DAY_MEMORY);
+      const out = {};
+      Object.keys(src).forEach(k=>{
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || k < floor) return;
+        const v = src[k];
+        if (!Array.isArray(v) || !v.length) return;
+        if (!v.every(n=>typeof n === "number" && isFinite(n) && n >= 0)) return;
+        out[k] = v.slice(0, 24);
       });
       return out;
     })(),
@@ -4554,6 +4612,10 @@ export default function App() {
   const [pomoLeft, setPomoLeft] = useState(25*60);
   const [pomoRunning, setPomoRunning] = useState(false);
   const prevLevelRef = useRef(null);
+  // Set when a rank is handed BACK by an undone slip, consumed by the watcher
+  // below. Without it, taking back a mis-tap throws a full-screen LEVEL UP
+  // celebration for a rank you never left.
+  const restoringRankRef = useRef(false);
   const midnightRef = useRef(null);
   const boardRef = useRef(null);
   const dragMeta = useRef(null);
@@ -4622,6 +4684,13 @@ export default function App() {
     const lvl = getLevel(exactRating(data.categories)).lvl;
     if (prevLevelRef.current === null) { prevLevelRef.current = lvl; return; }
     if (lvl > prevLevelRef.current) {
+      // A rank coming back from an undone slip is a correction, not an
+      // achievement. One undo silences exactly one celebration.
+      if (restoringRankRef.current) {
+        restoringRankRef.current = false;
+        prevLevelRef.current = lvl;
+        return;
+      }
       const best = data.flags?.maxLevel || 0;
       const isNewBest = lvl > best;
       setShowLevelUp({ lvl, name: getTitle(data, lvl), unlock: (LEVELS[lvl]||{}).unlock || "", gems:0 });
@@ -4632,6 +4701,10 @@ export default function App() {
       setTimeout(()=>setShowLevelUp(null), 6000);
     }
     prevLevelRef.current = lvl;
+    // Consumed either way. At the very bottom of the ladder a slip takes XP
+    // without moving the rank, so the undo's flag would otherwise survive and
+    // swallow the next real level-up instead.
+    restoringRankRef.current = false;
   }, [data?.categories]);
 
   // ── RETIRED: weekly bosses were replaced by the rival. The hook stays (hook
@@ -4812,23 +4885,60 @@ export default function App() {
       return;
     }
 
-    // ── FORBIDDEN: a tap records the slip. The XP moves at midnight with
-    //    everything else, so a tap can never double up with the night's pass.
-    //    Tapping again takes it back, because mis-taps happen.
+    // ── FORBIDDEN: giving in costs a RANK, taken the moment it is tapped.
+    //    Not XP tonight — a whole rung, down to the bottom of the one below,
+    //    so the cost is something you look at on the character rather than
+    //    read in a number. Tapping again gives it straight back, because
+    //    mis-taps happen.
+    //
+    //    The exception is a slip back-dated onto a day the night has already
+    //    settled: that night's charge has happened, so the slip is only
+    //    recorded there. The button on the forbidden box is always today.
     if (task.vice) {
       const slipped = getReps(task, d) > 0;
+      const live = d === dateKey();
+
+      if (slipped) {
+        // Taking it back. If it cost a rank, the EXACT values come back —
+        // restored, never recomputed, so an undo can't leave you a sliver
+        // short of where you stood.
+        const snap = (task.slipDemoted||{})[d];
+        const tasks = data.tasks.map(t => {
+          if (t.id !== tid) return t;
+          const comps = {...(t.completions||{})}; delete comps[d];
+          const sd = {...(t.slipDemoted||{})}; delete sd[d];
+          return {...t, completions: comps, slipDemoted: sd};
+        });
+        const cats = Array.isArray(snap)
+          ? data.categories.map((c,i)=> typeof snap[i] !== "number" ? c
+              : {...c, value: Math.max(0, Math.min(c.maxValue ?? XP_MAX, snap[i]))})
+          : data.categories;
+        if (Array.isArray(snap)) restoringRankRef.current = true;
+        update({...data, tasks, categories: cats});
+        toast$(Array.isArray(snap)
+          ? `${task.name.toUpperCase()} \u00b7 RANK RESTORED \u00b7 ${rankNameAt(data, cats).toUpperCase()}`
+          : `${task.name.toUpperCase()} \u00b7 SLIP TAKEN BACK`, GOOD);
+        try { navigator.vibrate && navigator.vibrate(14); } catch {}
+        return;
+      }
+
+      const { cats, drop } = live ? demoteCats(data.categories)
+                                  : { cats: data.categories, drop: 0 };
       const tasks = data.tasks.map(t => {
         if (t.id !== tid) return t;
-        const comps = {...(t.completions||{})};
-        if (slipped) delete comps[d]; else comps[d] = 1;
-        return {...t, completions: comps};
+        const comps = {...(t.completions||{})}; comps[d] = 1;
+        // The snapshot is what makes UNDO exact, and its presence is also what
+        // tells the night this slip is already settled.
+        const sd = {...(t.slipDemoted||{})};
+        if (drop > 0) sd[d] = data.categories.map(c=>c.value);
+        return {...t, completions: comps, slipDemoted: sd};
       });
-      update({...data, tasks});
-      toast$(slipped
-        ? `${task.name.toUpperCase()} \u00b7 SLIP TAKEN BACK`
-        : `\u2715 ${task.name.toUpperCase()} \u00b7 \u2212${xpInt(taskDecayOn(task, d)/36*100)} XP TONIGHT`,
-        slipped ? GOOD : BAD);
-      try { navigator.vibrate && navigator.vibrate(slipped ? 14 : [50,40,50]); } catch {}
+      update({...data, tasks, categories: cats});
+      toast$(drop > 0
+        ? `\u2715 ${task.name.toUpperCase()} \u00b7 RANK LOST \u00b7 NOW ${rankNameAt(data, cats).toUpperCase()}`
+        : `\u2715 ${task.name.toUpperCase()} \u00b7 NO RANK LEFT TO LOSE`,
+        BAD);
+      try { navigator.vibrate && navigator.vibrate([50,40,50]); } catch {}
       return;
     }
 
@@ -5993,6 +6103,12 @@ export default function App() {
   const wornLvl = (cz && cz.appearLevel != null && cz.appearLevel <= level.lvl)
     ? cz.appearLevel : level.lvl;
 
+  // What giving in would cost, worked out from the same function that charges
+  // it, so the warning can never promise one thing and the button do another.
+  const slipPreview = demoteCats(data.categories);
+  const slipToName = slipPreview.drop > 0
+    ? rankNameAt(data, slipPreview.cats) : "";
+
   // Everything above your rank floor, in display XP. This is the most you are
   // allowed to put on him — which is what makes a loss survivable: it can cost
   // you progress, never a rank.
@@ -6381,18 +6497,6 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:7}}>
               <div style={{fontSize:15.5,fontWeight:800,color:"#fff",textDecoration:done?"line-through":"none",
                 whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textShadow:tinted?"none":"0 1px 4px rgba(0,0,0,0.25)"}}>{task.name}</div>
-              {/* A diamond marks what counts. Filled when it is essential for
-                  good, hollow when it is only essential today — so a promotion
-                  you made this morning is never mistaken for a standing one. */}
-              {isEssentialOn(task, today) && (
-                <div style={{flexShrink:0,fontSize:9,fontWeight:900,
-                  color: task.essential ? "#06311b" : GOOD,
-                  background: task.essential ? GOOD : "transparent",
-                  border:`1px solid ${GOOD}`,
-                  padding:"2px 7px",borderRadius:10,letterSpacing:0.5,whiteSpace:"nowrap"}}>
-                  {task.essential ? "◆" : "◇"} ESSENTIAL
-                </div>
-              )}
               {priority && (
                 <div style={{flexShrink:0,fontSize:9,fontWeight:900,color:"#2a1a00",background:PRI,
                   padding:"2px 7px",borderRadius:10,letterSpacing:0.5,whiteSpace:"nowrap",
@@ -6513,6 +6617,15 @@ export default function App() {
             <span style={{fontSize:8.5,fontWeight:900,color:"#fff",fontFamily:FONT}}>
               {nx.done ? "✓" : nx.left === 0 ? "!" : `${nx.left}${nx.weekly ? "w" : "d"}`}
             </span>
+          </span>
+        )}
+        {/* Filled for a standing essential, hollow when it is only essential
+            today. Sits in the same chip row as the curse mark, which is what
+            makes it show up on the missions page too. */}
+        {isEssentialOn(task, today) && (
+          <span style={{...chip(GOOD+"aa"), color: GOOD, fontSize:10,
+            fontWeight:900, lineHeight:1}}>
+            {task.essential ? "◆" : "◇"}
           </span>
         )}
         {isCursed(task) && (
@@ -6933,7 +7046,12 @@ export default function App() {
                 ? <>Reset your champion's stats back to the start? Your missions, names, history, and customization are <span style={{color:GOOD,fontWeight:900}}>kept</span>.</>
                 : confirmBox.type==="vice"
                 ? <>Log that you gave in to <span style={{color:BAD,fontWeight:900}}>{confirmBox.name}</span>?
-                   It costs XP tonight instead of paying, and the day is no longer perfect.
+                   {slipPreview.drop > 0
+                     ? <> This takes a <span style={{color:BAD,fontWeight:900}}>whole rank</span> right now —
+                       you drop to the bottom of <span style={{color:BAD,fontWeight:900}}>{slipToName}</span>,
+                       and your gear changes with it.</>
+                     : <> You're already at the bottom of the ladder, so there is no rank left to take.</>}
+                   {" "}The day is no longer perfect either.
                    You can undo it any time before the day closes at 3am.</>
                 : confirmBox.type==="questReset"
                 ? <>Wipe the history and streak of <span style={{color:T.accent,fontWeight:900}}>{confirmBox.name}</span> and start counting fresh from today? Your character's stats are <span style={{color:GOOD,fontWeight:900}}>unchanged</span>.</>
@@ -7366,11 +7484,16 @@ export default function App() {
             <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
               <HoldRing color={detailColor} checkColor="#fff" trackColor="rgba(255,255,255,0.25)" size={76}
                 reps={getReps(detailTask,today)} target={detailTask.targetReps||1}
-                onComplete={(x,y)=>{ addRep(detailTask.id, today); celebrate(x, y, detailColor, S.showXP?`+${xpInt(detailTask.points/(detailTask.targetReps||1))}`:"✦ NICE", detailTask.id); }}
+                onComplete={(x,y)=>{ addRep(detailTask.id, today); celebrate(x, y, detailColor, S.showXP?`+${xpInt(taskGainOn(detailTask, today)/(detailTask.targetReps||1))}`:"✦ NICE", detailTask.id); }}
                 onShortTap={()=>toast$("HOLD TO COMPLETE")}/>
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:7}}>
                   <div style={{fontSize:19,color:"#fff",fontWeight:900,minWidth:0}}>{detailTask.name}</div>
+                  {isEssentialOn(detailTask, today) && (
+                    <span style={{flexShrink:0,fontSize:15,color:GOOD,lineHeight:1}}>
+                      {detailTask.essential ? "◆" : "◇"}
+                    </span>
+                  )}
                   {isCursed(detailTask) && (
                     <svg width="17" height="17" viewBox="0 0 17 17" style={{flexShrink:0}}>
                       {curseMarkEls(8.5,8.5,8,1)}</svg>
@@ -7378,7 +7501,7 @@ export default function App() {
                 </div>
                 <div style={{fontSize:11.5,color:DIM,marginTop:4,fontWeight:700}}>
                   {detailCat?.icon} {detailCat?.name} · {diffLabel(detailTask.importance??5)}
-                  {` · +${xpInt(detailTask.points)} / −${xpInt(detailTask.decayRate)} XP`}
+                  {` · +${xpInt(taskGainOn(detailTask, today))} / −${xpInt(taskDecayOn(detailTask, today))} XP`}
                 </div>
                 {isCursed(detailTask) && (
                   <div style={{fontSize:9.5,color:CURSE_COLOR,fontWeight:800,marginTop:3}}>
@@ -8329,10 +8452,37 @@ export default function App() {
                       style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",
                         padding:"9px 11px",borderRadius:BLOCK?0:11,
                         background:"rgba(255,255,255,0.03)",border:`1px solid ${LINE}`}}>
-                      <span style={{fontSize:9,fontWeight:900,letterSpacing:1,color:FAINT,flex:1}}>
+                      <span style={{fontSize:9,fontWeight:900,letterSpacing:1,color:FAINT,
+                        flexShrink:0}}>
                         ALSO TRACKING
                       </span>
-                      <span style={{fontSize:10,fontWeight:900,color:DIM}}>
+                      {/* The quests themselves, as icons. Folded up it was a
+                          bare number, which told you how many were left but
+                          never WHICH — and knowing which is the whole reason
+                          to glance at a folded section. Cleared ones dim
+                          rather than disappearing, so the row does not jump
+                          about as the day goes on. */}
+                      <span style={{flex:1,minWidth:0,display:"flex",gap:3,
+                        alignItems:"center",overflow:"hidden"}}>
+                        {todayCasual.slice(0,8).map(t=>{
+                          const c = data.categories.find(x=>x.id===t.catId);
+                          const won = isWonOn(t, today);
+                          return (
+                            <span key={t.id} title={t.name}
+                              style={{fontSize:13,lineHeight:1,flexShrink:0,
+                                opacity: won ? 0.3 : 0.95,
+                                filter: won ? "grayscale(1)" : "none"}}>
+                              {iconFor(t, c)}
+                            </span>
+                          );
+                        })}
+                        {todayCasual.length > 8 && (
+                          <span style={{fontSize:9,fontWeight:900,color:FAINT,flexShrink:0}}>
+                            +{todayCasual.length - 8}
+                          </span>
+                        )}
+                      </span>
+                      <span style={{fontSize:10,fontWeight:900,color:DIM,flexShrink:0}}>
                         {done}/{todayCasual.length}
                       </span>
                       <span style={{fontSize:12,color:FAINT,fontWeight:900}}>{open?"▴":"▾"}</span>
@@ -8507,7 +8657,8 @@ export default function App() {
                 <div style={{...C.label,color:BAD,marginBottom:3}}>⛔ FORBIDDEN</div>
                 <div style={{fontSize:9.5,color:FAINT,fontWeight:700,marginBottom:9,lineHeight:1.45}}>
                   Scored like any other mission, the other way round. Leave one alone
-                  and it pays tonight; tap it and it costs, and the day is no longer perfect.
+                  and it pays tonight; give in and it takes a whole rank on the spot,
+                  and the day is no longer perfect.
                 </div>
                 {todayVices.map(t=>{
                   const vc = data.categories.find(c=>c.id===t.catId);
@@ -8525,7 +8676,9 @@ export default function App() {
                         <span style={{display:"block",fontSize:9.5,fontWeight:800,marginTop:1,
                           color: slips>0 ? BAD : GOOD}}>
                           {slips>0
-                            ? `Slipped \u00b7 \u2212${xpInt(taskDecayOn(t, today)/36*100)} XP tonight`
+                            ? (((t.slipDemoted||{})[today])
+                                ? "Slipped \u00b7 a rank taken \u00b7 UNDO puts it back"
+                                : "Slipped \u00b7 no rank left to take")
                             : `Holding \u00b7 +${xpInt(taskGainOn(t, today)/36*100)} XP tonight`
                               + (clean>0 ? ` \u00b7 ${clean}d clean` : "")}
                         </span>
